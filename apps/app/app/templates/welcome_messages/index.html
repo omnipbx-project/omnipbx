@@ -1,0 +1,128 @@
+{% from "_ui_macros.html" import empty_state, stat_card %}
+{% extends "base.html" %}
+{% block content %}
+{% if result %}
+<div class="notice {{ result }}">
+  <strong>{{ result|capitalize }}</strong>
+  <span>{{ detail }}</span>
+</div>
+{% endif %}
+
+<section class="page-grid">
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Welcome prompts</h3>
+        <p>Attach greeting audio to inbound routes in a dedicated module so prompt management stays separate from trunk, queue, and IVR setup.</p>
+      </div>
+    </div>
+    <div class="metric-grid">
+      {{ stat_card("Messages", welcome_messages|length, "Welcome prompts defined in OmniPBX") }}
+      {{ stat_card("Enabled", welcome_messages|selectattr("enabled")|list|length, "Prompts active on their bound routes", "success") }}
+      {{ stat_card("Inbound routes", routes|length, "Routes available for greeting binding") }}
+      {{ stat_card("Uploads", "WAV", "Lean prompt format currently supported", "warning") }}
+    </div>
+  </div>
+
+  <section class="page-grid two-column">
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Create welcome message</h3>
+          <p>Reference an existing prompt name or upload a WAV file, then bind it to the inbound route that should play it.</p>
+        </div>
+      </div>
+      <form method="post" action="/welcome-messages/create" class="stack" enctype="multipart/form-data">
+        <div class="field-grid two">
+          <div class="field">
+            <label for="name">Welcome name</label>
+            <input id="name" type="text" name="name" placeholder="main-greeting" required>
+          </div>
+          <div class="field">
+            <label for="inbound_route_name">Inbound route</label>
+            <select id="inbound_route_name" name="inbound_route_name" required>
+              <option value="">Select route</option>
+              {% for route in routes %}
+              <option value="{{ route.name }}">{{ route.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="sound_name">Prompt sound name</label>
+            <input id="sound_name" type="text" name="sound_name" placeholder="custom/welcome_main">
+          </div>
+          <div class="field">
+            <label for="prompt_file">Prompt upload (.wav)</label>
+            <input id="prompt_file" type="file" name="prompt_file" accept=".wav">
+          </div>
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" name="enabled_raw" checked>
+          Enabled
+        </label>
+        <div class="button-row">
+          <button type="submit">Save welcome message</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Route binding</h3>
+          <p>Prompts stay linked to inbound routes, which keeps greeting behavior easy to audit during call-flow troubleshooting.</p>
+        </div>
+      </div>
+      <div class="feature-grid">
+        {% for route in routes %}
+        <div class="feature-card">
+          <h4>{{ route.name }}</h4>
+          <small>{{ route.trunk_name }}{% if route.did_pattern %} · {{ route.did_pattern }}{% endif %}</small>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Current welcome messages</h3>
+        <p>Prompt source, bound route, and maintenance actions stay visible without mixing welcome audio into broader routing screens.</p>
+      </div>
+    </div>
+    {% if welcome_messages %}
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Route</th>
+          <th>Prompt</th>
+          <th>Enabled</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for message in welcome_messages %}
+        <tr>
+          <td class="mono">{{ message.name }}</td>
+          <td class="mono">{{ message.inbound_route_name }}</td>
+          <td class="mono">{{ message.sound_name }}</td>
+          <td>{{ "Yes" if message.enabled else "No" }}</td>
+          <td>
+            <form method="post" action="/welcome-messages/{{ message.name }}/delete" onsubmit="return confirm('Delete welcome message {{ message.name }}?');">
+              <button type="submit" class="danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    {{ empty_state("No welcome messages yet", "Create your first welcome prompt here and bind it to an inbound route.") }}
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

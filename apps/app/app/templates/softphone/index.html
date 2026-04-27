@@ -1,0 +1,100 @@
+{% from "_ui_macros.html" import empty_state, stat_card %}
+{% extends "base.html" %}
+{% block content %}
+<section class="page-grid">
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Softphone bootstrap</h3>
+        <p>Prepare browser-phone settings, preview the generated bootstrap payload, and control extension-level DND from one feature module.</p>
+      </div>
+    </div>
+    <div class="metric-grid">
+      {{ stat_card("Extensions", extensions|length, "Extensions available for bootstrap preview") }}
+      {{ stat_card("Softphone", "Enabled" if settings.enabled else "Disabled", "Global browser-phone bootstrap state", "success" if settings.enabled else "warning") }}
+      {{ stat_card("Selected", selected_extension or "-", "Current extension in preview") }}
+      {{ stat_card("WebRTC", "Ready" if bootstrap and bootstrap.webrtc_ready else "Pending", "Derived from current public and websocket settings", "success" if bootstrap and bootstrap.webrtc_ready else "warning") }}
+    </div>
+  </div>
+
+  <section class="page-grid two-column">
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Softphone settings</h3>
+          <p>Store the public host, SIP domain, and websocket endpoint that browser-phone clients should use.</p>
+        </div>
+      </div>
+      <form method="post" action="/softphone/settings" class="stack">
+        <div class="field-grid two">
+          <div class="field">
+            <label for="websocket_url">WebSocket URL</label>
+            <input id="websocket_url" type="text" name="websocket_url" value="{{ settings.websocket_url or '' }}" placeholder="wss://pbx.example.com:8089/ws">
+          </div>
+          <div class="field">
+            <label for="sip_domain">SIP domain</label>
+            <input id="sip_domain" type="text" name="sip_domain" value="{{ settings.sip_domain or '' }}" placeholder="pbx.example.com">
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="display_name_prefix">Display name prefix</label>
+            <input id="display_name_prefix" type="text" name="display_name_prefix" value="{{ settings.display_name_prefix or '' }}" placeholder="OmniPBX">
+          </div>
+          <div class="field">
+            <label for="public_host">Public host</label>
+            <input id="public_host" type="text" name="public_host" value="{{ settings.public_host or '' }}" placeholder="https://pbx.example.com">
+          </div>
+        </div>
+        <div class="field">
+          <label for="note">Note</label>
+          <textarea id="note" name="note" rows="4" placeholder="Optional instructions for browser-phone users">{{ settings.note or '' }}</textarea>
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" name="enabled_raw" {% if settings.enabled %}checked{% endif %}>
+          Enable softphone bootstrap
+        </label>
+        <div class="button-row">
+          <button type="submit">Save softphone settings</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Bootstrap preview</h3>
+          <p>Inspect the exact payload OmniPBX would deliver to a browser client for the selected extension.</p>
+        </div>
+      </div>
+      {% if extensions %}
+      <form method="get" action="/softphone" class="stack">
+        <div class="field">
+          <label for="extension">Extension</label>
+          <select id="extension" name="extension">
+            {% for item in extensions %}
+            <option value="{{ item.extension }}" {% if selected_extension == item.extension %}selected{% endif %}>{{ item.extension }} - {{ item.display_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="button-row">
+          <button type="submit" class="secondary">Load bootstrap</button>
+        </div>
+      </form>
+      {% else %}
+      {{ empty_state("No extensions available", "Create at least one extension before previewing the softphone bootstrap payload.") }}
+      {% endif %}
+      {% if bootstrap %}
+      <pre class="code-block" style="margin-top: 16px;">{{ bootstrap_json }}</pre>
+      <form method="post" action="/softphone/dnd/{{ bootstrap.extension }}" style="margin-top: 16px;" class="stack">
+        <label class="checkbox-row">
+          <input type="checkbox" name="enabled_raw" {% if bootstrap.dnd_enabled %}checked{% endif %}>
+          DND for extension {{ bootstrap.extension }}
+        </label>
+        <button type="submit" class="secondary">Save DND</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+</section>
+{% endblock %}

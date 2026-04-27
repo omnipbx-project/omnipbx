@@ -1,0 +1,160 @@
+{% from "_ui_macros.html" import empty_state, stat_card %}
+{% extends "base.html" %}
+{% block content %}
+{% if result %}
+<div class="notice {{ result }}">
+  <strong>{{ result|capitalize }}</strong>
+  <span>{{ detail }}</span>
+</div>
+{% endif %}
+
+<section class="page-grid">
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Working hours schedules</h3>
+        <p>Bind business-hours logic to inbound routes without pushing time logic down into trunk or destination configuration.</p>
+      </div>
+    </div>
+    <div class="metric-grid">
+      {{ stat_card("Schedules", working_hours|length, "Named time windows currently stored") }}
+      {{ stat_card("Enabled", working_hours|selectattr("enabled")|list|length, "Schedules actively shaping call flow", "success") }}
+      {{ stat_card("Inbound routes", routes|length, "Routes available for time binding") }}
+      {{ stat_card("Weekdays", weekdays|length, "Selectable day names for schedule ranges", "warning") }}
+    </div>
+  </div>
+
+  <section class="page-grid two-column">
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Create working hours</h3>
+          <p>Attach a schedule to a single inbound route and optionally add an after-hours prompt for when the route is outside its active window.</p>
+        </div>
+      </div>
+      <form method="post" action="/working-hours/create" class="stack" enctype="multipart/form-data">
+        <div class="field-grid two">
+          <div class="field">
+            <label for="name">Schedule name</label>
+            <input id="name" type="text" name="name" placeholder="business-hours" required>
+          </div>
+          <div class="field">
+            <label for="inbound_route_name">Inbound route</label>
+            <select id="inbound_route_name" name="inbound_route_name" required>
+              <option value="">Select route</option>
+              {% for route in routes %}
+              <option value="{{ route.name }}">{{ route.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="start_day">Start day</label>
+            <select id="start_day" name="start_day">
+              {% for weekday in weekdays %}
+              <option value="{{ weekday }}">{{ weekday }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="end_day">End day</label>
+            <select id="end_day" name="end_day">
+              {% for weekday in weekdays %}
+              <option value="{{ weekday }}">{{ weekday }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="start_time">Start time</label>
+            <input id="start_time" type="text" name="start_time" value="09:00">
+          </div>
+          <div class="field">
+            <label for="end_time">End time</label>
+            <input id="end_time" type="text" name="end_time" value="17:00">
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="after_hours_sound">After-hours prompt name</label>
+            <input id="after_hours_sound" type="text" name="after_hours_sound" placeholder="custom/after_hours">
+          </div>
+          <div class="field">
+            <label for="after_hours_file">After-hours upload (.wav)</label>
+            <input id="after_hours_file" type="file" name="after_hours_file" accept=".wav">
+          </div>
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" name="enabled_raw" checked>
+          Enabled
+        </label>
+        <div class="button-row">
+          <button type="submit">Save working hours</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Route binding</h3>
+          <p>Each schedule targets one inbound route so after-hours logic stays easy to reason about and simple to migrate later.</p>
+        </div>
+      </div>
+      <div class="feature-grid">
+        {% for route in routes %}
+        <div class="feature-card">
+          <h4>{{ route.name }}</h4>
+          <small>{{ route.trunk_name }}{% if route.did_pattern %} · {{ route.did_pattern }}{% endif %}</small>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Current working hours</h3>
+        <p>Review the day range, active hours, route binding, and after-hours sound from one clear schedule table.</p>
+      </div>
+    </div>
+    {% if working_hours %}
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Route</th>
+          <th>Days</th>
+          <th>Hours</th>
+          <th>After-hours prompt</th>
+          <th>Enabled</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for schedule in working_hours %}
+        <tr>
+          <td class="mono">{{ schedule.name }}</td>
+          <td class="mono">{{ schedule.inbound_route_name }}</td>
+          <td>{{ schedule.start_day }} - {{ schedule.end_day }}</td>
+          <td class="mono">{{ schedule.start_time }} - {{ schedule.end_time }}</td>
+          <td class="mono">{{ schedule.after_hours_sound or "-" }}</td>
+          <td>{{ "Yes" if schedule.enabled else "No" }}</td>
+          <td>
+            <form method="post" action="/working-hours/{{ schedule.name }}/delete" onsubmit="return confirm('Delete working hours {{ schedule.name }}?');">
+              <button type="submit" class="danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    {{ empty_state("No working-hours schedules yet", "Create your first schedule here to control business-hours behavior for an inbound route.") }}
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

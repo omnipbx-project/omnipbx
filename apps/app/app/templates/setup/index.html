@@ -1,0 +1,414 @@
+{% from "_ui_macros.html" import stat_card %}
+{% extends "base.html" %}
+{% block content %}
+<section class="wizard-layout">
+  <div class="wizard-main">
+    {% if result %}
+    <div class="notice {% if result == 'success' %}notice-success{% else %}notice-error{% endif %}">
+      <strong>{{ result|capitalize }}</strong>
+      <span>{{ detail }}</span>
+    </div>
+    {% endif %}
+
+    <section class="panel wizard-hero">
+      <div class="wizard-hero-copy">
+        <span class="eyebrow">First-Time Setup</span>
+        <h3>Simple enough for a new admin, strong enough for a real PBX install</h3>
+        <p class="muted">
+          OmniPBX keeps the first run focused on access, admin, business defaults, and one optional test extension.
+          Linux networking, custom firewall tuning, and deeper telephony overrides stay out of the normal setup path.
+        </p>
+        <div class="button-row">
+          <a class="button-link secondary" href="#welcome">Review environment</a>
+          <a class="button-link secondary" href="#finish">Jump to final review</a>
+          {% if local_ca_ready %}
+          <a class="button-link secondary" href="/setup/internal-ca.crt">Download local CA</a>
+          {% endif %}
+        </div>
+      </div>
+      <div class="metric-grid compact">
+        {{ stat_card("Recommended mode", env_summary.recommended_mode.label, env_summary.recommended_mode.reason, "success") }}
+        {{ stat_card("Internet", env_summary.internet_status, "Installer connectivity check result") }}
+        {{ stat_card("Docker", "Ready" if env_summary.docker_ready else "Needs attention", "Containers must be healthy before setup") }}
+        {{ stat_card("Setup URL", env_summary.setup_url, "Detected entry point for this host", "warning") }}
+      </div>
+    </section>
+
+    <section class="panel wizard-context">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>What OmniPBX already detected</h3>
+          <p>This is the short environment readout a non-technical installer actually needs before continuing.</p>
+        </div>
+      </div>
+      <div class="summary-grid">
+        <div class="summary-row">
+          <span>Hostname</span>
+          <strong class="mono">{{ env_summary.hostname }}</strong>
+        </div>
+        <div class="summary-row">
+          <span>Detected IPs</span>
+          <strong class="mono">{{ env_summary.ip_addresses | join(", ") }}</strong>
+        </div>
+        <div class="summary-row">
+          <span>Firewall</span>
+          <strong>{{ env_summary.firewall_name }} ({{ env_summary.firewall_status }})</strong>
+        </div>
+        <div class="summary-row">
+          <span>Recommended path</span>
+          <strong>{{ env_summary.recommended_mode.label }}</strong>
+        </div>
+      </div>
+    </section>
+
+    <form method="post" action="/setup" class="stack wizard-form">
+      <section class="panel step-card" id="welcome">
+        <div class="step-heading">
+          <span class="step-number">1</span>
+          <div>
+            <h3>Welcome</h3>
+            <p>Confirm the detected environment and the URL OmniPBX will use while you finish setup.</p>
+          </div>
+        </div>
+        <div class="summary-grid">
+          <div class="summary-row">
+            <span>Setup URL</span>
+            <strong class="mono">{{ env_summary.setup_url }}</strong>
+          </div>
+          <div class="summary-row">
+            <span>Public HTTP</span>
+            <strong class="mono">{{ env_summary.proxy_http_url }}</strong>
+          </div>
+          <div class="summary-row">
+            <span>Public HTTPS</span>
+            <strong class="mono">{{ env_summary.proxy_https_url }}</strong>
+          </div>
+          <div class="summary-row">
+            <span>Security layers</span>
+            <strong>SELinux: {{ env_summary.selinux_status }} · AppArmor: {{ env_summary.apparmor_status }}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel step-card" id="deployment">
+        <div class="step-heading">
+          <span class="step-number">2</span>
+          <div>
+            <h3>Deployment mode</h3>
+            <p>Choose the environment that best matches where this PBX will live.</p>
+          </div>
+        </div>
+        <div class="choice-grid">
+          {% for mode in deployment_modes %}
+          <label class="choice-card">
+            <input type="radio" name="deployment_mode" value="{{ mode.value }}" {% if system_settings.deployment_mode == mode.value %}checked{% endif %}>
+            <span class="choice-badge {% if mode.value == env_summary.recommended_mode.value %}recommended{% endif %}">
+              {% if mode.value == env_summary.recommended_mode.value %}Recommended{% else %}Option{% endif %}
+            </span>
+            <span class="choice-title">{{ mode.label }}</span>
+            <span class="choice-copy">{{ mode.description }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="panel step-card" id="access">
+        <div class="step-heading">
+          <span class="step-number">3</span>
+          <div>
+            <h3>Access + SSL</h3>
+            <p>Pick how users will open OmniPBX and the HTTPS mode will follow from that choice automatically.</p>
+          </div>
+        </div>
+        <div class="choice-grid">
+          {% for mode in access_modes %}
+          <label class="choice-card">
+            <input type="radio" name="access_mode" value="{{ mode.value }}" {% if system_settings.access_mode == mode.value %}checked{% endif %}>
+            <span class="choice-badge {% if mode.value == 'public_domain' %}recommended{% elif mode.value in ['public_ip', 'private_self_hosted'] %}advanced{% endif %}">
+              {% if mode.value == 'public_domain' %}
+              Best for business
+              {% elif mode.value in ['public_ip', 'private_self_hosted'] %}
+              Advanced
+              {% else %}
+              Simple
+              {% endif %}
+            </span>
+            <span class="choice-title">{{ mode.label }}</span>
+            <span class="choice-copy">{{ mode.description }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="external_host">PBX domain or IP address</label>
+            <input id="external_host" type="text" name="external_host" value="{{ system_settings.external_host or env_summary.detected_host }}" placeholder="pbx.example.com or 192.168.1.20">
+            <small class="muted">Use a public domain for the recommended production path. Use a LAN IP for private office access.</small>
+          </div>
+          <div class="field">
+            <label for="ssl_contact_email">HTTPS contact email</label>
+            <input id="ssl_contact_email" type="text" name="ssl_contact_email" value="{{ system_settings.ssl_contact_email or '' }}" placeholder="Needed for public HTTPS">
+            <small class="muted">Only needed for public certificate flows such as domain or public IP HTTPS.</small>
+          </div>
+        </div>
+        <div class="notice notice-warn">
+          <strong>Good default</strong>
+          <span>Domain + free HTTPS is still the safest long-term path for a business PBX. Public IP certificates work, but they have tighter renewal and validation rules.</span>
+        </div>
+      </section>
+
+      <section class="panel step-card" id="admin">
+        <div class="step-heading">
+          <span class="step-number">4</span>
+          <div>
+            <h3>Admin account</h3>
+            <p>Create the owner login for the web UI. OmniPBX will generate its internal database, service, and signing secrets automatically.</p>
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="admin_username">Admin username</label>
+            <input id="admin_username" type="text" name="admin_username" value="admin" required>
+          </div>
+          <div class="field">
+            <label for="admin_email">Admin email</label>
+            <input id="admin_email" type="text" name="admin_email" value="{{ system_settings.admin_email or '' }}" placeholder="Optional">
+          </div>
+        </div>
+        <div class="field">
+          <label for="admin_password">Admin password</label>
+          <input id="admin_password" type="password" name="admin_password" minlength="10" required>
+          <small class="muted">Use at least 10 characters. OmniPBX stores this as a one-way password hash.</small>
+        </div>
+      </section>
+
+      <section class="panel step-card" id="regional">
+        <div class="step-heading">
+          <span class="step-number">5</span>
+          <div>
+            <h3>Regional defaults</h3>
+            <p>Set the business identity and telephony defaults users care about most on day one.</p>
+          </div>
+        </div>
+        <div class="field-grid three">
+          <div class="field">
+            <label for="company_name">Company name</label>
+            <input id="company_name" type="text" name="company_name" value="{{ system_settings.company_name }}" required>
+          </div>
+          <div class="field">
+            <label for="country">Country</label>
+            <select id="country" name="country">
+              {% for item in countries %}
+              <option value="{{ item.value }}" {% if system_settings.country == item.value %}selected{% endif %}>{{ item.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="timezone">Timezone</label>
+            <input id="timezone" type="text" name="timezone" value="{{ system_settings.timezone }}" placeholder="Asia/Dhaka" required>
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="default_language">Default language</label>
+            <select id="default_language" name="default_language">
+              {% for item in languages %}
+              <option value="{{ item.value }}" {% if system_settings.default_language == item.value %}selected{% endif %}>{{ item.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="dialing_region">Country code / dialing region</label>
+            <input id="dialing_region" type="text" name="dialing_region" value="{{ system_settings.dialing_region or '+880' }}" placeholder="+880" required>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel step-card" id="network">
+        <div class="step-heading">
+          <span class="step-number">6</span>
+          <div>
+            <h3>PBX network</h3>
+            <p>Keep the normal path short. Advanced telephony ports and CIDRs only appear if you already know you need them.</p>
+          </div>
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" name="behind_nat_raw" value="1" {% if system_settings.behind_nat %}checked{% endif %}>
+          This PBX is behind a router or NAT
+        </label>
+        <details class="advanced-block">
+          <summary>Advanced PBX network options</summary>
+          <p class="muted">
+            Use these only if the defaults do not fit your environment. OmniPBX keeps host NIC and routing changes out of the first setup experience.
+          </p>
+          <div class="field-grid three">
+            <div class="field">
+              <label for="sip_port">SIP port</label>
+              <input id="sip_port" type="number" name="sip_port" value="{{ system_settings.sip_port }}" min="1" max="65535">
+            </div>
+            <div class="field">
+              <label for="rtp_start">RTP start</label>
+              <input id="rtp_start" type="number" name="rtp_start" value="{{ system_settings.rtp_start }}" min="1024" max="65535">
+            </div>
+            <div class="field">
+              <label for="rtp_end">RTP end</label>
+              <input id="rtp_end" type="number" name="rtp_end" value="{{ system_settings.rtp_end }}" min="1024" max="65535">
+            </div>
+          </div>
+          <div class="field">
+            <label for="local_networks">Local network CIDRs</label>
+            <input id="local_networks" type="text" name="local_networks" value="{{ system_settings.local_networks or '' }}" placeholder="192.168.1.0/24, 10.10.10.0/24">
+            <small class="muted">Optional. Helpful for NAT-aware media handling on more advanced deployments.</small>
+          </div>
+          <div class="notice notice-warn">
+            <strong>SIP ALG reminder</strong>
+            <span>If phones register but media is broken, disable SIP ALG on the upstream router before changing host networking.</span>
+          </div>
+        </details>
+      </section>
+
+      <section class="panel step-card" id="first-extension">
+        <div class="step-heading">
+          <span class="step-number">7</span>
+          <div>
+            <h3>Optional first extension</h3>
+            <p>Create one extension now so the PBX is immediately useful after the wizard finishes.</p>
+          </div>
+        </div>
+        <div class="field-grid three">
+          <div class="field">
+            <label for="first_extension">Extension number</label>
+            <input id="first_extension" type="text" name="first_extension" placeholder="1001">
+          </div>
+          <div class="field">
+            <label for="first_extension_name">Display name</label>
+            <input id="first_extension_name" type="text" name="first_extension_name" placeholder="Reception">
+          </div>
+          <div class="field">
+            <label for="first_extension_secret">Extension password</label>
+            <input id="first_extension_secret" type="text" name="first_extension_secret" placeholder="Strong SIP password">
+          </div>
+        </div>
+      </section>
+
+      <section class="panel step-card" id="finish">
+        <div class="step-heading">
+          <span class="step-number">8</span>
+          <div>
+            <h3>Finish and review</h3>
+            <p>Here is the shape of the system OmniPBX will expose after this wizard saves your choices.</p>
+          </div>
+        </div>
+        <div class="summary-grid">
+          <div class="summary-row">
+            <span>Web URL</span>
+            <strong class="mono">{{ public_url }}</strong>
+          </div>
+          <div class="summary-row">
+            <span>SIP server</span>
+            <strong class="mono">{{ system_settings.external_host or env_summary.detected_host }}</strong>
+          </div>
+          <div class="summary-row">
+            <span>SSL mode</span>
+            <strong>{{ system_settings.ssl_mode }}</strong>
+          </div>
+          <div class="summary-row">
+            <span>Telephony ports</span>
+            <strong class="mono">SIP {{ system_settings.sip_port }} · RTP {{ system_settings.rtp_start }}-{{ system_settings.rtp_end }}</strong>
+          </div>
+        </div>
+        <div class="wizard-finish-grid">
+          <div class="feature-card">
+            <h4>What happens next</h4>
+            <p>OmniPBX saves the setup, creates the admin account, writes secrets, applies HTTPS settings, and can create the first extension.</p>
+          </div>
+          <div class="feature-card">
+            <h4>First actions after setup</h4>
+            <p>Create more extensions, add a trunk, register a phone, and place a test call between two endpoints.</p>
+          </div>
+        </div>
+        <div class="button-row">
+          <button type="submit">Save setup</button>
+        </div>
+      </section>
+    </form>
+  </div>
+
+  <aside class="wizard-side">
+    <section class="panel wizard-side-nav">
+      <h3>Setup steps</h3>
+      <div class="wizard-anchor-list">
+        <a href="#welcome" class="wizard-anchor"><span>1</span>Welcome</a>
+        <a href="#deployment" class="wizard-anchor"><span>2</span>Deployment mode</a>
+        <a href="#access" class="wizard-anchor"><span>3</span>Access + SSL</a>
+        <a href="#admin" class="wizard-anchor"><span>4</span>Admin account</a>
+        <a href="#regional" class="wizard-anchor"><span>5</span>Regional defaults</a>
+        <a href="#network" class="wizard-anchor"><span>6</span>PBX network</a>
+        <a href="#first-extension" class="wizard-anchor"><span>7</span>First extension</a>
+        <a href="#finish" class="wizard-anchor"><span>8</span>Finish</a>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Port checks</h3>
+          <p>Installer preflight checks which ports were requested and what the host actually made available.</p>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Port</th>
+            <th>Requested</th>
+            <th>Selected</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in env_summary.ports %}
+          <tr>
+            <td>{{ item.label }}</td>
+            <td class="mono">{{ item.requested }}</td>
+            <td class="mono">{{ item.selected }}</td>
+            <td>
+              <span class="status-pill {% if item.status == 'free' %}online{% elif item.status == 'conflicted' %}offline{% else %}unknown{% endif %}">
+                {{ item.status }}
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>What OmniPBX handles automatically</h3>
+          <p>The basic path stays short because these tasks do not need user input on first run.</p>
+        </div>
+      </div>
+      <ul class="bullet-list">
+        <li>Generates database, service, and signing secrets automatically</li>
+        <li>Keeps Linux NIC, routing, and firewall rewiring out of the basic setup path</li>
+        <li>Maps the safest HTTPS mode from the access choice you make</li>
+        <li>Leaves advanced items like raw AMI/API ports and custom certificates for later</li>
+      </ul>
+    </section>
+
+    {% if local_ca_ready %}
+    <section class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Local HTTPS certificate</h3>
+          <p>If you choose private-network HTTPS, install the OmniPBX local root certificate so browsers trust the PBX cleanly.</p>
+        </div>
+      </div>
+      <div class="button-row">
+        <a class="button-link secondary" href="/setup/internal-ca.crt">Download local CA</a>
+      </div>
+    </section>
+    {% endif %}
+  </aside>
+</section>
+{% endblock %}

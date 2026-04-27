@@ -1,0 +1,282 @@
+{% from "_ui_macros.html" import feature_card, stat_card %}
+{% extends "base.html" %}
+{% block content %}
+<section class="page-grid">
+  <div class="panel" id="updates" data-update-can-start="{{ 'true' if update_overview.can_start_update else 'false' }}">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Manual updates</h3>
+        <p>OmniPBX never auto-updates itself. This install watches its tracked git branch, shows you when upstream changes arrive, and updates only when you click or run the CLI manually.</p>
+      </div>
+      <div class="button-row">
+        <button type="button" class="secondary" id="refresh-update-status">Check now</button>
+        {% if current_user and current_user.role != 'read_only' %}
+        <button type="button" class="primary" id="start-update">Update OmniPBX</button>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="metric-grid compact">
+      {{ stat_card("Current version", update_overview.current_version, "The version serving this dashboard right now", "default") }}
+      {{ stat_card("Latest version", update_overview.latest_version, "The version found on the tracked upstream branch", "success" if update_overview.update_available else "default") }}
+      {{ stat_card("Update mode", "Manual only", "The web UI will never auto-apply a release without an admin click", "warning") }}
+      {{ stat_card("Last check", update_overview.last_checked_at or "Not yet", "Latest git upstream check time", "default") }}
+    </div>
+
+    <div id="update-notice" class="notice {% if update_overview.update_status.state == 'error' %}notice-error{% elif update_overview.update_available %}notice-warn{% else %}notice-info{% endif %}" style="margin-top: 16px;">
+      <strong id="update-notice-title">
+        {% if update_overview.update_status.state in ['queued', 'updating'] %}
+        Update running
+        {% elif update_overview.update_status.state == 'error' %}
+        Update failed
+        {% elif update_overview.update_available %}
+        Update available
+        {% else %}
+        Update status
+        {% endif %}
+      </strong>
+      <span id="update-notice-copy">
+        {% if update_overview.update_status.state in ['queued', 'updating'] %}
+        {{ update_overview.update_status.message }}
+        {% elif update_overview.update_status.state == 'error' %}
+        {{ update_overview.update_status.message }}
+        {% elif update_overview.check_error %}
+        {{ update_overview.check_message }} {{ update_overview.check_error }}
+        {% else %}
+        {{ update_overview.check_message }}
+        {% endif %}
+      </span>
+    </div>
+
+    <div class="summary-grid" style="margin-top: 16px;">
+      <div class="summary-row">
+        <span>Git branch</span>
+        <strong id="update-branch-state">{{ update_overview.upstream_ref or "Not configured" }}</strong>
+      </div>
+      <div class="summary-row">
+        <span>Git remote</span>
+        <strong id="update-remote-link">{{ update_overview.remote_url or "Not available" }}</strong>
+      </div>
+      <div class="summary-row">
+        <span>Updater state</span>
+        <strong id="update-runner-state">{{ update_overview.update_status.state|replace('_', ' ')|title }}</strong>
+      </div>
+      <div class="summary-row">
+        <span>Commits behind</span>
+        <strong id="update-behind-count">{{ update_overview.commits_behind }}</strong>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Realtime snapshot</h3>
+        <p>A clean operations view of extension inventory, live registrations, and where to go next.</p>
+      </div>
+      <div class="button-row">
+        <a class="button-link secondary" href="/status">Live Status</a>
+        <a class="button-link secondary" href="/extensions">Manage Extensions</a>
+      </div>
+    </div>
+    <div class="metric-grid">
+      {{ stat_card("Extensions", extension_count, "Configured endpoints in OmniPBX", "default") }}
+      {{ stat_card("Enabled", enabled_extension_count, "Ready to register and receive calls", "success") }}
+      {{ stat_card("Online phones", status_summary.extensions_online, "Live PJSIP registrations right now", "success") }}
+      {{ stat_card("Offline phones", status_summary.extensions_offline, "Needs registration or troubleshooting", "warning") }}
+    </div>
+  </div>
+
+  <section class="page-grid two-column">
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>What is healthy right now</h3>
+          <p>Use this short operational readout before you jump into the deeper feature pages.</p>
+        </div>
+      </div>
+      <div class="summary-grid">
+        <div class="summary-row">
+          <span>Registration health</span>
+          <strong>{{ status_summary.extensions_online }} online / {{ extension_count }} total</strong>
+        </div>
+        <div class="summary-row">
+          <span>Provisioning readiness</span>
+          <strong>{{ enabled_extension_count }} enabled endpoints</strong>
+        </div>
+        <div class="summary-row">
+          <span>Next task</span>
+          <strong>{% if extension_count < 2 %}Create more extensions{% else %}Add trunks and routes{% endif %}</strong>
+        </div>
+      </div>
+      <hr class="divider">
+      <div class="button-row">
+        <a class="button-link secondary" href="/trunks">Configure trunks</a>
+        <a class="button-link secondary" href="/inbound-routes">Review inbound routing</a>
+        <a class="button-link secondary" href="/api-push">Open API push</a>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Product direction</h3>
+          <p>This redesign keeps the richer PBX feel from your demo, but uses maintainable feature templates instead of one giant file.</p>
+        </div>
+      </div>
+      <ul class="bullet-list">
+        <li>Feature pages stay separate and easy to reason about.</li>
+        <li>Light and dark mode are built into the shared shell.</li>
+        <li>Operational pages now favor clear status, quick actions, and readable density.</li>
+      </ul>
+    </div>
+  </section>
+
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Feature modules</h3>
+        <p>The core PBX areas below are still separate modules, routes, and templates, even after the visual refresh.</p>
+      </div>
+    </div>
+    <div class="feature-grid">
+      {% for card in feature_cards %}
+      {{ feature_card(card.title, card.href, card.detail, card.source) }}
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<script>
+(() => {
+  const panel = document.getElementById('updates');
+  if (!panel) {
+    return;
+  }
+
+  const checkButton = document.getElementById('refresh-update-status');
+  const startButton = document.getElementById('start-update');
+  const notice = document.getElementById('update-notice');
+  const noticeTitle = document.getElementById('update-notice-title');
+  const noticeCopy = document.getElementById('update-notice-copy');
+  const branchState = document.getElementById('update-branch-state');
+  const remoteLink = document.getElementById('update-remote-link');
+  const runnerState = document.getElementById('update-runner-state');
+  const behindCount = document.getElementById('update-behind-count');
+
+  function setNotice(tone, title, message) {
+    notice.className = `notice notice-${tone}`;
+    noticeTitle.textContent = title;
+    noticeCopy.textContent = message;
+  }
+
+  function setBusy(isBusy) {
+    if (checkButton) {
+      checkButton.disabled = isBusy;
+    }
+    if (startButton) {
+      startButton.disabled = isBusy;
+    }
+  }
+
+  function updateMetric(label, value) {
+    document.querySelectorAll('.metric-card').forEach((card) => {
+      const title = card.querySelector('strong')?.textContent?.trim();
+      if (title === label) {
+        const valueNode = card.querySelector('span');
+        if (valueNode) {
+          valueNode.textContent = value;
+        }
+      }
+    });
+  }
+
+  function renderOverview(data) {
+    updateMetric('Current version', data.current_version);
+    updateMetric('Latest version', data.latest_version || data.current_version);
+    updateMetric('Last check', data.last_checked_at || 'Not yet');
+
+    branchState.textContent = data.upstream_ref || 'Not configured';
+    runnerState.textContent = (data.update_status?.state || 'idle').replaceAll('_', ' ');
+    behindCount.textContent = String(data.commits_behind ?? 0);
+    remoteLink.textContent = data.remote_url || 'Not available';
+
+    const updateState = data.update_status?.state || 'idle';
+    if (updateState === 'queued' || updateState === 'updating') {
+      setNotice('info', 'Update running', data.update_status.message || 'The manual update is still running.');
+    } else if (updateState === 'error') {
+      setNotice('error', 'Update failed', data.update_status.message || 'The last update did not complete.');
+    } else if (!data.git_ready) {
+      setNotice('warn', 'Git updates unavailable', data.check_message || 'This install is not a git checkout.');
+    } else if (!data.tracked_upstream) {
+      setNotice('warn', 'Tracking branch missing', data.check_message || 'No upstream tracking branch is configured.');
+    } else if (data.check_error) {
+      setNotice('warn', 'Check failed', `${data.check_message} ${data.check_error}`.trim());
+    } else if (data.update_available) {
+      setNotice('warn', 'Update available', data.check_message || `${data.upstream_ref} has new commits available.`);
+    } else {
+      setNotice('info', 'Up to date', data.check_message || `OmniPBX is on ${data.upstream_ref || 'its tracked branch'}.`);
+    }
+
+    if (startButton) {
+      startButton.disabled = !data.can_start_update;
+    }
+  }
+
+  async function fetchOverview(url, options = {}) {
+    setBusy(true);
+    try {
+      const response = await fetch(url, {
+        cache: 'no-store',
+        ...options,
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.detail || 'Request failed');
+      }
+      renderOverview(payload);
+      return payload;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (checkButton) {
+    checkButton.addEventListener('click', async () => {
+      try {
+        await fetchOverview('/api/system/update/check', { method: 'POST' });
+      } catch (error) {
+        setNotice('error', 'Check failed', error.message || 'Unable to refresh update information.');
+      }
+    });
+  }
+
+  if (startButton) {
+    startButton.addEventListener('click', async () => {
+      setBusy(true);
+      try {
+        const response = await fetch('/api/system/update/run', { method: 'POST', cache: 'no-store' });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.detail || 'Unable to start the update helper.');
+        }
+        setNotice('info', 'Update queued', result.status === 'started'
+          ? `Detached updater started for ${result.target_version}.`
+          : 'The update helper was started.');
+        window.setTimeout(() => {
+          fetchOverview('/api/system/update').catch(() => {});
+        }, 3000);
+      } catch (error) {
+        setNotice('error', 'Update failed', error.message || 'Unable to start the update helper.');
+      } finally {
+        setBusy(false);
+      }
+    });
+  }
+
+  window.setInterval(() => {
+    fetchOverview('/api/system/update').catch(() => {});
+  }, 8000);
+})();
+</script>
+{% endblock %}

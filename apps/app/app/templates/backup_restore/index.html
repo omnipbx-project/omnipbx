@@ -1,0 +1,145 @@
+{% from "_ui_macros.html" import empty_state, stat_card %}
+{% extends "base.html" %}
+{% block content %}
+{% if result %}
+<div class="notice {{ result }}">
+  <strong>{{ result|capitalize }}</strong>
+  <span>{{ detail }}</span>
+</div>
+{% endif %}
+
+<section class="page-grid">
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Backup & restore</h3>
+        <p>Create lightweight snapshots of OmniPBX account and system settings, then restore them later if you need a quick recovery point.</p>
+      </div>
+    </div>
+    <div class="metric-grid">
+      {{ stat_card("Snapshots", backups|length, "Files currently available for restore") }}
+      {{ stat_card("Mode", "Manual", "Create and restore on demand", "success") }}
+      {{ stat_card("Scope", "Accounts + settings", "Keeps user and SMTP recovery simple", "warning") }}
+      {{ stat_card("Audit", "Logged", "Backup actions also appear in the audit log", "success") }}
+    </div>
+  </div>
+
+  <section class="page-grid two-column">
+    <div class="stack">
+      {% if can_manage %}
+      <div class="panel">
+        <div class="section-header">
+          <div class="section-copy">
+            <h3>Create backup</h3>
+            <p>Use this before major changes, SMTP updates, or when you want a safe rollback point.</p>
+          </div>
+        </div>
+        <form method="post" action="/backup-restore/create" class="stack">
+          <div class="field">
+            <label for="label">Backup label</label>
+            <input id="label" type="text" name="label" placeholder="Before adding more admins">
+          </div>
+          <div class="button-row">
+            <button type="submit">Create backup</button>
+          </div>
+        </form>
+      </div>
+      {% else %}
+      <div class="panel">
+        <div class="section-header">
+          <div class="section-copy">
+            <h3>Read-only access</h3>
+            <p>Backup creation and restore are reserved for owner admins.</p>
+          </div>
+        </div>
+        {{ empty_state("View only", "A read-only admin can inspect snapshots, but cannot create or restore them.") }}
+      </div>
+      {% endif %}
+
+      <div class="panel">
+        <div class="section-header">
+          <div class="section-copy">
+            <h3>Restore backup</h3>
+            <p>Upload a snapshot file and OmniPBX will restore account and system settings from it.</p>
+          </div>
+        </div>
+        <form method="post" action="/backup-restore/restore" enctype="multipart/form-data" class="stack">
+          <div class="field">
+            <label for="backup_file">Backup JSON</label>
+            <input id="backup_file" type="file" name="backup_file" accept=".json,application/json" required>
+          </div>
+          <div class="button-row">
+            <button type="submit" class="secondary">Restore backup</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="panel">
+        <div class="section-header">
+          <div class="section-copy">
+            <h3>Available snapshots</h3>
+            <p>Backups are stored locally on the server so they stay lightweight and easy to grab.</p>
+          </div>
+        </div>
+        {% if backups %}
+        <table>
+          <thead>
+            <tr>
+              <th>Label</th>
+              <th>Created</th>
+              <th>Size</th>
+              <th>Download</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for backup in backups %}
+            <tr>
+              <td>{{ backup.label }}</td>
+              <td class="mono">{{ backup.exported_at }}</td>
+              <td class="mono">{{ "%.1f"|format(backup.size_bytes / 1024) }} KB</td>
+              <td><a class="button-link secondary" href="/backup-restore/download/{{ backup.file_name }}">Download</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        {{ empty_state("No backups yet", "Create the first snapshot to start keeping recovery points.") }}
+        {% endif %}
+      </div>
+
+      <div class="panel">
+        <div class="section-header">
+          <div class="section-copy">
+            <h3>Recent audit trail</h3>
+            <p>Backup and restore events are written to the audit log.</p>
+          </div>
+        </div>
+        {% if recent_audit %}
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Type</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for entry in recent_audit %}
+            <tr>
+              <td class="mono">{{ entry.created_at }}</td>
+              <td>{{ entry.event_type }}</td>
+              <td>{{ entry.message or "-" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        {{ empty_state("No audit activity", "Backup actions will show up here after the first snapshot.") }}
+        {% endif %}
+      </div>
+    </div>
+  </section>
+</section>
+{% endblock %}

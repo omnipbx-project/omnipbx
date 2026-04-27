@@ -1,0 +1,27 @@
+{% macro stat_card(label, value, detail='', tone='default') -%}
+<div class="metric-card metric-{{ tone }}">
+  <strong>{{ label }}</strong>
+  <span>{{ value }}</span>
+  {% if detail %}
+  <small>{{ detail }}</small>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro feature_card(title, href, detail, source='') -%}
+<a class="feature-card" href="{{ href }}">
+  <h4>{{ title }}</h4>
+  <p>{{ detail }}</p>
+  {% if source %}
+  <small>{{ source }}</small>
+  {% endif %}
+</a>
+{%- endmacro %}
+
+{% macro empty_state(title, detail) -%}
+<div class="empty-state">
+  <div class="empty-icon">∅</div>
+  <div class="empty-title">{{ title }}</div>
+  <div class="empty-copy">{{ detail }}</div>
+</div>
+{%- endmacro %}

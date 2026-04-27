@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import getpass
+import os
+import secrets
+import subprocess
+import sys
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEPLOY_DIR = REPO_ROOT / "deploy"
+COMPOSE_FILE = DEPLOY_DIR / "compose.yaml"
+APP_WORKDIR = "/opt/omnipbx"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        prog="omnipbxctl",
+        description="OmniPBX recovery and maintenance helper.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    reset_parser = subparsers.add_parser(
+        "reset-admin-password",
+        help="Reset an admin password from the host using the running app container.",
+    )
+    reset_parser.add_argument("username", help="Admin username to reset.")
+    reset_group = reset_parser.add_mutually_exclusive_group()
+    reset_group.add_argument(
+        "--password",
+        help="New password to apply. If omitted, you will be prompted securely.",
+    )
+    reset_group.add_argument(
+        "--generate",
+        action="store_true",
+        help="Generate a strong random password and print it once.",
+    )
+    reset_parser.add_argument(
+        "--compose-file",
+        default=str(COMPOSE_FILE),
+        help="Path to the compose file. Defaults to deploy/compose.yaml.",
+    )
+    reset_parser.add_argument(
+        "--project-directory",
+        default=str(DEPLOY_DIR),
+        help="Docker Compose project directory. Defaults to deploy/.",
+    )
+
+    update_parser = subparsers.add_parser(
+        "update",
+        help="Check for and apply OmniPBX updates from the tracked git branch.",
+    )
+    update_parser.add_argument(
+        "--project-root",
+        default=str(REPO_ROOT),
+        help="Installed OmniPBX project root. Defaults to the omnipbxctl parent directory.",
+    )
+    update_parser.add_argument(
+        "--check-only",
+        action="store_true",
+        help="Check the tracked git branch without applying an update.",
+    )
+    update_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Rebuild the stack even when the tracked branch is already current.",
+    )
+    update_parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Skip confirmation prompts.",
+    )
+
+    args = parser.parse_args()
+    if args.command == "reset-admin-password":
+        return _reset_admin_password(
+            username=args.username.strip(),
+            password=args.password,
+            generate=args.generate,
+            compose_file=Path(args.compose_file),
+            project_directory=Path(args.project_directory),
+        )
+    if args.command == "update":
+        return _run_update(
+            project_root=Path(args.project_root),
+            check_only=args.check_only,
+            force=args.force,
+            non_interactive=args.non_interactive,
+        )
+    return 1
+
+
+def _reset_admin_password(
+    *,
+    username: str,
+    password: str | None,
+    generate: bool,
+    compose_file: Path,
+    project_directory: Path,
+) -> int:
+    if not username:
+        print("Username is required.", file=sys.stderr)
+        return 2
+    if not compose_file.exists():
+        print(f"Compose file not found: {compose_file}", file=sys.stderr)
+        return 2
+    if not project_directory.exists():
+        print(f"Project directory not found: {project_directory}", file=sys.stderr)
+        return 2
+
+    if generate:
+        password = _generate_password()
+        print("Generated password:", password)
+    elif not password:
+        password = _prompt_password()
+
+    if not password:
+        print("Password is required.", file=sys.stderr)
+        return 2
+
+    snippet = r'''
+from __future__ import annotations
+
+import sys
+import psycopg
+from app.core.settings import get_settings
+from app.services.audit import log_admin_event
+from app.services.auth import hash_password
+
+
+def main() -> int:
+    username = sys.argv[1].strip()
+    new_password = sys.argv[2]
+    settings = get_settings()
+    with psycopg.connect(settings.db_dsn, autocommit=True) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, username, is_owner
+                FROM admin_users
+                WHERE username = %(username)s
+                """,
+                {"username": username},
+            )
+            row = cursor.fetchone()
+            if not row:
+                print(f"Admin account {username!r} was not found.", file=sys.stderr)
+                return 3
+            cursor.execute(
+                """
+                UPDATE admin_users
+                SET password_hash = %(password_hash)s,
+                    updated_at = NOW()
+                WHERE username = %(username)s
+                RETURNING id, username, is_owner
+                """,
+                {
+                    "username": username,
+                    "password_hash": hash_password(new_password),
+                },
+            )
+            updated = cursor.fetchone()
+        if updated:
+            role = "owner" if updated[2] else "admin"
+            print(f"Updated {updated[1]!r} ({role}) password successfully.")
+            log_admin_event(
+                connection,
+                event_type="admin.password_reset_cli",
+                actor_username="server-cli",
+                target_kind="admin",
+                target_value=updated[1],
+                message="Server-side CLI password reset",
+            )
+            return 0
+    print(f"Failed to update {username!r}.", file=sys.stderr)
+    return 4
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+'''
+
+    command = [
+        "docker",
+        "compose",
+        "--project-directory",
+        str(project_directory),
+        "-f",
+        str(compose_file),
+        "exec",
+        "-T",
+        "-w",
+        APP_WORKDIR,
+        "app",
+        "python3",
+        "-c",
+        snippet,
+        username,
+        password,
+    ]
+
+    completed = subprocess.run(command, text=True, capture_output=True)
+    if completed.stdout.strip():
+        print(completed.stdout.rstrip())
+    if completed.returncode != 0:
+        if completed.stderr.strip():
+            print(completed.stderr.rstrip(), file=sys.stderr)
+        return completed.returncode
+
+    print()
+    print("Recovery paths available:")
+    print("  1. Email reset through Brevo SMTP")
+    print("  2. Owner/admin password change inside OmniPBX")
+    print("  3. CLI reset on the server with omnipbxctl")
+    return 0
+
+
+def _prompt_password() -> str:
+    first = getpass.getpass("New password: ")
+    second = getpass.getpass("Confirm password: ")
+    if first != second:
+        print("Passwords do not match.", file=sys.stderr)
+        return ""
+    return first
+
+
+def _generate_password(length: int = 20) -> str:
+    alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def _run_update(
+    *,
+    project_root: Path,
+    check_only: bool,
+    force: bool,
+    non_interactive: bool,
+) -> int:
+    update_script = project_root / "scripts" / "update.sh"
+    if not update_script.exists():
+        print(f"Update script not found: {update_script}", file=sys.stderr)
+        return 2
+
+    command = ["bash", str(update_script), "--project-root", str(project_root)]
+    if check_only:
+        command.append("--check-only")
+    if force:
+        command.append("--force")
+    if non_interactive:
+        command.append("--non-interactive")
+
+    completed = subprocess.run(command, env=os.environ.copy())
+    return completed.returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

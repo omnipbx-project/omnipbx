@@ -1,0 +1,55 @@
+{% from "_ui_macros.html" import empty_state, stat_card %}
+{% extends "base.html" %}
+{% block content %}
+<section class="page-grid">
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Audit history</h3>
+        <p>Keep an eye on account changes, password resets, SMTP changes, and backup activity. Read-only accounts can view this page without editing anything.</p>
+      </div>
+    </div>
+    <div class="metric-grid">
+      {{ stat_card("Events", entries|length, "Recent actions recorded in OmniPBX") }}
+      {{ stat_card("Admins", "Tracked", "Account actions are tied back to usernames", "success") }}
+      {{ stat_card("Recovery", "Visible", "Reset and CLI recovery events stay auditable", "warning") }}
+      {{ stat_card("Backups", "Tracked", "Backup and restore activity is logged", "success") }}
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Recent events</h3>
+        <p>Latest 200 entries from the OmniPBX admin audit trail.</p>
+      </div>
+    </div>
+    {% if entries %}
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Type</th>
+          <th>Actor</th>
+          <th>Target</th>
+          <th>Message</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in entries %}
+        <tr>
+          <td class="mono">{{ entry.created_at }}</td>
+          <td><span class="status-pill {{ 'success' if 'backup' in entry.event_type or 'smtp' in entry.event_type else 'warning' }}">{{ entry.event_type }}</span></td>
+          <td>{{ entry.actor_username or "-" }}</td>
+          <td>{{ entry.target_kind or "-" }} {{ entry.target_value or "" }}</td>
+          <td>{{ entry.message or "-" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    {{ empty_state("No audit entries", "Actions will appear here once admins start using OmniPBX.") }}
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

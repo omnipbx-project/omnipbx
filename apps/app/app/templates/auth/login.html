@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="login-wrap">
+  <div class="panel login-card">
+    <span class="eyebrow">Secure Access</span>
+    <h3>Sign in to OmniPBX</h3>
+    <p class="muted">
+      Use the admin account created during setup. Email reset, owner/admin reset, and CLI recovery are now available as fallback paths.
+    </p>
+
+    {% if error %}
+    <div class="notice notice-error">
+      <strong>Login failed</strong>
+      <span>{{ error }}</span>
+    </div>
+    {% endif %}
+
+    {% if result == 'success' %}
+    <div class="notice notice-success">
+      <strong>Success</strong>
+      <span>{{ detail }}</span>
+    </div>
+    {% endif %}
+
+    <form method="post" action="/login" class="stack">
+      <input type="hidden" name="next_url" value="{{ next_url }}">
+      <div class="field">
+        <label for="username">Username</label>
+        <input id="username" type="text" name="username" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" type="password" name="password" autocomplete="current-password" required>
+      </div>
+      <div class="button-row">
+        <button type="submit">Login</button>
+      </div>
+    </form>
+
+    <div class="button-row">
+      <a class="button-link secondary" href="/forgot-password">Forgot password?</a>
+      {% if not smtp_ready %}
+      <span class="muted">Email reset becomes available after SMTP is configured.</span>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}

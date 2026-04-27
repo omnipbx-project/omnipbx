@@ -1,0 +1,108 @@
+{% from "_ui_macros.html" import empty_state, stat_card %}
+{% extends "base.html" %}
+{% block content %}
+<section class="page-grid">
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Callback worklist</h3>
+        <p>Track missed-call follow-up without burying callback notes and completion state inside call logs.</p>
+      </div>
+    </div>
+    <div class="metric-grid">
+      {{ stat_card("Open", summary.open_callbacks, "Callbacks still waiting for follow-up", "warning") }}
+      {{ stat_card("Done today", summary.done_today, "Completed callback items today", "success") }}
+      {{ stat_card("Visible rows", rows|length, "Rows after current filters") }}
+    </div>
+  </div>
+
+  <section class="page-grid two-column">
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Filter callbacks</h3>
+          <p>Search by caller number or limit the worklist to only open items.</p>
+        </div>
+      </div>
+      <form method="get" action="/callbacks" class="stack">
+        <div class="field">
+          <label for="search">Search number</label>
+          <input id="search" type="text" name="search" value="{{ search }}" placeholder="019..., 8801..., 1001">
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" name="open_only" value="1" {% if open_only %}checked{% endif %}>
+          Show open callbacks only
+        </label>
+        <div class="button-row">
+          <button type="submit">Apply filters</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Operator flow</h3>
+          <p>Keep the callback loop practical: find the caller, write the note, mark it complete, and move on.</p>
+        </div>
+      </div>
+      <ul class="bullet-list">
+        <li>Rows stay editable directly from the callback table.</li>
+        <li>Open-only mode keeps the follow-up queue focused.</li>
+        <li>Route and queue context help operators know where the missed call originated.</li>
+      </ul>
+    </div>
+  </section>
+
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Current callbacks</h3>
+        <p>Use inline updates to capture notes and mark follow-up completion without leaving the worklist.</p>
+      </div>
+    </div>
+    {% if rows %}
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Caller</th>
+          <th>Reason</th>
+          <th>Target</th>
+          <th>Route</th>
+          <th>Status</th>
+          <th>Follow-up</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="mono">{{ row.call_time }}</td>
+          <td class="mono">{{ row.caller_number }}</td>
+          <td>{{ row.callback_reason }}</td>
+          <td class="mono">{{ row.target or "-" }}</td>
+          <td class="mono">{{ row.route_name or row.queue_name or row.ivr_name or "-" }}</td>
+          <td><span class="status-pill {{ 'available' if row.completed else 'warn' }}">{{ "Done" if row.completed else "Open" }}</span></td>
+          <td>
+            <form method="post" action="/callbacks/{{ row.linkedid }}/update" class="stack">
+              <input type="hidden" name="callback_number" value="{{ row.caller_number }}">
+              <div class="field">
+                <textarea name="note" rows="2" placeholder="Optional callback note">{{ row.note or "" }}</textarea>
+              </div>
+              <label class="checkbox-row">
+                <input type="checkbox" name="completed_raw" value="1" {% if row.completed %}checked{% endif %}>
+                Completed
+              </label>
+              <button type="submit" class="secondary">Save</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    {{ empty_state("No callback items", "When missed-call or follow-up logic creates callback work items, they will appear here.") }}
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

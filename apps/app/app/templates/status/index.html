@@ -1,0 +1,98 @@
+{% from "_ui_macros.html" import stat_card %}
+{% extends "base.html" %}
+{% block content %}
+<section class="page-grid">
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Realtime SIP status</h3>
+        <p>This page refreshes automatically so operators can spot registration issues without digging through a CLI.</p>
+      </div>
+      <span class="status-pill available">Refreshing every 4 seconds</span>
+    </div>
+    <div class="metric-grid">
+      {{ stat_card("Total endpoints", snapshot.summary.extensions_total, "Provisioned extensions known to OmniPBX", "default") }}
+      {{ stat_card("Online", snapshot.summary.extensions_online, "Responding and registered now", "success") }}
+      {{ stat_card("Offline", snapshot.summary.extensions_offline, "Expected but unavailable", "warning") }}
+      {{ stat_card("Unknown", snapshot.summary.extensions_unknown, "No usable state reported", "danger") }}
+    </div>
+    <p class="muted" style="margin-top: 14px;">Last refresh: <span id="generated-at" class="mono">{{ snapshot.generated_at }}</span></p>
+  </div>
+
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Endpoint status board</h3>
+        <p>Live endpoint state, contact details, and transport visibility for quick troubleshooting.</p>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Extension</th>
+          <th>Name</th>
+          <th>Status</th>
+          <th>Endpoint state</th>
+          <th>Contact</th>
+          <th>RTT</th>
+          <th>Transport</th>
+        </tr>
+      </thead>
+      <tbody id="status-rows">
+        {% for row in snapshot.extensions %}
+        <tr>
+          <td class="mono">{{ row.extension }}</td>
+          <td>{{ row.display_name }}</td>
+          <td><span class="status-pill {{ row.status|lower }}">{{ row.status }}</span></td>
+          <td>{{ row.endpoint_state }}</td>
+          <td class="mono">{{ row.contact_uri or "Not registered" }}</td>
+          <td class="mono">{{ row.contact_rtt or "-" }}</td>
+          <td class="mono">{{ row.transport }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+async function refreshStatus() {
+  const response = await fetch('/status/data', { cache: 'no-store' });
+  if (!response.ok) {
+    return;
+  }
+
+  const snapshot = await response.json();
+  document.getElementById('generated-at').textContent = snapshot.generated_at;
+
+  const metricValues = {
+    "Total endpoints": snapshot.summary.extensions_total,
+    "Online": snapshot.summary.extensions_online,
+    "Offline": snapshot.summary.extensions_offline,
+    "Unknown": snapshot.summary.extensions_unknown,
+  };
+
+  document.querySelectorAll('.metric-card').forEach((card) => {
+    const label = card.querySelector('strong')?.textContent?.trim();
+    if (label && metricValues[label] !== undefined) {
+      card.querySelector('span').textContent = metricValues[label];
+    }
+  });
+
+  const tbody = document.getElementById('status-rows');
+  tbody.innerHTML = snapshot.extensions.map((row) => `
+    <tr>
+      <td class="mono">${row.extension}</td>
+      <td>${row.display_name}</td>
+      <td><span class="status-pill ${row.status.toLowerCase()}">${row.status}</span></td>
+      <td>${row.endpoint_state}</td>
+      <td class="mono">${row.contact_uri || 'Not registered'}</td>
+      <td class="mono">${row.contact_rtt || '-'}</td>
+      <td class="mono">${row.transport}</td>
+    </tr>
+  `).join('');
+}
+
+setInterval(refreshStatus, 4000);
+</script>
+{% endblock %}

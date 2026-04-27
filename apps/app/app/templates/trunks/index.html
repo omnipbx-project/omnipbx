@@ -1,0 +1,150 @@
+{% from "_ui_macros.html" import empty_state, stat_card %}
+{% extends "base.html" %}
+{% block content %}
+{% if result %}
+<div class="notice {{ result }}">
+  <strong>{{ result|capitalize }}</strong>
+  <span>{{ detail }}</span>
+</div>
+{% endif %}
+
+<section class="page-grid">
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Trunk overview</h3>
+        <p>Provider connectivity, outbound routing prefixes, and inbound identification now live in a cleaner operational view.</p>
+      </div>
+    </div>
+    <div class="metric-grid">
+      {{ stat_card("Total trunks", trunks|length, "All SIP provider definitions in OmniPBX") }}
+      {{ stat_card("Registered", trunks|selectattr("register_enabled")|list|length, "Trunks expecting registration", "success") }}
+      {{ stat_card("IP-auth trunks", trunks|rejectattr("register_enabled")|list|length, "Host-matched provider peers", "warning") }}
+      {{ stat_card("Enabled", trunks|selectattr("enabled")|list|length, "Participating in routing", "success") }}
+    </div>
+  </div>
+
+  <section class="page-grid two-column">
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Create trunk</h3>
+          <p>Add a provider using either registration credentials or simple IP-based authentication.</p>
+        </div>
+      </div>
+      <form method="post" action="/trunks/create" class="stack">
+        <div class="field-grid two">
+          <div class="field">
+            <label for="name">Trunk name</label>
+            <input id="name" type="text" name="name" placeholder="icctalk" required>
+          </div>
+          <div class="field">
+            <label for="provider_name">Provider name</label>
+            <input id="provider_name" type="text" name="provider_name" placeholder="ICC Talk">
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="host">Provider IP or SIP host</label>
+            <input id="host" type="text" name="host" placeholder="sip.provider.example" required>
+          </div>
+          <div class="field">
+            <label for="match_ip">Identify match IP</label>
+            <input id="match_ip" type="text" name="match_ip" placeholder="203.0.113.10">
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="username">Username</label>
+            <input id="username" type="text" name="username" placeholder="Leave blank for IP-auth trunk">
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input id="password" type="password" name="password" placeholder="Leave blank for IP-auth trunk">
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="outbound_prefix">Outbound prefix</label>
+            <input id="outbound_prefix" type="text" name="outbound_prefix" placeholder="9">
+          </div>
+          <div class="field">
+            <label for="strip_digits">Strip digits</label>
+            <input id="strip_digits" type="text" name="strip_digits" value="0">
+          </div>
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" name="register_enabled_raw" checked>
+          Registration enabled
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" name="enabled_raw" checked>
+          Enabled
+        </label>
+        <div class="button-row">
+          <button type="submit">Create trunk</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>How this stays lean</h3>
+          <p>OmniPBX only generates the PJSIP and dialplan blocks needed for provider routing instead of dragging in full legacy config.</p>
+        </div>
+      </div>
+      <ul class="bullet-list">
+        <li>Supports UDP trunks with optional registration.</li>
+        <li>Outbound prefixes and strip rules stay explicit and easy to audit.</li>
+        <li>Basic IP identify support keeps simple carrier setups lightweight.</li>
+      </ul>
+    </div>
+  </section>
+
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Current trunks</h3>
+        <p>Review provider endpoints, registration mode, prefix behavior, and maintenance actions.</p>
+      </div>
+    </div>
+    {% if trunks %}
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Provider</th>
+          <th>Host</th>
+          <th>Register</th>
+          <th>Prefix</th>
+          <th>Match IP</th>
+          <th>Enabled</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for trunk in trunks %}
+        <tr>
+          <td class="mono">{{ trunk.name }}</td>
+          <td>{{ trunk.provider_name or "-" }}</td>
+          <td class="mono">{{ trunk.host }}</td>
+          <td><span class="status-pill {{ 'available' if trunk.register_enabled else 'warn' }}">{{ "Yes" if trunk.register_enabled else "No" }}</span></td>
+          <td class="mono">{{ trunk.outbound_prefix or "-" }}</td>
+          <td class="mono">{{ trunk.match_ip or "-" }}</td>
+          <td>{{ "Yes" if trunk.enabled else "No" }}</td>
+          <td>
+            <form method="post" action="/trunks/{{ trunk.name }}/delete" onsubmit="return confirm('Delete trunk {{ trunk.name }}?');">
+              <button type="submit" class="danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    {{ empty_state("No trunks yet", "Create your first provider trunk here, then attach it to outbound and inbound routing.") }}
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

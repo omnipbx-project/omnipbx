@@ -1,0 +1,134 @@
+{% from "_ui_macros.html" import empty_state, stat_card %}
+{% extends "base.html" %}
+{% block content %}
+{% if result %}
+<div class="notice {{ result }}">
+  <strong>{{ result|capitalize }}</strong>
+  <span>{{ detail }}</span>
+</div>
+{% endif %}
+
+<section class="page-grid">
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Ring group routing</h3>
+        <p>Keep hunt groups, extension membership, and failover behavior in a dedicated routing module instead of blending them into queue or IVR forms.</p>
+      </div>
+    </div>
+    <div class="metric-grid">
+      {{ stat_card("Ring groups", ring_groups|length, "Local hunt groups configured in OmniPBX") }}
+      {{ stat_card("Enabled", ring_groups|selectattr("enabled")|list|length, "Groups available to routing", "success") }}
+      {{ stat_card("Members", extensions|length, "Available extensions that can be attached") }}
+      {{ stat_card("Strategies", 2, "Current lean set: ringall and linear", "warning") }}
+    </div>
+  </div>
+
+  <section class="page-grid two-column">
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Create ring group</h3>
+          <p>Build a ring target with a predictable strategy and explicit extension membership.</p>
+        </div>
+      </div>
+      <form method="post" action="/ring-groups/create" class="stack">
+        <div class="field-grid two">
+          <div class="field">
+            <label for="name">Ring group name</label>
+            <input id="name" type="text" name="name" placeholder="sales" required>
+          </div>
+          <div class="field">
+            <label for="extension">Ring group extension</label>
+            <input id="extension" type="text" name="extension" placeholder="6200" required>
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="ring_strategy">Strategy</label>
+            <select id="ring_strategy" name="ring_strategy">
+              <option value="ringall">ringall</option>
+              <option value="linear">linear</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ring_timeout">Ring timeout</label>
+            <input id="ring_timeout" type="text" name="ring_timeout" value="20">
+          </div>
+        </div>
+        <div class="field">
+          <label for="members_csv">Members</label>
+          <input id="members_csv" type="text" name="members_csv" placeholder="1001,1002,1003">
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" name="enabled_raw" checked>
+          Enabled
+        </label>
+        <div class="button-row">
+          <button type="submit">Save ring group</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Available extensions</h3>
+          <p>Use extension numbers as ring group members. Route to the group by its ring-group extension from IVRs or inbound logic.</p>
+        </div>
+      </div>
+      <div class="feature-grid">
+        {% for extension in extensions %}
+        <div class="feature-card">
+          <h4>{{ extension.display_name }}</h4>
+          <small>{{ extension.extension }}</small>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Current ring groups</h3>
+        <p>Review extension, strategy, timeout, and members without leaving the routing feature area.</p>
+      </div>
+    </div>
+    {% if ring_groups %}
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Extension</th>
+          <th>Strategy</th>
+          <th>Timeout</th>
+          <th>Members</th>
+          <th>Enabled</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for group in ring_groups %}
+        <tr>
+          <td class="mono">{{ group.name }}</td>
+          <td class="mono">{{ group.extension }}</td>
+          <td class="mono">{{ group.ring_strategy }}</td>
+          <td class="mono">{{ group.ring_timeout }}</td>
+          <td class="mono">{{ group.members|join(", ") if group.members else "-" }}</td>
+          <td>{{ "Yes" if group.enabled else "No" }}</td>
+          <td>
+            <form method="post" action="/ring-groups/{{ group.name }}/delete" onsubmit="return confirm('Delete ring group {{ group.name }}?');">
+              <button type="submit" class="danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    {{ empty_state("No ring groups yet", "Create your first ring group here, then route callers to its extension from IVRs or inbound routes.") }}
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

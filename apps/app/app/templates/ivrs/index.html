@@ -1,0 +1,150 @@
+{% from "_ui_macros.html" import empty_state, stat_card %}
+{% extends "base.html" %}
+{% block content %}
+{% if result %}
+<div class="notice {{ result }}">
+  <strong>{{ result|capitalize }}</strong>
+  <span>{{ detail }}</span>
+</div>
+{% endif %}
+
+<section class="page-grid">
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>IVR builder</h3>
+        <p>Define prompt-driven menus with explicit destination mapping while keeping IVR logic in its own clean module.</p>
+      </div>
+    </div>
+    <div class="metric-grid">
+      {{ stat_card("IVRs", ivrs|length, "Configured interactive menus") }}
+      {{ stat_card("Enabled", ivrs|selectattr("enabled")|list|length, "Menus currently available to callers", "success") }}
+      {{ stat_card("Queues", queues|length, "Potential IVR destinations", "warning") }}
+      {{ stat_card("Trunks", trunks|length, "External handoff targets", "default") }}
+    </div>
+  </div>
+
+  <section class="page-grid two-column">
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Create IVR</h3>
+          <p>Upload or reference a prompt, then define digit-to-destination mappings line by line.</p>
+        </div>
+      </div>
+      <form method="post" action="/ivrs/create" class="stack" enctype="multipart/form-data">
+        <div class="field-grid two">
+          <div class="field">
+            <label for="name">IVR name</label>
+            <input id="name" type="text" name="name" placeholder="main-menu" required>
+          </div>
+          <div class="field">
+            <label for="extension">IVR extension</label>
+            <input id="extension" type="text" name="extension" placeholder="6400" required>
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="prompt_sound">Prompt sound name</label>
+            <input id="prompt_sound" type="text" name="prompt_sound" placeholder="custom/main_menu">
+          </div>
+          <div class="field">
+            <label for="prompt_file">Prompt upload (.wav)</label>
+            <input id="prompt_file" type="file" name="prompt_file" accept=".wav">
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="timeout">Timeout</label>
+            <input id="timeout" type="text" name="timeout" value="5">
+          </div>
+          <div class="field">
+            <label for="invalid_retries">Invalid retries</label>
+            <input id="invalid_retries" type="text" name="invalid_retries" value="2">
+          </div>
+        </div>
+        <div class="field">
+          <label for="options_text">Options</label>
+          <textarea id="options_text" name="options_text" rows="6" placeholder="1,extension,1001&#10;2,queue,6300&#10;3,ring_group,6200"></textarea>
+          <small>Use one line per digit in the format <span class="mono">digit,destination_type,destination_value</span>.</small>
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" name="enabled_raw" checked>
+          Enabled
+        </label>
+        <div class="button-row">
+          <button type="submit">Save IVR</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Destination reference</h3>
+          <p>Keep digit targets explicit so menus are easier to reason about and migrate later.</p>
+        </div>
+      </div>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <h4>Extensions</h4>
+          <small>{% for item in extensions %}{{ item.extension }} {% endfor %}</small>
+        </div>
+        <div class="feature-card">
+          <h4>Queues</h4>
+          <small>{% for item in queues %}{{ item.extension }} {% endfor %}</small>
+        </div>
+        <div class="feature-card">
+          <h4>Ring groups</h4>
+          <small>{% for item in ring_groups %}{{ item.extension }} {% endfor %}</small>
+        </div>
+        <div class="feature-card">
+          <h4>Trunks</h4>
+          <small>{% for item in trunks %}{{ item.name }} {% endfor %}</small>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Current IVRs</h3>
+        <p>Prompt source, extension, option map, and maintenance stay readable at a glance.</p>
+      </div>
+    </div>
+    {% if ivrs %}
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Extension</th>
+          <th>Prompt</th>
+          <th>Options</th>
+          <th>Enabled</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ivr in ivrs %}
+        <tr>
+          <td class="mono">{{ ivr.name }}</td>
+          <td class="mono">{{ ivr.extension }}</td>
+          <td class="mono">{{ ivr.prompt }}</td>
+          <td class="mono">{% for option in ivr.options %}{{ option.digit }}={{ option.destination_type }}:{{ option.destination_value }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+          <td>{{ "Yes" if ivr.enabled else "No" }}</td>
+          <td>
+            <form method="post" action="/ivrs/{{ ivr.name }}/delete" onsubmit="return confirm('Delete IVR {{ ivr.name }}?');">
+              <button type="submit" class="danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    {{ empty_state("No IVRs yet", "Create your first IVR here, upload a prompt, and connect callers to extensions, queues, or ring groups.") }}
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

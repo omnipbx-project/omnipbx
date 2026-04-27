@@ -1,0 +1,344 @@
+{% from "_ui_macros.html" import empty_state, stat_card %}
+{% extends "base.html" %}
+{% block content %}
+{% if result %}
+<div class="notice {{ result }}">
+  <strong>{{ result|capitalize }}</strong>
+  <span>{{ detail }}</span>
+</div>
+{% endif %}
+
+<section class="page-grid">
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Admin account management</h3>
+        <p>Manage PBX administrators, protect the last owner account, and keep recovery simple with Brevo email reset, owner/admin reset, and CLI recovery.</p>
+      </div>
+    </div>
+    <div class="metric-grid">
+      {{ stat_card("Admins", admins|length, "Accounts that can access the web UI") }}
+      {{ stat_card("Owners", owner_count, "Owner-level admins with higher account control", "success") }}
+      {{ stat_card("SMTP", "Ready" if smtp_ready else "Not ready", "Email password reset depends on this", "success" if smtp_ready else "warning") }}
+      {{ stat_card("Password reset", "Enabled" if smtp_ready else "Waiting", "Public reset can work after SMTP is configured", "success" if smtp_ready else "warning") }}
+    </div>
+  </div>
+
+  <section class="page-grid two-column">
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Current admins</h3>
+          <p>Use this table to review admin emails, owner status, and maintenance actions.</p>
+        </div>
+      </div>
+      {% if admins %}
+      <table>
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Created</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for admin in admins %}
+          <tr>
+            <td class="mono">{{ admin.username }}</td>
+            <td>{{ admin.email or "-" }}</td>
+            <td>
+              <span class="status-pill {{ 'available' if admin.role == 'owner' else 'unknown' }}">
+                {{ admin.role|replace('_', ' ')|title }}
+              </span>
+              {% if admin.id == current_user_id %}
+              <span class="status-pill success">You</span>
+              {% endif %}
+            </td>
+            <td class="mono">{{ admin.created_at }}</td>
+            <td>
+              {% if current_user_role == 'owner' and admin.id != current_user_id %}
+              <form method="post" action="/admin-accounts/{{ admin.id }}/delete" onsubmit="return confirm('Delete admin {{ admin.username }}?');">
+                <button type="submit" class="danger">Delete</button>
+              </form>
+              {% else %}
+              <span class="muted">Protected</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      {{ empty_state("No admin accounts", "The owner account created during setup should appear here once the schema is fully initialized.") }}
+      {% endif %}
+    </div>
+
+    <div class="stack">
+      <div class="panel">
+        <div class="section-header">
+          <div class="section-copy">
+            <h3>Recovery paths</h3>
+            <p>OmniPBX keeps three lightweight recovery options so you are not locked out of the PBX.</p>
+          </div>
+        </div>
+        <div class="summary-grid">
+          <div class="summary-row">
+            <span>Email reset</span>
+            <strong>Brevo SMTP</strong>
+          </div>
+          <div class="summary-row">
+            <span>Owner reset</span>
+            <strong>Inside OmniPBX</strong>
+          </div>
+          <div class="summary-row">
+            <span>Last resort</span>
+            <strong>CLI on the server</strong>
+          </div>
+        </div>
+        <p class="muted" style="margin-top: 10px;">Server-side recovery uses <span class="mono">scripts/omnipbxctl reset-admin-password &lt;username&gt;</span> when you have shell access to the host.</p>
+      </div>
+
+      <div class="panel">
+        <div class="section-header">
+          <div class="section-copy">
+            <h3>Change my password</h3>
+            <p>Update the current account password without leaving the admin area.</p>
+          </div>
+        </div>
+        <form method="post" action="/admin-accounts/change-password" class="stack">
+          <div class="field">
+            <label for="current_password">Current password</label>
+            <input id="current_password" type="password" name="current_password" required>
+          </div>
+          <div class="field-grid two">
+            <div class="field">
+              <label for="new_password">New password</label>
+              <input id="new_password" type="password" name="new_password" minlength="10" required>
+            </div>
+            <div class="field">
+              <label for="confirm_password">Confirm password</label>
+              <input id="confirm_password" type="password" name="confirm_password" minlength="10" required>
+            </div>
+          </div>
+          <div class="button-row">
+            <button type="submit">Update my password</button>
+          </div>
+        </form>
+      </div>
+
+      {% if current_user_role == 'owner' %}
+      <div class="panel">
+        <div class="section-header">
+          <div class="section-copy">
+            <h3>Create admin</h3>
+            <p>Add a new PBX administrator without touching the database manually.</p>
+          </div>
+        </div>
+        <form method="post" action="/admin-accounts/create" class="stack">
+          <div class="field-grid two">
+            <div class="field">
+              <label for="username">Username</label>
+              <input id="username" type="text" name="username" required>
+            </div>
+            <div class="field">
+              <label for="email">Email</label>
+              <input id="email" type="text" name="email" placeholder="admin@example.com">
+            </div>
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input id="password" type="password" name="password" minlength="10" required>
+          </div>
+          <div class="field">
+            <label for="role">Role</label>
+            <select id="role" name="role">
+              <option value="admin">Admin</option>
+              <option value="read_only">Read-only</option>
+              <option value="owner">Owner</option>
+            </select>
+          </div>
+          <div class="button-row">
+            <button type="submit">Create admin</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="section-header">
+          <div class="section-copy">
+            <h3>Manage admin profile</h3>
+            <p>Update an admin email and role from one place without editing the database manually.</p>
+          </div>
+        </div>
+        <form method="post" action="/admin-accounts/update" class="stack">
+          <div class="field">
+            <label for="admin_id">Admin</label>
+            <select id="admin_id" name="admin_id">
+              {% for admin in admins if admin.id != current_user_id %}
+              <option value="{{ admin.id }}">{{ admin.username }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="profile_email">Email</label>
+            <input id="profile_email" type="email" name="email" placeholder="admin@example.com">
+          </div>
+          <div class="field">
+            <label for="profile_role">Role</label>
+            <select id="profile_role" name="role">
+              <option value="admin">Admin</option>
+              <option value="read_only">Read-only</option>
+              <option value="owner">Owner</option>
+            </select>
+          </div>
+          <div class="button-row">
+            <button type="submit">Save profile</button>
+          </div>
+        </form>
+
+        <hr class="divider">
+
+        <div class="section-header" style="padding-top: 0;">
+          <div class="section-copy">
+            <h3>Set another admin password</h3>
+            <p>Useful when another admin is logged in but needs a manual password change from an owner account.</p>
+          </div>
+        </div>
+        <form method="post" action="/admin-accounts/set-password" class="stack">
+          <div class="field-grid two">
+            <div class="field">
+              <label for="owner_new_password">New password</label>
+              <input id="owner_new_password" type="password" name="new_password" minlength="10" required>
+            </div>
+            <div class="field">
+              <label for="owner_confirm_password">Confirm password</label>
+              <input id="owner_confirm_password" type="password" name="confirm_password" minlength="10" required>
+            </div>
+          </div>
+          <div class="button-row">
+            <button type="submit">Set admin password</button>
+          </div>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="page-grid two-column">
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>SMTP settings</h3>
+          <p>Configure the mail provider OmniPBX should use for password-reset email and test messages.</p>
+        </div>
+      </div>
+      <div class="notice notice-info">
+        <strong>Recommended provider</strong>
+        <span>Brevo is a strong lightweight fit for transactional password-reset email. Use your verified sender, enable STARTTLS, and keep a CLI recovery path as the backup.</span>
+      </div>
+      <form method="post" action="/admin-accounts/smtp" class="stack">
+        <div class="field-grid two">
+          <div class="field">
+            <label for="mail_from">From email</label>
+            <input id="mail_from" type="text" name="mail_from" value="{{ smtp_settings.mail_from or '' }}" placeholder="pbx@example.com">
+          </div>
+          <div class="field">
+            <label for="mail_from_name">From name</label>
+            <input id="mail_from_name" type="text" name="mail_from_name" value="{{ smtp_settings.mail_from_name or 'OmniPBX' }}">
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="mail_username">SMTP username</label>
+            <input id="mail_username" type="text" name="mail_username" value="{{ smtp_settings.mail_username or '' }}">
+          </div>
+          <div class="field">
+            <label for="mail_password">SMTP password</label>
+            <input id="mail_password" type="password" name="mail_password" placeholder="{% if smtp_settings.password_configured %}Leave blank to keep current password{% else %}Enter SMTP password{% endif %}">
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="mail_server">SMTP server</label>
+            <input id="mail_server" type="text" name="mail_server" value="{{ smtp_settings.mail_server or '' }}" placeholder="smtp-relay.brevo.com">
+          </div>
+          <div class="field">
+            <label for="mail_port">SMTP port</label>
+            <input id="mail_port" type="number" name="mail_port" value="{{ smtp_settings.mail_port }}">
+          </div>
+        </div>
+        <div class="field-grid two">
+          <label class="checkbox-row">
+            <input type="checkbox" name="enabled_raw" {% if smtp_settings.enabled %}checked{% endif %}>
+            Enable SMTP mail
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" name="use_credentials_raw" {% if smtp_settings.use_credentials %}checked{% endif %}>
+            Use credentials
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" name="mail_starttls_raw" {% if smtp_settings.mail_starttls %}checked{% endif %}>
+            STARTTLS
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" name="mail_ssl_tls_raw" {% if smtp_settings.mail_ssl_tls %}checked{% endif %}>
+            SSL/TLS
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" name="validate_certs_raw" {% if smtp_settings.validate_certs %}checked{% endif %}>
+            Validate server certs
+          </label>
+        </div>
+        <div class="button-row">
+          <button type="submit">Save SMTP settings</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="stack">
+      <div class="panel">
+        <div class="section-header">
+          <div class="section-copy">
+            <h3>SMTP readiness</h3>
+            <p>Use this as the quick check before enabling password reset on the login screen.</p>
+          </div>
+        </div>
+        <div class="summary-grid">
+          <div class="summary-row">
+            <span>Enabled</span>
+            <strong>{{ "Yes" if smtp_settings.enabled else "No" }}</strong>
+          </div>
+          <div class="summary-row">
+            <span>Password stored</span>
+            <strong>{{ "Yes" if smtp_settings.password_configured else "No" }}</strong>
+          </div>
+          <div class="summary-row">
+            <span>Ready for reset email</span>
+            <strong>{{ "Yes" if smtp_ready else "Not yet" }}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="section-header">
+          <div class="section-copy">
+            <h3>Send test email</h3>
+            <p>Confirm OmniPBX can really deliver mail before depending on email-based password reset.</p>
+          </div>
+        </div>
+        <form method="post" action="/admin-accounts/smtp/test" class="stack">
+          <div class="field">
+            <label for="test_email">Recipient email</label>
+            <input id="test_email" type="text" name="test_email" placeholder="you@example.com" required>
+          </div>
+          <div class="button-row">
+            <button type="submit" class="secondary">Send test email</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+</section>
+{% endblock %}

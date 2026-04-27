@@ -1,0 +1,150 @@
+{% from "_ui_macros.html" import empty_state, stat_card %}
+{% extends "base.html" %}
+{% block content %}
+{% if result %}
+<div class="notice {{ result }}">
+  <strong>{{ result|capitalize }}</strong>
+  <span>{{ detail }}</span>
+</div>
+{% endif %}
+
+<section class="page-grid">
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Inbound routing</h3>
+        <p>Map DIDs and trunk traffic into extensions, queues, ring groups, IVRs, or failover trunks without mixing that logic into other pages.</p>
+      </div>
+    </div>
+    <div class="metric-grid">
+      {{ stat_card("Routes", routes|length, "Inbound route definitions in OmniPBX") }}
+      {{ stat_card("Enabled", routes|selectattr("enabled")|list|length, "Currently active routing rules", "success") }}
+      {{ stat_card("Trunks", trunks|length, "Inbound sources available to match") }}
+      {{ stat_card("Destinations", extensions|length + queues|length + ring_groups|length + ivrs|length, "Known local route targets", "warning") }}
+    </div>
+  </div>
+
+  <section class="page-grid two-column">
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Create inbound route</h3>
+          <p>Choose a trunk, optional DID pattern, and the PBX destination that should handle the call.</p>
+        </div>
+      </div>
+      <form method="post" action="/inbound-routes/create" class="stack">
+        <div class="field-grid two">
+          <div class="field">
+            <label for="name">Route name</label>
+            <input id="name" type="text" name="name" placeholder="main" required>
+          </div>
+          <div class="field">
+            <label for="trunk_name">Trunk</label>
+            <select id="trunk_name" name="trunk_name" required>
+              <option value="">Select trunk</option>
+              {% for trunk in trunks %}
+              <option value="{{ trunk.name }}">{{ trunk.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="did_pattern">DID pattern</label>
+            <input id="did_pattern" type="text" name="did_pattern" placeholder="_X. or 8801234567">
+          </div>
+          <div class="field">
+            <label for="destination_type">Destination type</label>
+            <select id="destination_type" name="destination_type" required>
+              <option value="extension">extension</option>
+              <option value="queue">queue</option>
+              <option value="ring_group">ring_group</option>
+              <option value="ivr">ivr</option>
+              <option value="trunk">trunk</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="destination_value">Destination value</label>
+          <input id="destination_value" type="text" name="destination_value" placeholder="1001 or backuptrunk" required>
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" name="enabled_raw" checked>
+          Enabled
+        </label>
+        <div class="button-row">
+          <button type="submit">Create inbound route</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Destination reference</h3>
+          <p>Use extension numbers for local PBX targets and trunk names only for external failover destinations.</p>
+        </div>
+      </div>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <h4>Extensions</h4>
+          <small>{% for item in extensions %}{{ item.extension }} {% endfor %}</small>
+        </div>
+        <div class="feature-card">
+          <h4>Queues</h4>
+          <small>{% for item in queues %}{{ item.extension }} {% endfor %}</small>
+        </div>
+        <div class="feature-card">
+          <h4>Ring groups</h4>
+          <small>{% for item in ring_groups %}{{ item.extension }} {% endfor %}</small>
+        </div>
+        <div class="feature-card">
+          <h4>IVRs</h4>
+          <small>{% for item in ivrs %}{{ item.extension }} {% endfor %}</small>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Current inbound routes</h3>
+        <p>Each route keeps its trunk source, DID match, and destination in a single readable row.</p>
+      </div>
+    </div>
+    {% if routes %}
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Trunk</th>
+          <th>DID</th>
+          <th>Destination</th>
+          <th>Enabled</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for route in routes %}
+        <tr>
+          <td class="mono">{{ route.name }}</td>
+          <td class="mono">{{ route.trunk_name }}</td>
+          <td class="mono">{{ route.did_pattern or "_X." }}</td>
+          <td class="mono">{{ route.destination_type }}:{{ route.destination_value }}</td>
+          <td>{{ "Yes" if route.enabled else "No" }}</td>
+          <td>
+            <form method="post" action="/inbound-routes/{{ route.name }}/delete" onsubmit="return confirm('Delete inbound route {{ route.name }}?');">
+              <button type="submit" class="danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    {{ empty_state("No inbound routes yet", "Create your first inbound route here so traffic from a trunk has a clear destination inside OmniPBX.") }}
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

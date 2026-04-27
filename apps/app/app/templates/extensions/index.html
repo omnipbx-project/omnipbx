@@ -1,0 +1,122 @@
+{% from "_ui_macros.html" import empty_state, stat_card %}
+{% extends "base.html" %}
+{% block content %}
+{% if result %}
+<div class="notice {{ result }}">
+  <strong>{{ result|capitalize }}</strong>
+  <span>{{ detail }}</span>
+</div>
+{% endif %}
+
+<section class="page-grid">
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Extension inventory</h3>
+        <p>Create and manage internal endpoints without mixing provisioning, live SIP state, and routing concerns into one screen.</p>
+      </div>
+      <a class="button-link secondary" href="/status">Open live status</a>
+    </div>
+    <div class="metric-grid">
+      {{ stat_card("Total", summary.extensions_total, "All extension records in OmniPBX", "default") }}
+      {{ stat_card("Online", summary.extensions_online, "Currently registered handsets or softphones", "success") }}
+      {{ stat_card("Offline", summary.extensions_offline, "Configured but not registered right now", "warning") }}
+      {{ stat_card("Unknown", summary.extensions_unknown, "No realtime state returned yet", "danger") }}
+    </div>
+  </div>
+
+  <section class="page-grid two-column">
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Create extension</h3>
+          <p>Provision a new internal endpoint with a clear name and an optional SIP secret override.</p>
+        </div>
+      </div>
+      <form method="post" action="/extensions/create" class="stack">
+        <div class="field-grid two">
+          <div class="field">
+            <label for="extension">Extension number</label>
+            <input id="extension" type="text" name="extension" placeholder="1001" required>
+          </div>
+          <div class="field">
+            <label for="display_name">Display name</label>
+            <input id="display_name" type="text" name="display_name" placeholder="Reception" required>
+          </div>
+        </div>
+        <div class="field">
+          <label for="secret">SIP secret</label>
+          <input id="secret" type="password" name="secret" placeholder="Leave blank to auto-generate a secure value">
+          <small>The UI no longer exposes stored SIP secrets after creation.</small>
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" name="enabled_raw" checked>
+          Enable this extension immediately
+        </label>
+        <div class="button-row">
+          <button type="submit">Create extension</button>
+          <a class="button-link secondary" href="/dashboard">Back to dashboard</a>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Operational notes</h3>
+          <p>This screen stays focused on CRUD so it remains easier to maintain than the older mixed UI style.</p>
+        </div>
+      </div>
+      <ul class="bullet-list">
+        <li>Live registration state is shown per extension in the table below.</li>
+        <li>Secrets are managed securely and are not listed back to operators.</li>
+        <li>After create or delete, OmniPBX regenerates config and reloads Asterisk automatically.</li>
+      </ul>
+    </div>
+  </section>
+
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Current extensions</h3>
+        <p>Review provisioning, runtime state, and quick maintenance actions in one readable table.</p>
+      </div>
+    </div>
+    {% if extensions %}
+    <table>
+      <thead>
+        <tr>
+          <th>Extension</th>
+          <th>Name</th>
+          <th>Context</th>
+          <th>Runtime</th>
+          <th>Provisioning</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for extension in extensions %}
+        <tr>
+          <td class="mono">{{ extension.extension }}</td>
+          <td>{{ extension.display_name }}</td>
+          <td class="mono">{{ extension.context }}</td>
+          <td>
+            {% set runtime_state = status_by_extension.get(extension.extension, "Unknown") %}
+            <span class="status-pill {{ runtime_state|lower }}">{{ runtime_state }}</span>
+          </td>
+          <td>{{ "Enabled" if extension.enabled else "Disabled" }}</td>
+          <td>
+            <form method="post" action="/extensions/{{ extension.extension }}/delete" onsubmit="return confirm('Delete extension {{ extension.extension }}?');">
+              <button type="submit" class="danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    {{ empty_state("No extensions yet", "Create your first extension here, then register a phone and verify it on the live status page.") }}
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

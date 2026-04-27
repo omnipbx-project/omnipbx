@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/
+runtime/
+postgres-data/
+asterisk-data/
+recordings/
+sounds/
+backups/
+

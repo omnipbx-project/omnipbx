@@ -1,0 +1,81 @@
+services:
+  app:
+    build:
+      context: ../apps/app
+      args:
+        ASTERISK_VERSION: ${ASTERISK_VERSION:-22.9.0}
+    container_name: omnipbx-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      OMNIPBX_APP_VERSION: ${OMNIPBX_APP_VERSION:-0.1.0}
+      OMNIPBX_DB_HOST: postgres
+      OMNIPBX_DB_PORT: 5432
+      OMNIPBX_DB_NAME: ${POSTGRES_DB}
+      OMNIPBX_DB_USER: ${POSTGRES_USER}
+      OMNIPBX_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      OMNIPBX_HTTP_PORT: ${OMNIPBX_WEB_PORT}
+      OMNIPBX_SIP_PORT: ${ASTERISK_SIP_PORT}
+      OMNIPBX_RTP_START: ${ASTERISK_RTP_START}
+      OMNIPBX_RTP_END: ${ASTERISK_RTP_END}
+      OMNIPBX_HOST_PROJECT_PATH: /opt/omnipbx-host
+    ports:
+      - "${OMNIPBX_WEB_PORT}:${OMNIPBX_WEB_PORT}"
+      - "${ASTERISK_SIP_PORT}:5060/udp"
+      - "${ASTERISK_RTP_START}-${ASTERISK_RTP_END}:10000-10100/udp"
+    volumes:
+      - ./runtime:/var/lib/omnipbx
+      - ..:/opt/omnipbx-host
+      - /var/run/docker.sock:/var/run/docker.sock
+      - omnipbx_caddy_data:/var/lib/caddy-data:ro
+      - omnipbx_logs:/var/log/asterisk
+      - omnipbx_recordings:/var/spool/asterisk/monitor
+      - omnipbx_sounds:/var/lib/asterisk/sounds/custom
+      - omnipbx_moh:/var/lib/asterisk/moh
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18
+    container_name: omnipbx-postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    volumes:
+      - omnipbx_postgres:/var/lib/postgresql
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+
+  caddy:
+    image: caddy:2
+    container_name: omnipbx-caddy
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - app
+    ports:
+      - "${OMNIPBX_PUBLIC_HTTP_PORT:-80}:${OMNIPBX_PUBLIC_HTTP_PORT:-80}"
+      - "${OMNIPBX_PUBLIC_HTTPS_PORT:-443}:${OMNIPBX_PUBLIC_HTTPS_PORT:-443}"
+    volumes:
+      - ./runtime:/srv/omnipbx
+      - omnipbx_caddy_data:/data
+      - omnipbx_caddy_config:/config
+      - ./caddy/bootstrap.sh:/bootstrap.sh:ro
+    command: ["sh", "/bootstrap.sh"]
+
+volumes:
+  omnipbx_postgres:
+  omnipbx_caddy_data:
+  omnipbx_caddy_config:
+  omnipbx_logs:
+  omnipbx_recordings:
+  omnipbx_sounds:
+  omnipbx_moh:
