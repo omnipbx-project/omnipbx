@@ -31,12 +31,20 @@ below:
 
 ## Manual Updates
 
-OmniPBX updates are manual only. After installation:
+OmniPBX updates are manual only. Production installs keep `/opt/omnipbx`
+as a lightweight git checkout for deployment scripts, but the app container is
+pulled from a published Docker image instead of being built on user servers.
 
-- Install OmniPBX from a git clone and keep `/opt/omnipbx` as a git checkout.
+- Install OmniPBX with:
+  `curl -fsSL https://raw.githubusercontent.com/omnipbx-project/omnipbx/main/scripts/install.sh | sudo bash`
 - Run `python3 scripts/omnipbxctl update --check-only` to compare the installed branch with its tracked upstream branch.
-- Run `python3 scripts/omnipbxctl update` to do a fast-forward `git pull` and rebuild the stack manually.
+- Run `sudo omnipbxctl update` to do a fast-forward `git pull`, pull the configured Docker images, and restart the stack manually.
 - In the web GUI, the dashboard now shows when the tracked upstream branch has newer commits and exposes a manual `Check now` and `Update OmniPBX` action for writable admin roles.
+
+For local development, use `deploy/compose.dev.yaml` together with
+`deploy/compose.yaml` to build the app image from `apps/app`.
+
+See `docs/release.md` for Docker Hub and GitHub Actions release setup.
 
 ## Light Runtime Direction
 

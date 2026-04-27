@@ -46,7 +46,7 @@ Usage: update.sh [--project-root PATH] [--check-only] [--force] [--non-interacti
 Options:
   --project-root PATH   OmniPBX install root. Defaults to the script parent directory.
   --check-only          Check the tracked git branch without applying an update.
-  --force               Rebuild the stack even if the local branch is already current.
+  --force               Restart the stack even if the local branch is already current.
   --non-interactive     Skip confirmation prompts.
 EOF
 }
@@ -344,8 +344,8 @@ PY
 }
 
 restart_stack() {
-  docker compose -f "${COMPOSE_FILE}" pull postgres caddy >/dev/null 2>&1 || true
-  docker compose -f "${COMPOSE_FILE}" up -d --build postgres app caddy
+  docker compose -f "${COMPOSE_FILE}" pull postgres app caddy
+  docker compose -f "${COMPOSE_FILE}" up -d postgres app caddy
 }
 
 main() {
@@ -410,8 +410,8 @@ main() {
   CURRENT_VERSION="$(current_version)"
   set_env_value "OMNIPBX_APP_VERSION" "${CURRENT_VERSION}"
 
-  write_status "updating" "Rebuilding and restarting OmniPBX on ${UPSTREAM_REF}." "${CURRENT_VERSION}" "${STARTED_AT}" ""
-  log INFO "Rebuilding and restarting OmniPBX"
+  write_status "updating" "Pulling images and restarting OmniPBX on ${UPSTREAM_REF}." "${CURRENT_VERSION}" "${STARTED_AT}" ""
+  log INFO "Pulling images and restarting OmniPBX"
   restart_stack || fail "Docker Compose could not restart the OmniPBX stack."
 
   collect_git_status

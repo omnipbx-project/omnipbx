@@ -3,6 +3,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+OMNIPBX_REPO_URL="${OMNIPBX_REPO_URL:-https://github.com/omnipbx-project/omnipbx.git}"
+OMNIPBX_REPO_BRANCH="${OMNIPBX_REPO_BRANCH:-main}"
+OMNIPBX_APP_IMAGE="${OMNIPBX_APP_IMAGE:-omnipbx-project/omnipbx}"
 INSTALL_ROOT="${OMNIPBX_INSTALL_ROOT:-/opt/omnipbx}"
 SERVICE_NAME="omnipbx"
 DEPLOY_DIR="${INSTALL_ROOT}/deploy"
@@ -10,7 +13,14 @@ RUNTIME_DIR="${DEPLOY_DIR}/runtime"
 ENV_FILE="${DEPLOY_DIR}/.env"
 ENV_EXAMPLE="${REPO_ROOT}/deploy/.env.example"
 SYSTEMD_UNIT="/etc/systemd/system/${SERVICE_NAME}.service"
-APP_VERSION="$(tr -d '\n' < "${REPO_ROOT}/VERSION")"
+CLI_LINK="/usr/local/bin/omnipbxctl"
+SOURCE_MODE="remote"
+APP_VERSION="${OMNIPBX_APP_VERSION:-0.1.0}"
+
+if [[ -f "${REPO_ROOT}/VERSION" && -f "${REPO_ROOT}/deploy/compose.yaml" ]]; then
+  SOURCE_MODE="local"
+  APP_VERSION="$(tr -d '\n' < "${REPO_ROOT}/VERSION")"
+fi
 
 OS_ID=""
 OS_VERSION=""
@@ -112,6 +122,28 @@ docker_installed() {
 
 docker_compose_ready() {
   command_exists docker && docker compose version >/dev/null 2>&1
+}
+
+ensure_git_available() {
+  if command_exists git; then
+    return 0
+  fi
+
+  if [[ "${DRY_RUN}" == "true" ]]; then
+    log INFO "Dry run: git missing and would be installed for ${OS_ID} ${OS_VERSION}"
+    return 0
+  fi
+
+  case "${OS_ID}" in
+    ubuntu|debian)
+      log INFO "Installing git for ${OS_ID} ${OS_VERSION}"
+      apt-get update
+      apt-get install -y git
+      ;;
+    *)
+      fail "git is required for remote installs. Install git first, then rerun the installer."
+      ;;
+  esac
 }
 
 install_docker() {
@@ -307,8 +339,30 @@ random_secret() {
 }
 
 copy_project() {
-  log INFO "Copying OmniPBX into ${INSTALL_ROOT}"
+  log INFO "Preparing OmniPBX in ${INSTALL_ROOT}"
   mkdir -p "${INSTALL_ROOT}"
+  if [[ "${SOURCE_MODE}" == "remote" ]]; then
+    ensure_git_available
+    if [[ "${DRY_RUN}" == "true" ]]; then
+      log INFO "Dry run: would clone ${OMNIPBX_REPO_URL} (${OMNIPBX_REPO_BRANCH}) into ${INSTALL_ROOT}"
+      mkdir -p "${INSTALL_ROOT}/deploy" "${INSTALL_ROOT}/scripts" "${RUNTIME_DIR}/caddy"
+      cp -a "${REPO_ROOT}/deploy/compose.yaml" "${INSTALL_ROOT}/deploy/compose.yaml" 2>/dev/null || true
+      cp -a "${REPO_ROOT}/deploy/.env.example" "${INSTALL_ROOT}/deploy/.env.example" 2>/dev/null || true
+      return 0
+    fi
+    if [[ -d "${INSTALL_ROOT}/.git" ]]; then
+      git -C "${INSTALL_ROOT}" fetch --prune origin
+      git -C "${INSTALL_ROOT}" checkout "${OMNIPBX_REPO_BRANCH}"
+      git -C "${INSTALL_ROOT}" pull --ff-only origin "${OMNIPBX_REPO_BRANCH}"
+    else
+      rm -rf "${INSTALL_ROOT:?}/"*
+      git clone --branch "${OMNIPBX_REPO_BRANCH}" --single-branch "${OMNIPBX_REPO_URL}" "${INSTALL_ROOT}"
+    fi
+    APP_VERSION="$(tr -d '\n' < "${INSTALL_ROOT}/VERSION")"
+    mkdir -p "${RUNTIME_DIR}/caddy"
+    return 0
+  fi
+
   if command_exists rsync; then
     rsync -a --delete \
       --exclude 'deploy/.env' \
@@ -330,12 +384,23 @@ copy_project() {
   mkdir -p "${RUNTIME_DIR}/caddy"
 }
 
+install_cli_helper() {
+  if [[ "${DRY_RUN}" == "true" ]]; then
+    log INFO "Dry run: skipping CLI helper link at ${CLI_LINK}"
+    return 0
+  fi
+
+  chmod +x "${INSTALL_ROOT}/scripts/omnipbxctl"
+  ln -sf "${INSTALL_ROOT}/scripts/omnipbxctl" "${CLI_LINK}"
+}
+
 write_env_file() {
   local postgres_password
   postgres_password="$(random_secret)"
   cat > "${ENV_FILE}" <<EOF
 COMPOSE_PROJECT_NAME=omnipbx
 ASTERISK_VERSION=22.9.0
+OMNIPBX_APP_IMAGE=${OMNIPBX_APP_IMAGE}
 OMNIPBX_APP_VERSION=${APP_VERSION}
 OMNIPBX_WEB_PORT=${WEB_PORT}
 OMNIPBX_PUBLIC_HTTP_PORT=${PUBLIC_HTTP_PORT}
@@ -420,7 +485,7 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=${INSTALL_ROOT}
-ExecStart=/usr/bin/docker compose -f ${DEPLOY_DIR}/compose.yaml up -d --build postgres app caddy
+ExecStart=/usr/bin/docker compose -f ${DEPLOY_DIR}/compose.yaml up -d postgres app caddy
 ExecStop=/usr/bin/docker compose -f ${DEPLOY_DIR}/compose.yaml down
 TimeoutStartSec=0
 
@@ -512,13 +577,14 @@ main() {
   detect_security_frameworks
   choose_ports
   copy_project
+  install_cli_helper
   write_env_file
   write_preflight_json
   if [[ "${DRY_RUN}" == "true" ]]; then
     log INFO "Dry run: skipping image pull and container startup"
   else
     log INFO "Pulling required container images"
-    docker compose -f "${DEPLOY_DIR}/compose.yaml" pull postgres caddy >/dev/null 2>&1 || true
+    docker compose -f "${DEPLOY_DIR}/compose.yaml" pull postgres app caddy
   fi
   write_systemd_unit
 

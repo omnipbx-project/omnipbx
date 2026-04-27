@@ -1,0 +1,7 @@
+services:
+  app:
+    build:
+      context: ../apps/app
+      args:
+        ASTERISK_VERSION: ${ASTERISK_VERSION:-22.9.0}
+    image: ${OMNIPBX_APP_IMAGE:-omnipbx-project/omnipbx}:${OMNIPBX_APP_VERSION:-0.1.0-dev}
