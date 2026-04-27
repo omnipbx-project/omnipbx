@@ -9,7 +9,7 @@ Create a Docker Hub repository for the app image. The default image name used
 by the installer and Compose file is:
 
 ```text
-omnipbx-project/omnipbx
+saroarsabbir/omnipbx
 ```
 
 If the Docker Hub repository uses a different name, set this GitHub Actions
@@ -45,8 +45,8 @@ git push origin v0.1.1
 The `v0.1.1` tag triggers GitHub Actions to build and push:
 
 ```text
-omnipbx-project/omnipbx:0.1.1
-omnipbx-project/omnipbx:latest
+saroarsabbir/omnipbx:0.1.1
+saroarsabbir/omnipbx:latest
 ```
 
 ## Production Install

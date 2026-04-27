@@ -8,7 +8,7 @@ on:
 
 env:
   ASTERISK_VERSION: "22.9.0"
-  IMAGE_NAME: ${{ vars.DOCKERHUB_REPOSITORY || 'omnipbx-project/omnipbx' }}
+  IMAGE_NAME: ${{ vars.DOCKERHUB_REPOSITORY || 'saroarsabbir/omnipbx' }}
 
 jobs:
   validate:
