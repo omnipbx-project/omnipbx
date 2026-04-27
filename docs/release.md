@@ -54,6 +54,12 @@ saroarsabbir/omnipbx:latest
 Install from GitHub:
 
 ```bash
+curl -fsSL https://omnipbx.techseba.com | sudo bash
+```
+
+Fallback install URL:
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/omnipbx-project/omnipbx/main/scripts/install.sh | sudo bash
 ```
 

@@ -36,7 +36,7 @@ as a lightweight git checkout for deployment scripts, but the app container is
 pulled from a published Docker image instead of being built on user servers.
 
 - Install OmniPBX with:
-  `curl -fsSL https://raw.githubusercontent.com/omnipbx-project/omnipbx/main/scripts/install.sh | sudo bash`
+  `curl -fsSL https://omnipbx.techseba.com | sudo bash`
 - Run `python3 scripts/omnipbxctl update --check-only` to compare the installed branch with its tracked upstream branch.
 - Run `sudo omnipbxctl update` to do a fast-forward `git pull`, pull the configured Docker images, and restart the stack manually.
 - In the web GUI, the dashboard now shows when the tracked upstream branch has newer commits and exposes a manual `Check now` and `Update OmniPBX` action for writable admin roles.

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+INSTALLER_URL="${OMNIPBX_INSTALLER_URL:-https://raw.githubusercontent.com/omnipbx-project/omnipbx/main/scripts/install.sh}"
+
+if command -v curl >/dev/null 2>&1; then
+  curl -fsSL "${INSTALLER_URL}" | bash -s -- "$@"
+elif command -v wget >/dev/null 2>&1; then
+  wget -qO- "${INSTALLER_URL}" | bash -s -- "$@"
+else
+  echo "OmniPBX installer needs curl or wget." >&2
+  exit 2
+fi
