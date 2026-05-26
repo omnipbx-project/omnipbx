@@ -8,6 +8,6 @@ if command -v curl >/dev/null 2>&1; then
 elif command -v wget >/dev/null 2>&1; then
   wget -qO- "${INSTALLER_URL}" | bash -s -- "$@"
 else
-  echo "OmniPBX installer needs curl or wget." >&2
+  echo "OmniPBX installer needs curl or wget. On Ubuntu, run: sudo apt update && sudo apt install -y curl" >&2
   exit 2
 fi

@@ -57,6 +57,18 @@ Install from GitHub:
 curl -fsSL https://omnipbx.techseba.com | sudo bash
 ```
 
+If a fresh Ubuntu server does not have `curl` yet, install it first:
+
+```bash
+sudo apt update && sudo apt install -y curl
+```
+
+Alternative bootstrap with `wget`:
+
+```bash
+wget -qO- https://omnipbx.techseba.com | sudo bash
+```
+
 Fallback install URL:
 
 ```bash

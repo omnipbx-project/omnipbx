@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS asterisk-builder
 
 ARG ASTERISK_VERSION=22.9.0
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -6,33 +6,19 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    curl \
-    docker.io \
-    git \
     libcurl4 \
     libcurl4-openssl-dev \
     libedit-dev \
-    libedit2 \
     libjansson-dev \
-    libjansson4 \
     libncurses-dev \
-    libncurses6 \
-    libsqlite3-0 \
     libsqlite3-dev \
     libssl-dev \
-    libssl3 \
-    libxml2 \
     libxml2-dev \
     pkg-config \
-    python3 \
-    python3-dev \
-    python3-pip \
     tar \
-    tini \
     uuid-dev \
     wget \
     build-essential \
-    && if apt-cache show docker-compose-plugin >/dev/null 2>&1; then apt-get install -y --no-install-recommends docker-compose-plugin; elif apt-cache show docker-compose-v2 >/dev/null 2>&1; then apt-get install -y --no-install-recommends docker-compose-v2; fi \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src
@@ -45,23 +31,37 @@ WORKDIR /usr/src/asterisk
 
 RUN ./configure --with-pjproject-bundled --without-dahdi --without-pri \
     && make -j"$(nproc)" \
-    && make install \
-    && cd / \
-    && rm -rf /usr/src/asterisk /usr/src/asterisk.tar.gz \
-    && apt-get purge -y --auto-remove \
-        build-essential \
-        libcurl4-openssl-dev \
-        libedit-dev \
-        libjansson-dev \
-        libncurses-dev \
-        libsqlite3-dev \
-        libssl-dev \
-        libxml2-dev \
-        pkg-config \
-        python3-dev \
-        uuid-dev \
-        wget \
+    && make install DESTDIR=/asterisk-root
+
+FROM debian:bookworm-slim
+
+ARG DOCKER_COMPOSE_VERSION=2.40.3
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_BREAK_SYSTEM_PACKAGES=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    docker.io \
+    git \
+    libcurl4 \
+    libedit2 \
+    libjansson4 \
+    libncurses6 \
+    libsqlite3-0 \
+    libssl3 \
+    libxml2 \
+    python3 \
+    python3-pip \
+    tini \
+    && mkdir -p /usr/local/lib/docker/cli-plugins \
+    && arch="$(dpkg --print-architecture)" \
+    && case "${arch}" in amd64) compose_arch="x86_64" ;; arm64) compose_arch="aarch64" ;; *) compose_arch="${arch}" ;; esac \
+    && curl -fsSL "https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_VERSION}/docker-compose-linux-${compose_arch}" -o /usr/local/lib/docker/cli-plugins/docker-compose \
+    && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --from=asterisk-builder /asterisk-root/ /
 
 WORKDIR /opt/omnipbx
 

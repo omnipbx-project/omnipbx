@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+SCRIPT_PATH="${BASH_SOURCE[0]:-}"
+SCRIPT_DIR=""
+REPO_ROOT=""
+if [[ -n "${SCRIPT_PATH}" && -f "${SCRIPT_PATH}" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd)"
+  REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
 OMNIPBX_REPO_URL="${OMNIPBX_REPO_URL:-https://github.com/omnipbx-project/omnipbx.git}"
 OMNIPBX_REPO_BRANCH="${OMNIPBX_REPO_BRANCH:-main}"
 OMNIPBX_APP_IMAGE="${OMNIPBX_APP_IMAGE:-saroarsabbir/omnipbx}"
@@ -42,6 +47,10 @@ RTP_START=""
 RTP_END=""
 DRY_RUN="false"
 DRY_RUN_ROOT=""
+INSTALL_STARTED_AT="${SECONDS}"
+SETUP_REACHABLE="false"
+SERVICE_STATUS="unknown"
+RUNNING_CONTAINERS="unknown"
 
 log() {
   printf '\n[%s] %s\n' "$1" "$2"
@@ -90,6 +99,9 @@ ensure_privileges() {
   fi
 
   if [[ "${EUID}" -ne 0 ]]; then
+    if [[ -z "${SCRIPT_PATH}" || ! -f "${SCRIPT_PATH}" ]]; then
+      fail "Run the streamed installer with sudo, for example: curl -fsSL https://omnipbx.techseba.com | sudo bash"
+    fi
     exec sudo bash "$0" "$@"
   fi
 }
@@ -122,6 +134,10 @@ docker_installed() {
 
 docker_compose_ready() {
   command_exists docker && docker compose version >/dev/null 2>&1
+}
+
+compose_cmd() {
+  COMPOSE_PROGRESS=plain docker compose --progress plain "$@"
 }
 
 ensure_git_available() {
@@ -385,11 +401,14 @@ copy_project() {
     if [[ "${DRY_RUN}" == "true" ]]; then
       log INFO "Dry run: would clone ${OMNIPBX_REPO_URL} (${OMNIPBX_REPO_BRANCH}) into ${INSTALL_ROOT}"
       mkdir -p "${INSTALL_ROOT}/deploy" "${INSTALL_ROOT}/scripts" "${RUNTIME_DIR}/caddy"
-      cp -a "${REPO_ROOT}/deploy/compose.yaml" "${INSTALL_ROOT}/deploy/compose.yaml" 2>/dev/null || true
-      cp -a "${REPO_ROOT}/deploy/.env.example" "${INSTALL_ROOT}/deploy/.env.example" 2>/dev/null || true
+      if [[ -n "${REPO_ROOT}" ]]; then
+        cp -a "${REPO_ROOT}/deploy/compose.yaml" "${INSTALL_ROOT}/deploy/compose.yaml" 2>/dev/null || true
+        cp -a "${REPO_ROOT}/deploy/.env.example" "${INSTALL_ROOT}/deploy/.env.example" 2>/dev/null || true
+      fi
       return 0
     fi
     if [[ -d "${INSTALL_ROOT}/.git" ]]; then
+      log INFO "Existing OmniPBX install found; updating git checkout and reusing existing configuration."
       git -C "${INSTALL_ROOT}" fetch --prune origin
       git -C "${INSTALL_ROOT}" checkout "${OMNIPBX_REPO_BRANCH}"
       git -C "${INSTALL_ROOT}" pull --ff-only origin "${OMNIPBX_REPO_BRANCH}"
@@ -440,8 +459,13 @@ install_cli_helper() {
 }
 
 write_env_file() {
-  local postgres_password
-  postgres_password="$(random_secret)"
+  local postgres_password="${POSTGRES_PASSWORD:-}"
+  if [[ -f "${ENV_FILE}" ]]; then
+    # shellcheck disable=SC1090
+    source "${ENV_FILE}"
+    postgres_password="${POSTGRES_PASSWORD:-${postgres_password}}"
+  fi
+  postgres_password="${postgres_password:-$(random_secret)}"
   cat > "${ENV_FILE}" <<EOF
 COMPOSE_PROJECT_NAME=omnipbx
 ASTERISK_VERSION=22.9.0
@@ -530,8 +554,9 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=${INSTALL_ROOT}
-ExecStart=/usr/bin/docker compose -f ${DEPLOY_DIR}/compose.yaml up -d postgres app caddy
-ExecStop=/usr/bin/docker compose -f ${DEPLOY_DIR}/compose.yaml down
+Environment=COMPOSE_PROGRESS=plain
+ExecStart=/usr/bin/docker compose --progress plain -f ${DEPLOY_DIR}/compose.yaml up -d postgres app caddy
+ExecStop=/usr/bin/docker compose --progress plain -f ${DEPLOY_DIR}/compose.yaml down
 TimeoutStartSec=0
 
 [Install]
@@ -539,7 +564,8 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
-  systemctl enable --now "${SERVICE_NAME}.service"
+  systemctl enable "${SERVICE_NAME}.service" >/dev/null
+  systemctl restart "${SERVICE_NAME}.service"
 }
 
 wait_for_setup() {
@@ -589,6 +615,21 @@ ensure_docker_ready() {
 }
 
 choose_ports() {
+  if [[ -f "${ENV_FILE}" ]]; then
+    # shellcheck disable=SC1090
+    source "${ENV_FILE}"
+    if [[ -n "${OMNIPBX_WEB_PORT:-}" && -n "${OMNIPBX_PUBLIC_HTTP_PORT:-}" && -n "${OMNIPBX_PUBLIC_HTTPS_PORT:-}" && -n "${ASTERISK_SIP_PORT:-}" && -n "${ASTERISK_RTP_START:-}" && -n "${ASTERISK_RTP_END:-}" ]]; then
+      WEB_PORT="${OMNIPBX_WEB_PORT}"
+      PUBLIC_HTTP_PORT="${OMNIPBX_PUBLIC_HTTP_PORT}"
+      PUBLIC_HTTPS_PORT="${OMNIPBX_PUBLIC_HTTPS_PORT}"
+      SIP_PORT="${ASTERISK_SIP_PORT}"
+      RTP_START="${ASTERISK_RTP_START}"
+      RTP_END="${ASTERISK_RTP_END}"
+      log INFO "Reusing existing OmniPBX ports from ${ENV_FILE}"
+      return 0
+    fi
+  fi
+
   WEB_PORT="$(find_free_port tcp 18000)" || fail "Could not find a free setup UI port."
   PUBLIC_HTTP_PORT="$(find_free_port tcp 80)" || fail "Could not find a free public HTTP port."
   PUBLIC_HTTPS_PORT="$(find_free_port tcp 443)" || fail "Could not find a free public HTTPS port."
@@ -634,6 +675,34 @@ print_success_banner() {
   echo -e "\033[1;32m================================================================\033[0m\n"
 }
 
+collect_verification_summary() {
+  if [[ "${DRY_RUN}" == "true" ]]; then
+    return 0
+  fi
+
+  if command_exists systemctl; then
+    SERVICE_STATUS="$(systemctl is-active "${SERVICE_NAME}.service" 2>/dev/null || echo inactive)"
+  fi
+
+  if command_exists docker; then
+    RUNNING_CONTAINERS="$(docker compose -f "${DEPLOY_DIR}/compose.yaml" ps --services --filter status=running 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//' || true)"
+    RUNNING_CONTAINERS="${RUNNING_CONTAINERS:-none}"
+  fi
+
+  if curl -fsS --max-time 3 "http://127.0.0.1:${WEB_PORT}/setup" >/dev/null 2>&1; then
+    SETUP_REACHABLE="true"
+  fi
+}
+
+print_verification_summary() {
+  local duration=$((SECONDS - INSTALL_STARTED_AT))
+  echo "Verification:"
+  echo " Service: ${SERVICE_STATUS}"
+  echo " Containers: ${RUNNING_CONTAINERS}"
+  echo " Setup URL reachable: ${SETUP_REACHABLE}"
+  echo " Install time: ${duration}s"
+}
+
 main() {
   parse_args "$@"
   ensure_privileges "$@"
@@ -665,7 +734,7 @@ main() {
     log INFO "Dry run: skipping image pull and container startup"
   else
     log INFO "Pulling required container images"
-    docker compose -f "${DEPLOY_DIR}/compose.yaml" pull postgres app caddy
+    compose_cmd -f "${DEPLOY_DIR}/compose.yaml" pull postgres app caddy
   fi
   write_systemd_unit
 
@@ -686,7 +755,9 @@ main() {
     echo "Firewall: ${FIREWALL_NAME} (${FIREWALL_STATUS})"
     echo "Docker ready: ${DOCKER_READY}"
   else
+    collect_verification_summary
     print_success_banner
+    print_verification_summary
     open_browser
   fi
 }
