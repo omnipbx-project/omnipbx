@@ -228,8 +228,7 @@ collect_git_status() {
 
   TARGET_VERSION="$(read_version_at_ref "${UPSTREAM_REF}")"
   LOCAL_COUNTS="$(git_output rev-list --left-right --count "HEAD...${UPSTREAM_REF}")"
-  COMMITS_AHEAD="${LOCAL_COUNTS%% *}"
-  COMMITS_BEHIND="${LOCAL_COUNTS##* }"
+  read -r COMMITS_AHEAD COMMITS_BEHIND <<< "${LOCAL_COUNTS}"
 
   if [[ "${COMMITS_BEHIND}" -gt 0 && "${COMMITS_AHEAD}" -eq 0 ]]; then
     CHECK_MESSAGE="${UPSTREAM_REF} is ${COMMITS_BEHIND} commit(s) ahead of this install."
@@ -343,9 +342,76 @@ env_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 PY
 }
 
+repair_env_from_running_stack() {
+  if ! command -v docker >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! docker inspect omnipbx-app omnipbx-caddy >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local inspect_json repaired_values
+  inspect_json="$(docker inspect omnipbx-app omnipbx-caddy)"
+  repaired_values="$(DOCKER_INSPECT_JSON="${inspect_json}" python3 - <<'PY'
+import json
+import os
+import sys
+
+try:
+    containers = json.loads(os.environ.get("DOCKER_INSPECT_JSON", ""))
+except json.JSONDecodeError:
+    raise SystemExit(0)
+
+by_name = {container.get("Name", "").lstrip("/"): container for container in containers}
+
+def env_map(container_name):
+    env = by_name.get(container_name, {}).get("Config", {}).get("Env", []) or []
+    values = {}
+    for item in env:
+        if "=" in item:
+            key, value = item.split("=", 1)
+            values[key] = value
+    return values
+
+app_env = env_map("omnipbx-app")
+caddy_env = env_map("omnipbx-caddy")
+mapping = {
+    "OMNIPBX_WEB_PORT": app_env.get("OMNIPBX_HTTP_PORT"),
+    "ASTERISK_SIP_PORT": app_env.get("OMNIPBX_SIP_PORT"),
+    "ASTERISK_RTP_START": app_env.get("OMNIPBX_RTP_START"),
+    "ASTERISK_RTP_END": app_env.get("OMNIPBX_RTP_END"),
+    "OMNIPBX_PUBLIC_HTTP_PORT": caddy_env.get("OMNIPBX_PUBLIC_HTTP_PORT"),
+    "OMNIPBX_PUBLIC_HTTPS_PORT": caddy_env.get("OMNIPBX_PUBLIC_HTTPS_PORT"),
+}
+for key, value in mapping.items():
+    if value:
+        print(f"{key}={value}")
+PY
+)"
+
+  if [[ -z "${repaired_values}" ]]; then
+    return 0
+  fi
+
+  local changed="false"
+  local key value current
+  while IFS='=' read -r key value; do
+    [[ -z "${key}" || -z "${value}" ]] && continue
+    current="$(grep -E "^${key}=" "${ENV_FILE}" 2>/dev/null | tail -n 1 | cut -d= -f2- || true)"
+    if [[ "${current}" != "${value}" ]]; then
+      set_env_value "${key}" "${value}"
+      changed="true"
+    fi
+  done <<< "${repaired_values}"
+
+  if [[ "${changed}" == "true" ]]; then
+    log INFO "Repaired ${ENV_FILE} port values from the currently running OmniPBX stack."
+  fi
+}
+
 restart_stack() {
-  docker compose -f "${COMPOSE_FILE}" pull postgres app caddy
-  docker compose -f "${COMPOSE_FILE}" up -d postgres app caddy
+  COMPOSE_PROGRESS=plain docker compose --progress plain -f "${COMPOSE_FILE}" pull postgres app caddy
+  COMPOSE_PROGRESS=plain docker compose --progress plain -f "${COMPOSE_FILE}" up -d postgres app caddy
 }
 
 main() {
@@ -409,6 +475,7 @@ main() {
 
   CURRENT_VERSION="$(current_version)"
   set_env_value "OMNIPBX_APP_VERSION" "${CURRENT_VERSION}"
+  repair_env_from_running_stack
 
   write_status "updating" "Pulling images and restarting OmniPBX on ${UPSTREAM_REF}." "${CURRENT_VERSION}" "${STARTED_AT}" ""
   log INFO "Pulling images and restarting OmniPBX"
