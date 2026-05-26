@@ -308,7 +308,7 @@ detect_firewall() {
     fi
   fi
 
-  if command_exists systemctl && systemctl is-active --quiet firewalld; then
+  if command_exists systemctl && systemctl is-active --quiet firewalld 2>/dev/null; then
     FIREWALL_NAME="firewalld"
     FIREWALL_STATUS="active"
     return
@@ -316,6 +316,45 @@ detect_firewall() {
 
   FIREWALL_NAME="none"
   FIREWALL_STATUS="not detected"
+}
+
+configure_firewall() {
+  if [[ "${FIREWALL_NAME}" == "none" ]]; then
+    return 0
+  fi
+
+  log INFO "Configuring firewall (${FIREWALL_NAME}) for OmniPBX"
+
+  local tcp_ports=("${WEB_PORT}" "${PUBLIC_HTTP_PORT}" "${PUBLIC_HTTPS_PORT}")
+  local udp_ports=("${SIP_PORT}")
+  local rtp_range="${RTP_START}:${RTP_END}"
+
+  if [[ "${DRY_RUN}" == "true" ]]; then
+    log INFO "Dry run: would open TCP ports ${tcp_ports[*]} and UDP ports ${udp_ports[*]}, ${rtp_range}"
+    return 0
+  fi
+
+  case "${FIREWALL_NAME}" in
+    ufw)
+      for port in "${tcp_ports[@]}"; do
+        ufw allow "${port}/tcp" >/dev/null
+      done
+      for port in "${udp_ports[@]}"; do
+        ufw allow "${port}/udp" >/dev/null
+      done
+      ufw allow "${RTP_START}:${RTP_END}/udp" >/dev/null
+      ;;
+    firewalld)
+      for port in "${tcp_ports[@]}"; do
+        firewall-cmd --permanent --add-port="${port}/tcp" >/dev/null
+      done
+      for port in "${udp_ports[@]}"; do
+        firewall-cmd --permanent --add-port="${port}/udp" >/dev/null
+      done
+      firewall-cmd --permanent --add-port="${RTP_START}-${RTP_END}/udp" >/dev/null
+      firewall-cmd --reload >/dev/null
+      ;;
+  esac
 }
 
 detect_security_frameworks() {
@@ -375,7 +414,13 @@ copy_project() {
       cp -a "${REPO_ROOT}/.git" "${INSTALL_ROOT}/.git"
     fi
     cp -a "${REPO_ROOT}/apps" "${INSTALL_ROOT}/apps"
-    cp -a "${REPO_ROOT}/deploy" "${INSTALL_ROOT}/deploy"
+    mkdir -p "${INSTALL_ROOT}/deploy"
+    for item in "${REPO_ROOT}/deploy/"*; do
+      base_item="$(basename "${item}")"
+      if [[ "${base_item}" != "runtime" && "${base_item}" != ".env" ]]; then
+        cp -a "${item}" "${INSTALL_ROOT}/deploy/"
+      fi
+    done
     cp -a "${REPO_ROOT}/docs" "${INSTALL_ROOT}/docs"
     cp -a "${REPO_ROOT}/scripts" "${INSTALL_ROOT}/scripts"
     cp -a "${REPO_ROOT}/README.md" "${INSTALL_ROOT}/README.md"
@@ -526,7 +571,7 @@ ensure_docker_ready() {
     return 0
   fi
 
-  if command_exists systemctl && systemctl is-active --quiet docker; then
+  if command_exists systemctl && systemctl is-active --quiet docker 2>/dev/null; then
     DOCKER_READY="true"
     if [[ "${DRY_RUN}" == "true" ]]; then
       log INFO "Dry run: Docker service is active, but this shell cannot query docker info directly."
@@ -554,6 +599,41 @@ choose_ports() {
   RTP_END="${rtp_range##*:}"
 }
 
+open_browser() {
+  local url="http://127.0.0.1:${WEB_PORT}/setup"
+
+  # If we're not in a dry run and have a display, try to open the browser
+  if [[ "${DRY_RUN}" != "true" && -n "${DISPLAY:-}" ]]; then
+    log INFO "Opening browser to ${url}"
+    # Try to open as the original user if we are sudo
+    local opener="xdg-open"
+    if [[ -n "${SUDO_USER:-}" ]]; then
+      sudo -u "${SUDO_USER}" "${opener}" "${url}" >/dev/null 2>&1 || true
+    else
+      "${opener}" "${url}" >/dev/null 2>&1 || true
+    fi
+  fi
+}
+
+print_success_banner() {
+  local url="http://${DETECTED_HOST}:${WEB_PORT}/setup"
+  local local_url="http://127.0.0.1:${WEB_PORT}/setup"
+
+  echo -e "\n\033[1;32m================================================================\033[0m"
+  echo -e "\033[1;32m              OmniPBX Installation Successful!                  \033[0m"
+  echo -e "\033[1;32m================================================================\033[0m"
+  echo -e "\nYour PBX is now ready for initial setup."
+  echo -e "\n\033[1mPrimary Setup URL:\033[0m ${url}"
+  echo -e "\033[1mLocal Fallback:\033[0m    ${local_url}"
+  echo -e "\n\033[1mNext Steps:\033[0m"
+  echo -e " 1. Open the URL above in your web browser."
+  echo -e " 2. Follow the on-screen instructions to create your admin account."
+  echo -e " 3. Configure your extensions and trunks."
+  echo -e "\n\033[1mMaintenance:\033[0m"
+  echo -e " Use the '\033[1momnipbxctl\033[0m' command for system management and updates."
+  echo -e "\033[1;32m================================================================\033[0m\n"
+}
+
 main() {
   parse_args "$@"
   ensure_privileges "$@"
@@ -576,6 +656,7 @@ main() {
   detect_firewall
   detect_security_frameworks
   choose_ports
+  configure_firewall
   copy_project
   install_cli_helper
   write_env_file
@@ -605,12 +686,8 @@ main() {
     echo "Firewall: ${FIREWALL_NAME} (${FIREWALL_STATUS})"
     echo "Docker ready: ${DOCKER_READY}"
   else
-    log OK "OmniPBX installer completed"
-    echo "Setup URL: http://${DETECTED_HOST}:${WEB_PORT}/setup"
-    echo "Local fallback: http://127.0.0.1:${WEB_PORT}/setup"
-    echo "Recommended mode: ${RECOMMENDED_MODE_LABEL}"
-    echo "Firewall: ${FIREWALL_NAME} (${FIREWALL_STATUS})"
-    echo "Docker: ready"
+    print_success_banner
+    open_browser
   fi
 }
 
