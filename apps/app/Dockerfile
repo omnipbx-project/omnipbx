@@ -61,7 +61,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=asterisk-builder /asterisk-root/ /
+COPY --from=asterisk-builder /asterisk-root/usr/ /usr/
+COPY --from=asterisk-builder /asterisk-root/etc/ /etc/
+COPY --from=asterisk-builder /asterisk-root/var/lib/asterisk/ /var/lib/asterisk/
+COPY --from=asterisk-builder /asterisk-root/var/spool/asterisk/ /var/spool/asterisk/
 
 WORKDIR /opt/omnipbx
 

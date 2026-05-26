@@ -22,6 +22,8 @@ LOCAL_COMMIT=""
 REMOTE_COMMIT=""
 COMMITS_AHEAD="0"
 COMMITS_BEHIND="0"
+START_COMMIT=""
+APP_REBUILD_NEEDED="false"
 REPO_DIRTY="false"
 GIT_READY="false"
 TRACKED_UPSTREAM="false"
@@ -410,9 +412,28 @@ PY
   fi
 }
 
+detect_app_rebuild_needed() {
+  APP_REBUILD_NEEDED="false"
+  [[ -n "${START_COMMIT}" ]] || return 0
+  [[ -f "${PROJECT_ROOT}/deploy/compose.dev.yaml" ]] || return 0
+
+  local changed_files
+  changed_files="$(git_output diff --name-only "${START_COMMIT}..HEAD" || true)"
+  if grep -Eq '^(apps/app/|deploy/compose\.dev\.yaml|deploy/compose\.yaml)$' <<< "${changed_files}"; then
+    APP_REBUILD_NEEDED="true"
+  fi
+}
+
 restart_stack() {
-  COMPOSE_PROGRESS=plain docker compose --progress plain -f "${COMPOSE_FILE}" pull postgres app caddy
-  COMPOSE_PROGRESS=plain docker compose --progress plain -f "${COMPOSE_FILE}" up -d postgres app caddy
+  if [[ "${APP_REBUILD_NEEDED}" == "true" ]]; then
+    log INFO "App source changed; rebuilding the OmniPBX app image locally"
+    COMPOSE_PROGRESS=plain docker compose --progress plain -f "${COMPOSE_FILE}" pull postgres caddy
+    COMPOSE_PROGRESS=plain docker compose --progress plain -f "${COMPOSE_FILE}" -f "${PROJECT_ROOT}/deploy/compose.dev.yaml" build app
+    COMPOSE_PROGRESS=plain docker compose --progress plain -f "${COMPOSE_FILE}" up -d postgres app caddy
+  else
+    COMPOSE_PROGRESS=plain docker compose --progress plain -f "${COMPOSE_FILE}" pull postgres app caddy
+    COMPOSE_PROGRESS=plain docker compose --progress plain -f "${COMPOSE_FILE}" up -d postgres app caddy
+  fi
 }
 
 main() {
@@ -468,6 +489,7 @@ main() {
   write_status "updating" "Pulling the latest OmniPBX changes from ${UPSTREAM_REF}." "${TARGET_VERSION}" "${STARTED_AT}" ""
 
   log INFO "Pulling the latest OmniPBX changes from ${UPSTREAM_REF}"
+  START_COMMIT="${LOCAL_COMMIT}"
   if [[ "${FORCE}" == "true" && "${COMMITS_BEHIND}" -eq 0 ]]; then
     git_output fetch --prune "${REMOTE_NAME}" >/dev/null 2>&1 || fail "Failed to refresh ${REMOTE_NAME} before rebuild."
   else
@@ -477,9 +499,15 @@ main() {
   CURRENT_VERSION="$(current_version)"
   set_env_value "OMNIPBX_APP_VERSION" "${CURRENT_VERSION}"
   repair_env_from_running_stack
+  detect_app_rebuild_needed
 
-  write_status "updating" "Pulling images and restarting OmniPBX on ${UPSTREAM_REF}." "${CURRENT_VERSION}" "${STARTED_AT}" ""
-  log INFO "Pulling images and restarting OmniPBX"
+  if [[ "${APP_REBUILD_NEEDED}" == "true" ]]; then
+    write_status "updating" "Rebuilding the app image and restarting OmniPBX on ${UPSTREAM_REF}." "${CURRENT_VERSION}" "${STARTED_AT}" ""
+    log INFO "Rebuilding app image and restarting OmniPBX"
+  else
+    write_status "updating" "Pulling images and restarting OmniPBX on ${UPSTREAM_REF}." "${CURRENT_VERSION}" "${STARTED_AT}" ""
+    log INFO "Pulling images and restarting OmniPBX"
+  fi
   restart_stack || fail "Docker Compose could not restart the OmniPBX stack."
 
   collect_git_status
