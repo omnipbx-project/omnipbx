@@ -112,7 +112,9 @@ async def setup_guard(request: Request, call_next):
         request.state.current_user = current_user
 
         if not setup_complete or not admin_ready:
-            if path.startswith("/setup") or path.startswith(public_prefixes):
+            # On a fresh install, only allow setup wizard, static assets, and health checks.
+            # We explicitly exclude /login and /forgot-password because they are useless without an admin account.
+            if path.startswith(("/setup", "/static", "/health")):
                 return await call_next(request)
             return RedirectResponse(url="/setup", status_code=307)
 

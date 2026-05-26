@@ -9,6 +9,7 @@ import psycopg
 from app.core.db import get_connection
 from app.core.settings import get_settings
 from app.models.setup import SetupWizardPayload
+from app.services.auth import AUTH_COOKIE_NAME, issue_session_cookie
 from app.services.setup import get_environment_summary, get_internal_root_ca_path, get_system_settings, save_setup_wizard
 from app.web import render_template
 
@@ -112,7 +113,6 @@ def save_setup_page(
     access_mode: str = Form(default="local_network"),
     behind_nat_raw: str | None = Form(default=None),
     external_host: str = Form(default=""),
-    ssl_contact_email: str = Form(default=""),
     admin_username: str = Form(...),
     admin_password: str = Form(...),
     admin_email: str = Form(default=""),
@@ -146,7 +146,7 @@ def save_setup_page(
             behind_nat=behind_nat_raw is not None,
             external_host=derived_host if access_mode != "http_only" else external_host,
             ssl_mode=ssl_mode,
-            ssl_contact_email=ssl_contact_email,
+            ssl_contact_email=admin_email,
             admin_username=admin_username,
             admin_password=admin_password,
             admin_email=admin_email,
@@ -159,9 +159,28 @@ def save_setup_page(
             first_extension_secret=first_extension_secret,
         )
         result = save_setup_wizard(connection, payload)
-        detail = f"Setup saved. Access OmniPBX at {result['settings'].get('public_base_url') or 'http://127.0.0.1:18000'}"
-        params = urlencode({"result": "success", "detail": detail})
-        return RedirectResponse(url=f"/setup?{params}", status_code=303)
+        
+        # AUTO-LOGIN: Issue session cookie and redirect to dashboard
+        admin = result.get("admin")
+        if not admin:
+            # Fallback if admin wasn't returned for some reason
+            detail = f"Setup saved. Access OmniPBX at {result['settings'].get('public_base_url') or 'http://127.0.0.1:18000'}"
+            params = urlencode({"result": "success", "detail": detail})
+            return RedirectResponse(url=f"/setup?{params}", status_code=303)
+
+        response = RedirectResponse(url="/dashboard", status_code=303)
+        session_cookie = issue_session_cookie(connection, admin)
+        response.set_cookie(
+            AUTH_COOKIE_NAME,
+            session_cookie,
+            httponly=True,
+            samesite="lax",
+            secure=_request_is_secure(request),
+            max_age=60 * 60 * 12,
+            path="/",
+        )
+        return response
+
     except ValueError as exc:
         params = urlencode({"result": "error", "detail": str(exc)})
         return RedirectResponse(url=f"/setup?{params}", status_code=303)
@@ -176,3 +195,8 @@ def download_internal_ca() -> FileResponse:
     if not path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="The local CA root is not available yet.")
     return FileResponse(path, filename="omnipbx-local-root-ca.crt", media_type="application/x-x509-ca-cert")
+
+
+def _request_is_secure(request: Request) -> bool:
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    return request.url.scheme == "https" or forwarded_proto == "https"

@@ -17,7 +17,7 @@ class SetupWizardPayload(BaseModel):
     ssl_contact_email: str | None = None
     admin_username: str = Field(min_length=3, max_length=64)
     admin_password: str = Field(min_length=10, max_length=128)
-    admin_email: str | None = Field(default=None, max_length=255)
+    admin_email: str = Field(min_length=3, max_length=255)
     sip_port: int = Field(ge=1, le=65535)
     rtp_start: int = Field(ge=1024, le=65535)
     rtp_end: int = Field(ge=1024, le=65535)
@@ -55,9 +55,9 @@ class SetupWizardPayload(BaseModel):
         ssl_mode = info.data.get("ssl_mode")
         field_name = info.field_name
         if field_name == "ssl_contact_email" and ssl_mode in {"public_domain", "public_ip"} and value is None:
-            raise ValueError("A contact email is required for public domain SSL.")
+            raise ValueError("An admin email is required when using public domain or public IP HTTPS.")
         if value and "@" not in value:
-            raise ValueError("Enter a valid contact email.")
+            raise ValueError("Enter a valid email address.")
         return value
 
     @field_validator("external_host")

@@ -1,5 +1,123 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+  .wizard-step { display: none; }
+  .wizard-step.active { display: block; animation: wizardFadeIn 0.4s ease-out; }
+  @keyframes wizardFadeIn { 
+    from { opacity: 0; transform: translateY(12px); } 
+    to { opacity: 1; transform: translateY(0); } 
+  }
+
+  .wizard-progress {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 32px;
+    padding: 0 4px;
+  }
+  .progress-dot {
+    flex: 1;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--line);
+    transition: all 0.3s ease;
+    position: relative;
+  }
+  .progress-dot.active { 
+    background: var(--accent); 
+    box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  .progress-dot.complete { background: var(--success); }
+
+  .wizard-nav {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 40px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+  }
+
+  .step-header-compact {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+  .step-header-compact h2 {
+    font-size: 2.2rem;
+    letter-spacing: -0.05em;
+    margin-bottom: 8px;
+  }
+  .step-header-compact p {
+    color: var(--text-soft);
+    font-size: 1.1rem;
+  }
+
+  .big-choice-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+
+  .big-choice-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 32px 24px;
+    border: 2px solid var(--line);
+    border-radius: 24px;
+    background: var(--bg-panel);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .big-choice-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-soft);
+  }
+  .big-choice-card.selected {
+    border-color: var(--accent);
+    background: var(--bg-accent-soft);
+  }
+  .big-choice-icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+  }
+  .big-choice-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .big-choice-desc {
+    color: var(--text-soft);
+    line-height: 1.5;
+  }
+
+  .advanced-link-container {
+    text-align: center;
+    margin-top: 12px;
+  }
+  .advanced-link {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .setup-summary-final {
+    display: grid;
+    gap: 12px;
+  }
+  .setup-summary-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: color-mix(in srgb, var(--bg-subtle) 40%, transparent);
+    border-radius: 12px;
+  }
+  .setup-summary-item span { color: var(--text-soft); }
+  .setup-summary-item strong { font-family: var(--font-mono); }
+</style>
+
 <section class="wizard-layout">
   <div class="wizard-main">
     {% if result %}
@@ -9,405 +127,429 @@
     </div>
     {% endif %}
 
-    <section class="panel wizard-hero">
-      <div class="wizard-hero-copy">
-        <span class="eyebrow">First-Time Setup</span>
-        <h3>Start OmniPBX with the basics only</h3>
-        <p class="muted">
-          Choose how people will open the PBX, create the owner login, set your business defaults,
-          and add one test extension if you want it ready immediately.
-        </p>
-        <div class="button-row">
-          <a class="button-link" href="#welcome">Start setup</a>
-          <a class="button-link secondary" href="#finish">Final review</a>
-        </div>
-      </div>
-      <div class="setup-snapshot">
-        <div>
-          <span>Recommended</span>
-          <strong>{{ env_summary.recommended_mode.label }}</strong>
-          <small>{{ env_summary.recommended_mode.reason }}</small>
-        </div>
-        <div>
-          <span>Open setup at</span>
-          <strong class="mono">{{ env_summary.setup_url }}</strong>
-          <small>This is the address detected for this browser session.</small>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel wizard-context">
-      <div class="section-header">
-        <div class="section-copy">
-          <h3>Before you continue</h3>
-          <p>Have these three things ready and the setup should take only a few minutes.</p>
-        </div>
-      </div>
-      <div class="ready-list">
-        <div>
-          <strong>PBX address</strong>
-          <span>A domain name or office IP where users will open OmniPBX.</span>
-        </div>
-        <div>
-          <strong>Owner login</strong>
-          <span>The first admin username, email, and password.</span>
-        </div>
-        <div>
-          <strong>Business defaults</strong>
-          <span>Company name, country, timezone, and calling region.</span>
-        </div>
-      </div>
-    </section>
+    <div class="wizard-progress">
+      <div class="progress-dot active" title="Start"></div>
+      <div class="progress-dot" title="Owner"></div>
+      <div class="progress-dot" title="Business"></div>
+      <div class="progress-dot" title="Location"></div>
+      <div class="progress-dot" title="Network"></div>
+      <div class="progress-dot" title="Extension"></div>
+      <div class="progress-dot" title="Finish"></div>
+    </div>
 
     <form method="post" action="/setup" class="stack wizard-form">
-      <section class="panel step-card" id="welcome">
-        <div class="step-heading">
-          <span class="step-number">1</span>
-          <div>
-            <h3>Welcome</h3>
-            <p>Start with the safe path OmniPBX detected for this server.</p>
+      <!-- STEP 1: Welcome -->
+      <section class="wizard-step active" id="step-1">
+        <div class="step-header-compact">
+          <span class="eyebrow">Step 1 of 7</span>
+          <h2>Welcome to OmniPBX</h2>
+          <p>The smallest foundation for your business communication.</p>
+        </div>
+        
+        <div class="panel">
+          <div class="summary-grid">
+            <div class="summary-row">
+              <span>Detected Host Address</span>
+              <strong class="mono">{{ env_summary.detected_host }}</strong>
+            </div>
+            <div class="summary-row">
+              <span>System Health</span>
+              <strong class="status-pill {% if env_summary.docker_ready %}online{% else %}offline{% endif %}">
+                {% if env_summary.docker_ready %}Ready{% else %}Not Ready{% endif %}
+              </strong>
+            </div>
+            <div class="summary-row">
+              <span>Setup URL</span>
+              <strong class="mono">{{ env_summary.setup_url }}</strong>
+            </div>
+          </div>
+          <div class="notice notice-info" style="margin-top: 18px;">
+            <strong>Pro Tip:</strong>
+            <span>Setup only takes about 2 minutes. We've detected the best settings for your server automatically.</span>
           </div>
         </div>
-        <div class="summary-grid">
-          <div class="summary-row">
-            <span>Current setup address</span>
-            <strong class="mono">{{ env_summary.setup_url }}</strong>
-          </div>
-          <div class="summary-row">
-            <span>Suggested setup type</span>
-            <strong>{{ env_summary.recommended_mode.label }}</strong>
-          </div>
-          <div class="summary-row">
-            <span>Server health</span>
-            <strong>{% if env_summary.docker_ready %}Ready{% else %}Needs attention{% endif %}</strong>
-          </div>
+
+        <div class="wizard-nav">
+          <div></div>
+          <button type="button" class="primary" onclick="goToStep(2)">Get Started &rarr;</button>
         </div>
       </section>
 
-      <section class="panel step-card" id="deployment">
-        <div class="step-heading">
-          <span class="step-number">2</span>
-          <div>
-            <h3>How will you use this PBX?</h3>
-            <p>Pick the closest match. Most first installs can keep the recommended choice.</p>
+      <!-- STEP 2: Owner Login -->
+      <section class="wizard-step" id="step-2">
+        <div class="step-header-compact">
+          <span class="eyebrow">Step 2 of 7</span>
+          <h2>Create Owner Account</h2>
+          <p>You'll use these details to manage your PBX.</p>
+        </div>
+
+        <div class="panel">
+          <div class="field-grid two">
+            <div class="field">
+              <label for="admin_username">Username</label>
+              <input id="admin_username" type="text" name="admin_username" value="admin" required>
+            </div>
+            <div class="field">
+              <label for="admin_email">Email Address</label>
+              <input id="admin_email" type="email" name="admin_email" value="{{ system_settings.admin_email or '' }}" placeholder="you@example.com" required>
+              <small>Used for password resets and security alerts.</small>
+            </div>
+          </div>
+          <div class="field" style="margin-top: 12px;">
+            <label for="admin_password">Password</label>
+            <input id="admin_password" type="password" name="admin_password" minlength="10" required placeholder="Choose a strong password">
+            <small class="muted">At least 10 characters recommended.</small>
           </div>
         </div>
-        <div class="choice-grid">
-          {% for mode in deployment_modes %}
-          <label class="choice-card">
-            <input type="radio" name="deployment_mode" value="{{ mode.value }}" {% if system_settings.deployment_mode == mode.value %}checked{% endif %}>
-            <span class="choice-badge {% if mode.value == env_summary.recommended_mode.value %}recommended{% endif %}">
-              {% if mode.value == env_summary.recommended_mode.value %}Recommended{% else %}Option{% endif %}
-            </span>
-            <span class="choice-title">{{ mode.label }}</span>
-            <span class="choice-copy">{{ mode.description }}</span>
+
+        <div class="wizard-nav">
+          <button type="button" class="secondary" onclick="goToStep(1)">&larr; Back</button>
+          <button type="button" class="primary" onclick="goToStep(3)">Continue &rarr;</button>
+        </div>
+      </section>
+
+      <!-- STEP 3: Business Basics -->
+      <section class="wizard-step" id="step-3">
+        <div class="step-header-compact">
+          <span class="eyebrow">Step 3 of 7</span>
+          <h2>Business Basics</h2>
+          <p>Set your local time and company identity.</p>
+        </div>
+
+        <div class="panel">
+          <div class="field">
+            <label for="company_name">Company Name</label>
+            <input id="company_name" type="text" name="company_name" value="{{ system_settings.company_name }}" required placeholder="e.g. Acme Corp">
+          </div>
+          <div class="field-grid two" style="margin-top: 12px;">
+            <div class="field">
+              <label for="country">Country</label>
+              <select id="country" name="country">
+                {% for item in countries %}
+                <option value="{{ item.value }}" {% if system_settings.country == item.value %}selected{% endif %}>{{ item.label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label for="timezone">Timezone</label>
+              <input id="timezone" type="text" name="timezone" value="{{ system_settings.timezone }}" placeholder="Asia/Dhaka" required>
+            </div>
+          </div>
+          <div class="field-grid two" style="margin-top: 12px;">
+            <div class="field">
+              <label for="default_language">Interface Language</label>
+              <select id="default_language" name="default_language">
+                {% for item in languages %}
+                <option value="{{ item.value }}" {% if system_settings.default_language == item.value %}selected{% endif %}>{{ item.label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label for="dialing_region">Calling Region Code</label>
+              <input id="dialing_region" type="text" name="dialing_region" value="{{ system_settings.dialing_region or '+880' }}" placeholder="+880" required>
+            </div>
+          </div>
+        </div>
+
+        <div class="wizard-nav">
+          <button type="button" class="secondary" onclick="goToStep(2)">&larr; Back</button>
+          <button type="button" class="primary" onclick="goToStep(4)">Continue &rarr;</button>
+        </div>
+      </section>
+
+      <!-- STEP 4: Location Choice -->
+      <section class="wizard-step" id="step-4">
+        <div class="step-header-compact">
+          <span class="eyebrow">Step 4 of 7</span>
+          <h2>Where is OmniPBX?</h2>
+          <p>Tell us where you are installing the server so we can secure it.</p>
+        </div>
+
+        <div class="big-choice-grid">
+          <div class="big-choice-card" onclick="applyLocationPreset('office')">
+            <div class="big-choice-icon">🏢</div>
+            <div class="big-choice-title">In my Office or Home</div>
+            <div class="big-choice-desc">Best for local networks. Uses local HTTPS and office firewall rules.</div>
+          </div>
+          <div class="big-choice-card" onclick="applyLocationPreset('cloud')">
+            <div class="big-choice-icon">☁️</div>
+            <div class="big-choice-title">On the Cloud / Internet</div>
+            <div class="big-choice-desc">Best for remote teams. Requires a domain name for automatic security.</div>
+          </div>
+        </div>
+
+        <div class="panel" id="location-details" style="display: none;">
+          <div class="field">
+            <label id="location-label-text" for="external_host">PBX Address</label>
+            <input id="external_host" type="text" name="external_host" value="{{ system_settings.external_host or env_summary.detected_host }}" placeholder="pbx.example.com">
+            <small id="location-help-text" class="muted">This is the address users type in their browser.</small>
+          </div>
+          
+          <div id="advanced-network-options" style="display: none; margin-top: 18px; border-top: 1px dashed var(--line); padding-top: 18px;">
+              <h4 style="margin-bottom: 12px;">Advanced Configuration</h4>
+              <div class="field-grid two">
+                <div class="field">
+                    <label>Deployment Mode</label>
+                    <select name="deployment_mode">
+                        <option value="office">Office</option>
+                        <option value="public_server">Public Server</option>
+                        <option value="advanced">Advanced</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Access Mode</label>
+                    <select name="access_mode">
+                        <option value="local_network">Private Network (HTTPS)</option>
+                        <option value="public_domain">Public Domain (Auto HTTPS)</option>
+                        <option value="public_ip">Public IP (HTTPS)</option>
+                        <option value="http_only">No HTTPS (HTTP only)</option>
+                    </select>
+                </div>
+              </div>
+          </div>
+          <div class="advanced-link-container">
+            <span class="advanced-link" onclick="toggleAdvancedNetwork()">Show advanced settings</span>
+          </div>
+        </div>
+
+        <div class="wizard-nav">
+          <button type="button" class="secondary" onclick="goToStep(3)">&larr; Back</button>
+          <button type="button" id="step-4-next" class="primary" style="display: none;" onclick="goToStep(5)">Continue &rarr;</button>
+        </div>
+      </section>
+
+      <!-- STEP 5: Calling Network -->
+      <section class="wizard-step" id="step-5">
+        <div class="step-header-compact">
+          <span class="eyebrow">Step 5 of 7</span>
+          <h2>Quality of Service</h2>
+          <p>Ensure your phone calls are clear and reliable.</p>
+        </div>
+
+        <div class="panel">
+          <label class="checkbox-row" style="font-size: 1.1rem; padding: 12px; border: 1px solid var(--line); border-radius: 12px;">
+            <input type="checkbox" name="behind_nat_raw" value="1" {% if system_settings.behind_nat %}checked{% endif %} style="width: 20px; height: 20px;">
+            My OmniPBX is behind a router (Standard for offices)
           </label>
-          {% endfor %}
-        </div>
-      </section>
-
-      <section class="panel step-card" id="access">
-        <div class="step-heading">
-          <span class="step-number">3</span>
-          <div>
-            <h3>How will people open OmniPBX?</h3>
-            <p>Choose the address style. OmniPBX will match the HTTPS setting to that choice.</p>
-          </div>
-        </div>
-        <div class="choice-grid">
-          {% for mode in access_modes %}
-          <label class="choice-card">
-            <input type="radio" name="access_mode" value="{{ mode.value }}" {% if system_settings.access_mode == mode.value %}checked{% endif %}>
-            <span class="choice-badge {% if mode.value == 'public_domain' %}recommended{% elif mode.value in ['public_ip', 'private_self_hosted'] %}advanced{% endif %}">
-              {% if mode.value == 'public_domain' %}
-              Best for business
-              {% elif mode.value in ['public_ip', 'private_self_hosted'] %}
-              Advanced
-              {% else %}
-              Simple
-              {% endif %}
-            </span>
-            <span class="choice-title">{{ mode.label }}</span>
-            <span class="choice-copy">{{ mode.description }}</span>
-          </label>
-          {% endfor %}
-        </div>
-        <div class="field-grid two">
-          <div class="field">
-            <label for="external_host">PBX address</label>
-            <input id="external_host" type="text" name="external_host" value="{{ system_settings.external_host or env_summary.detected_host }}" placeholder="pbx.example.com or 192.168.1.20">
-            <small class="muted">Use the address users will type in the browser.</small>
-          </div>
-          <div class="field">
-            <label for="ssl_contact_email">HTTPS contact email</label>
-            <input id="ssl_contact_email" type="text" name="ssl_contact_email" value="{{ system_settings.ssl_contact_email or '' }}" placeholder="Needed for public HTTPS">
-            <small class="muted">Needed when OmniPBX requests a public HTTPS certificate.</small>
-          </div>
-        </div>
-        <div class="notice notice-info">
-          <strong>Recommended</strong>
-          <span>A real domain with automatic HTTPS is the easiest long-term choice for most businesses.</span>
-        </div>
-      </section>
-
-      <section class="panel step-card" id="admin">
-        <div class="step-heading">
-          <span class="step-number">4</span>
-          <div>
-            <h3>Create the owner login</h3>
-            <p>This account manages OmniPBX after setup is finished.</p>
-          </div>
-        </div>
-        <div class="field-grid two">
-          <div class="field">
-            <label for="admin_username">Admin username</label>
-            <input id="admin_username" type="text" name="admin_username" value="admin" required>
-          </div>
-          <div class="field">
-            <label for="admin_email">Admin email</label>
-            <input id="admin_email" type="text" name="admin_email" value="{{ system_settings.admin_email or '' }}" placeholder="Optional">
-          </div>
-        </div>
-        <div class="field">
-          <label for="admin_password">Admin password</label>
-          <input id="admin_password" type="password" name="admin_password" minlength="10" required>
-          <small class="muted">Use at least 10 characters.</small>
-        </div>
-      </section>
-
-      <section class="panel step-card" id="regional">
-        <div class="step-heading">
-          <span class="step-number">5</span>
-          <div>
-            <h3>Business defaults</h3>
-            <p>Set the name, location, language, and calling region for this PBX.</p>
-          </div>
-        </div>
-        <div class="field-grid three">
-          <div class="field">
-            <label for="company_name">Company name</label>
-            <input id="company_name" type="text" name="company_name" value="{{ system_settings.company_name }}" required>
-          </div>
-          <div class="field">
-            <label for="country">Country</label>
-            <select id="country" name="country">
-              {% for item in countries %}
-              <option value="{{ item.value }}" {% if system_settings.country == item.value %}selected{% endif %}>{{ item.label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="field">
-            <label for="timezone">Timezone</label>
-            <input id="timezone" type="text" name="timezone" value="{{ system_settings.timezone }}" placeholder="Asia/Dhaka" required>
-          </div>
-        </div>
-        <div class="field-grid two">
-          <div class="field">
-            <label for="default_language">Default language</label>
-            <select id="default_language" name="default_language">
-              {% for item in languages %}
-              <option value="{{ item.value }}" {% if system_settings.default_language == item.value %}selected{% endif %}>{{ item.label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="field">
-            <label for="dialing_region">Country code / dialing region</label>
-            <input id="dialing_region" type="text" name="dialing_region" value="{{ system_settings.dialing_region or '+880' }}" placeholder="+880" required>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel step-card" id="network">
-        <div class="step-heading">
-          <span class="step-number">6</span>
-          <div>
-            <h3>Calling network</h3>
-            <p>For most office installs, only the router/NAT question matters here.</p>
-          </div>
-        </div>
-        <label class="checkbox-row">
-          <input type="checkbox" name="behind_nat_raw" value="1" {% if system_settings.behind_nat %}checked{% endif %}>
-          Phones connect through a router or office firewall
-        </label>
-        <details class="advanced-block">
-          <summary>Advanced calling network</summary>
-          <p class="muted">
-            Use these only if the defaults do not fit your environment. OmniPBX keeps host NIC and routing changes out of the first setup experience.
+          <p class="muted" style="margin-top: 8px; font-size: 0.9rem;">
+            Check this if your PBX is inside your office network. It helps phones find the server through your router.
           </p>
-          <div class="field-grid three">
-            <div class="field">
-              <label for="sip_port">SIP port</label>
-              <input id="sip_port" type="number" name="sip_port" value="{{ system_settings.sip_port }}" min="1" max="65535">
-            </div>
-            <div class="field">
-              <label for="rtp_start">RTP start</label>
-              <input id="rtp_start" type="number" name="rtp_start" value="{{ system_settings.rtp_start }}" min="1024" max="65535">
-            </div>
-            <div class="field">
-              <label for="rtp_end">RTP end</label>
-              <input id="rtp_end" type="number" name="rtp_end" value="{{ system_settings.rtp_end }}" min="1024" max="65535">
-            </div>
-          </div>
-          <div class="field">
-            <label for="local_networks">Local network CIDRs</label>
-            <input id="local_networks" type="text" name="local_networks" value="{{ system_settings.local_networks or '' }}" placeholder="192.168.1.0/24, 10.10.10.0/24">
-            <small class="muted">Optional. Helpful for NAT-aware media handling on more advanced deployments.</small>
-          </div>
-          <div class="notice notice-warn">
-            <strong>SIP ALG reminder</strong>
-            <span>If phones register but media is broken, disable SIP ALG on the upstream router before changing host networking.</span>
-          </div>
-        </details>
-      </section>
 
-      <section class="panel step-card" id="first-extension">
-        <div class="step-heading">
-          <span class="step-number">7</span>
-          <div>
-            <h3>Add a first extension</h3>
-            <p>Optional, but useful for testing a phone as soon as setup finishes.</p>
-          </div>
+          <details class="advanced-block" style="margin-top: 24px;">
+            <summary>Advanced Infrastructure</summary>
+            <div class="field-grid three" style="margin-top: 12px;">
+              <div class="field">
+                <label for="sip_port">SIP Port</label>
+                <input id="sip_port" type="number" name="sip_port" value="{{ system_settings.sip_port }}">
+              </div>
+              <div class="field">
+                <label for="rtp_start">RTP Start</label>
+                <input id="rtp_start" type="number" name="rtp_start" value="{{ system_settings.rtp_start }}">
+              </div>
+              <div class="field">
+                <label for="rtp_end">RTP End</label>
+                <input id="rtp_end" type="number" name="rtp_end" value="{{ system_settings.rtp_end }}">
+              </div>
+            </div>
+            <div class="field" style="margin-top: 12px;">
+              <label for="local_networks">Local Networks (CIDRs)</label>
+              <input id="local_networks" type="text" name="local_networks" value="{{ system_settings.local_networks or '' }}" placeholder="192.168.1.0/24">
+            </div>
+          </details>
         </div>
-        <div class="field-grid three">
-          <div class="field">
-            <label for="first_extension">Extension number</label>
-            <input id="first_extension" type="text" name="first_extension" placeholder="1001">
-          </div>
-          <div class="field">
-            <label for="first_extension_name">Display name</label>
-            <input id="first_extension_name" type="text" name="first_extension_name" placeholder="Reception">
-          </div>
-          <div class="field">
-            <label for="first_extension_secret">Extension password</label>
-            <input id="first_extension_secret" type="text" name="first_extension_secret" placeholder="Strong SIP password">
-          </div>
+
+        <div class="wizard-nav">
+          <button type="button" class="secondary" onclick="goToStep(4)">&larr; Back</button>
+          <button type="button" class="primary" onclick="goToStep(6)">Continue &rarr;</button>
         </div>
       </section>
 
-      <section class="panel step-card" id="finish">
-        <div class="step-heading">
-          <span class="step-number">8</span>
-          <div>
-            <h3>Review and finish</h3>
-            <p>Save the setup when the web address and calling address look right.</p>
+      <!-- STEP 6: Test Extension -->
+      <section class="wizard-step" id="step-6">
+        <div class="step-header-compact">
+          <span class="eyebrow">Step 6 of 7</span>
+          <h2>Your First Phone</h2>
+          <p>Create a test extension to try your PBX immediately.</p>
+        </div>
+
+        <div class="panel">
+          <div class="field-grid two">
+            <div class="field">
+              <label for="first_extension">Extension Number</label>
+              <input id="first_extension" type="text" name="first_extension" placeholder="e.g. 1001">
+            </div>
+            <div class="field">
+              <label for="first_extension_name">User Name</label>
+              <input id="first_extension_name" type="text" name="first_extension_name" placeholder="e.g. Reception">
+            </div>
+          </div>
+          <div class="field" style="margin-top: 12px;">
+            <label for="first_extension_secret">Phone Password</label>
+            <input id="first_extension_secret" type="text" name="first_extension_secret" placeholder="Pick a strong secret">
+            <small>You'll type this into your IP phone or Softphone app.</small>
           </div>
         </div>
-        <div class="summary-grid">
-          <div class="summary-row">
-            <span>Web URL</span>
-            <strong class="mono">{{ public_url }}</strong>
-          </div>
-          <div class="summary-row">
-            <span>SIP server</span>
-            <strong class="mono">{{ system_settings.external_host or env_summary.detected_host }}</strong>
-          </div>
-          <div class="summary-row">
-            <span>HTTPS mode</span>
-            <strong>{{ system_settings.ssl_mode }}</strong>
-          </div>
+
+        <div class="wizard-nav">
+          <button type="button" class="secondary" onclick="goToStep(5)">&larr; Back</button>
+          <button type="button" class="primary" onclick="generateSummary(); goToStep(7);">Review &rarr;</button>
         </div>
-        <div class="wizard-finish-grid">
-          <div class="feature-card">
-            <h4>After saving</h4>
-            <p>OmniPBX creates the admin login, stores the setup choices, and prepares the web UI for normal use.</p>
-          </div>
-          <div class="feature-card">
-            <h4>First call test</h4>
-            <p>Add another extension, register two phones, and place a simple internal call.</p>
-          </div>
+      </section>
+
+      <!-- STEP 7: Review & Finish -->
+      <section class="wizard-step" id="step-7">
+        <div class="step-header-compact">
+          <span class="eyebrow">Final Step</span>
+          <h2>Ready to Launch?</h2>
+          <p>Please double-check your settings before we start the PBX.</p>
         </div>
-        <div class="button-row">
-          <button type="submit">Finish setup</button>
+
+        <div class="panel setup-summary-final" id="final-summary-box">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="notice notice-success" style="margin-top: 24px;">
+            <strong>All systems go!</strong>
+            <span>Clicking below will save your settings and restart the PBX services. This usually takes 15-30 seconds.</span>
+        </div>
+
+        <div class="wizard-nav">
+          <button type="button" class="secondary" onclick="goToStep(6)">&larr; Back</button>
+          <button type="submit" class="primary">Launch OmniPBX</button>
         </div>
       </section>
     </form>
   </div>
 
   <aside class="wizard-side">
-    <section class="panel wizard-side-nav">
-      <h3>Setup steps</h3>
-      <div class="wizard-anchor-list">
-        <a href="#welcome" class="wizard-anchor"><span>1</span>Start</a>
-        <a href="#deployment" class="wizard-anchor"><span>2</span>Use case</a>
-        <a href="#access" class="wizard-anchor"><span>3</span>Web access</a>
-        <a href="#admin" class="wizard-anchor"><span>4</span>Owner login</a>
-        <a href="#regional" class="wizard-anchor"><span>5</span>Business</a>
-        <a href="#network" class="wizard-anchor"><span>6</span>Calling</a>
-        <a href="#first-extension" class="wizard-anchor"><span>7</span>First extension</a>
-        <a href="#finish" class="wizard-anchor"><span>8</span>Finish</a>
-      </div>
-    </section>
-
-    <section class="panel side-advanced">
-      <details {% if system_settings.setup_completed %}open{% endif %}>
-        <summary>
-          <span>Advanced</span>
-          <small>Server details and diagnostics</small>
-        </summary>
-        <div class="side-advanced-body">
-          <div class="summary-grid">
-            <div class="summary-row">
-              <span>Hostname</span>
-              <strong class="mono">{{ env_summary.hostname }}</strong>
-            </div>
-            <div class="summary-row">
-              <span>Detected IPs</span>
-              <strong class="mono">{{ env_summary.ip_addresses | join(", ") }}</strong>
-            </div>
-            <div class="summary-row">
-              <span>Firewall</span>
-              <strong>{{ env_summary.firewall_name }} ({{ env_summary.firewall_status }})</strong>
-            </div>
-            <div class="summary-row">
-              <span>HTTP / HTTPS</span>
-              <strong class="mono">{{ env_summary.proxy_http_url }} / {{ env_summary.proxy_https_url }}</strong>
-            </div>
-            <div class="summary-row">
-              <span>Security layers</span>
-              <strong>SELinux: {{ env_summary.selinux_status }} · AppArmor: {{ env_summary.apparmor_status }}</strong>
-            </div>
-          </div>
-
-          <div class="side-table-wrap">
-            <h4>Port checks</h4>
-            <table>
-              <thead>
-                <tr>
-                  <th>Port</th>
-                  <th>Selected</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for item in env_summary.ports %}
-                <tr>
-                  <td>{{ item.label }}</td>
-                  <td class="mono">{{ item.selected }}</td>
-                  <td>
-                    <span class="status-pill {% if item.status == 'free' %}online{% elif item.status == 'conflicted' %}offline{% else %}unknown{% endif %}">
-                      {{ item.status }}
-                    </span>
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-
-          <ul class="bullet-list">
-            <li>Internal secrets are generated automatically</li>
-            <li>Host NIC and routing changes stay outside first setup</li>
-            <li>Custom certificates and raw service ports can be handled later</li>
-          </ul>
-
-          {% if local_ca_ready %}
-          <div class="button-row">
-            <a class="button-link secondary" href="/setup/internal-ca.crt">Download local CA</a>
-          </div>
-          {% endif %}
+    <div class="panel side-advanced" style="position: sticky; top: 20px;">
+      <h4 style="margin-bottom: 12px;">Server Identity</h4>
+      <div class="summary-grid" style="gap: 12px;">
+        <div class="summary-row" style="padding: 8px 12px;">
+          <span>Hostname</span>
+          <strong>{{ env_summary.hostname }}</strong>
         </div>
-      </details>
-    </section>
+        <div class="summary-row" style="padding: 8px 12px;">
+          <span>IP Address</span>
+          <strong>{{ env_summary.detected_host }}</strong>
+        </div>
+        <div class="summary-row" style="padding: 8px 12px;">
+            <span>OS</span>
+            <strong>Linux</strong>
+        </div>
+      </div>
+      
+      <div style="margin-top: 24px;">
+          <h4 style="margin-bottom: 12px;">Deployment Health</h4>
+          <table style="font-size: 0.85rem;">
+            {% for item in env_summary.ports %}
+            <tr>
+              <td>{{ item.label }}</td>
+              <td class="mono">{{ item.selected }}</td>
+              <td><span class="status-pill {% if item.status == 'free' %}online{% else %}offline{% endif %}"></span></td>
+            </tr>
+            {% endfor %}
+          </table>
+      </div>
+    </div>
   </aside>
 </section>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  let currentStep = 1;
+  const totalSteps = 7;
+  const steps = document.querySelectorAll('.wizard-step');
+  const dots = document.querySelectorAll('.progress-dot');
+
+  window.goToStep = (n) => {
+    if (n < 1 || n > totalSteps) return;
+    
+    // Basic validation for "Next"
+    if (n > currentStep) {
+        const currentInputs = steps[currentStep-1].querySelectorAll('input[required], select[required]');
+        let valid = true;
+        currentInputs.forEach(input => {
+            if (!input.checkValidity()) {
+                input.reportValidity();
+                valid = false;
+            }
+        });
+        if (!valid) return;
+    }
+
+    steps[currentStep-1].classList.remove('active');
+    currentStep = n;
+    steps[currentStep-1].classList.add('active');
+    
+    updateProgress();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  function updateProgress() {
+    dots.forEach((dot, idx) => {
+      dot.classList.remove('active', 'complete');
+      if (idx + 1 < currentStep) dot.classList.add('complete');
+      if (idx + 1 === currentStep) dot.classList.add('active');
+    });
+  }
+
+  window.applyLocationPreset = (type) => {
+    const depSelect = document.querySelector('select[name="deployment_mode"]');
+    const accSelect = document.querySelector('select[name="access_mode"]');
+    const behindNat = document.querySelector('input[name="behind_nat_raw"]');
+    const details = document.getElementById('location-details');
+    const nextBtn = document.getElementById('step-4-next');
+    
+    // UI selection visual feedback
+    document.querySelectorAll('.big-choice-card').forEach(c => c.classList.remove('selected'));
+    event.currentTarget.classList.add('selected');
+
+    if (type === 'office') {
+        depSelect.value = 'office';
+        accSelect.value = 'local_network';
+        behindNat.checked = true;
+        document.getElementById('location-label-text').textContent = "Office Access Address (IP)";
+        document.getElementById('location-help-text').textContent = "We recommend using your server's local IP address.";
+        document.getElementById('external_host').value = "{{ env_summary.detected_host }}";
+    } else {
+        depSelect.value = 'public_server';
+        accSelect.value = 'public_domain';
+        behindNat.checked = false;
+        document.getElementById('location-label-text').textContent = "Business Domain Name";
+        document.getElementById('location-help-text').textContent = "Required for automatic HTTPS security on the public internet.";
+        document.getElementById('external_host').placeholder = "e.g. pbx.mycompany.com";
+        document.getElementById('external_host').value = "";
+    }
+    
+    details.style.display = 'block';
+    nextBtn.style.display = 'inline-flex';
+  };
+
+  window.toggleAdvancedNetwork = () => {
+      const adv = document.getElementById('advanced-network-options');
+      const isVisible = adv.style.display === 'block';
+      adv.style.display = isVisible ? 'none' : 'block';
+      event.currentTarget.textContent = isVisible ? 'Show advanced settings' : 'Hide advanced settings';
+  };
+
+  window.generateSummary = () => {
+      const box = document.getElementById('final-summary-box');
+      const data = {
+          "Admin User": document.getElementById('admin_username').value,
+          "Admin Email": document.getElementById('admin_email').value,
+          "Company": document.getElementById('company_name').value,
+          "PBX Address": document.getElementById('external_host').value,
+          "Location": document.querySelector('select[name="deployment_mode"]').value,
+          "Behind NAT": document.querySelector('input[name="behind_nat_raw"]').checked ? "Yes" : "No"
+      };
+      
+      let html = '';
+      for (const [k, v] of Object.entries(data)) {
+          html += `<div class="setup-summary-item"><span>${k}</span><strong>${v}</strong></div>`;
+      }
+      box.innerHTML = html;
+  };
+});
+</script>
 {% endblock %}
