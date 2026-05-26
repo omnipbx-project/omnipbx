@@ -376,6 +376,7 @@ def env_map(container_name):
 app_env = env_map("omnipbx-app")
 caddy_env = env_map("omnipbx-caddy")
 mapping = {
+    "POSTGRES_PASSWORD": app_env.get("POSTGRES_PASSWORD") or app_env.get("OMNIPBX_DB_PASSWORD"),
     "OMNIPBX_WEB_PORT": app_env.get("OMNIPBX_HTTP_PORT"),
     "ASTERISK_SIP_PORT": app_env.get("OMNIPBX_SIP_PORT"),
     "ASTERISK_RTP_START": app_env.get("OMNIPBX_RTP_START"),
