@@ -44,6 +44,9 @@ pulled from a published Docker image instead of being built on user servers.
 For local development, use `deploy/compose.dev.yaml` together with
 `deploy/compose.yaml` to build the app image from `apps/app`.
 
+Restart the active stack with:
+`./scripts/omnipbxctl restart`
+
 See `docs/release.md` for Docker Hub and GitHub Actions release setup.
 
 ## Light Runtime Direction

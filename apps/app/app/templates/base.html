@@ -55,17 +55,53 @@
     <div class="shell-main">
       <header class="topbar">
         <div class="topbar-copy">
-          <span class="eyebrow">Operations Center</span>
           <h2>{{ page_title }}</h2>
+          {% if page_description %}
           <p>{{ page_description }}</p>
+          {% endif %}
         </div>
         <div class="topbar-actions">
+          {% if active_nav == '/dashboard' %}
+          <div class="dashboard-search">
+            <span aria-hidden="true">⌕</span>
+            <input type="search" placeholder="Search user, extension, call..." aria-label="Search user, extension, call">
+          </div>
+          <div class="notification-menu">
+            <button type="button" class="icon-button notification-trigger" id="dashboard-notifications" aria-label="Important messages" aria-expanded="false">
+              <span aria-hidden="true">🔔</span>
+              {% if dashboard_notifications %}
+              <span class="notification-badge">{{ dashboard_notifications|length }}</span>
+              {% endif %}
+            </button>
+            <div class="notification-panel" id="dashboard-notification-panel" aria-labelledby="dashboard-notifications">
+              <div class="notification-panel-title">Important Messages</div>
+              {% for item in dashboard_notifications %}
+              <div class="notification-item">
+                <span class="notification-severity {{ item.severity }}"></span>
+                <div>
+                  <strong>{{ item.title }}</strong>
+                  <span>{{ item.description }}</span>
+                  <small>{{ item.time }}</small>
+                </div>
+              </div>
+              {% else %}
+              <div class="notification-empty">No important messages</div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
           <button type="button" class="icon-button" id="theme-toggle" aria-label="Toggle light and dark mode" title="Toggle theme">
             <span class="theme-toggle-sun">Light</span>
             <span class="theme-toggle-moon">Dark</span>
           </button>
           {% if current_user %}
+          {% if active_nav == '/dashboard' %}
+          <a href="/logout" class="topbar-profile" aria-label="Logged in as {{ current_user.username }}">
+            <span class="profile-photo">{{ current_user.username[:1]|upper }}</span>
+          </a>
+          {% else %}
           <a href="/logout" class="button-link secondary">Logout</a>
+          {% endif %}
           {% endif %}
         </div>
       </header>
@@ -88,7 +124,6 @@
       <div class="guest-brand">
         <div class="brand-mark">O</div>
         <div>
-          <span class="brand-badge">Portable PBX</span>
           <strong>{{ app_name }}</strong>
         </div>
       </div>

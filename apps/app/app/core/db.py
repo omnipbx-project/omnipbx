@@ -20,6 +20,9 @@ def initialize_schema() -> None:
         display_name VARCHAR(128) NOT NULL,
         secret VARCHAR(128) NOT NULL,
         context VARCHAR(64) NOT NULL DEFAULT 'omnipbx-internal',
+        transport VARCHAR(40) NOT NULL DEFAULT 'transport-udp',
+        codecs VARCHAR(200) NOT NULL DEFAULT 'ulaw,alaw,g722',
+        video_codecs VARCHAR(200) NOT NULL DEFAULT '',
         enabled BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -203,6 +206,34 @@ def initialize_schema() -> None:
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS user_permissions (
+        id BIGSERIAL PRIMARY KEY,
+        name VARCHAR(80) NOT NULL UNIQUE,
+        description TEXT NOT NULL DEFAULT '',
+        features JSONB NOT NULL DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS user_groups (
+        id BIGSERIAL PRIMARY KEY,
+        name VARCHAR(80) NOT NULL UNIQUE,
+        description TEXT NOT NULL DEFAULT '',
+        permission_id BIGINT REFERENCES user_permissions(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS user_profiles (
+        extension VARCHAR(32) PRIMARY KEY REFERENCES extensions(extension) ON UPDATE CASCADE ON DELETE CASCADE,
+        email VARCHAR(255),
+        photo_path VARCHAR(500),
+        group_id BIGINT REFERENCES user_groups(id) ON DELETE SET NULL,
+        permission_id BIGINT REFERENCES user_permissions(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS api_push_settings (
         id SMALLINT PRIMARY KEY,
         enabled BOOLEAN NOT NULL DEFAULT FALSE,
@@ -357,6 +388,18 @@ def initialize_schema() -> None:
             cursor.execute("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS dialing_region VARCHAR(16) NOT NULL DEFAULT '+880'")
             cursor.execute("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS admin_email VARCHAR(255)")
             cursor.execute("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS local_networks VARCHAR(500)")
+            cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS transport VARCHAR(40) NOT NULL DEFAULT 'transport-udp'")
+            cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS codecs VARCHAR(200) NOT NULL DEFAULT 'ulaw,alaw,g722'")
+            cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS video_codecs VARCHAR(200) NOT NULL DEFAULT ''")
+            cursor.execute("ALTER TABLE extensions ALTER COLUMN codecs SET DEFAULT 'ulaw,alaw,g722'")
+            cursor.execute("ALTER TABLE extensions ALTER COLUMN video_codecs SET DEFAULT ''")
+            cursor.execute("UPDATE extensions SET transport = 'transport-udp' WHERE transport IS NULL OR transport = ''")
+            cursor.execute("UPDATE extensions SET codecs = 'ulaw,alaw,g722' WHERE transport = 'transport-udp' AND (codecs IS NULL OR codecs = '' OR codecs = 'ulaw,alaw')")
+            cursor.execute("UPDATE extensions SET codecs = 'g722,ulaw,alaw' WHERE transport = 'transport-udp-softphone' AND (codecs IS NULL OR codecs = '' OR codecs = 'ulaw,alaw' OR codecs = 'ulaw,alaw,g722')")
+            cursor.execute("UPDATE extensions SET codecs = 'opus,g722,ulaw,alaw' WHERE transport = 'transport-wss' AND (codecs IS NULL OR codecs = '' OR codecs = 'ulaw,alaw' OR codecs = 'ulaw,alaw,g722')")
+            cursor.execute("UPDATE extensions SET video_codecs = '' WHERE video_codecs IS NULL")
+            cursor.execute("UPDATE extensions SET video_codecs = 'h264,vp8' WHERE transport = 'transport-udp-softphone' AND video_codecs = ''")
+            cursor.execute("UPDATE extensions SET video_codecs = 'vp8,h264' WHERE transport = 'transport-wss' AND video_codecs = ''")
             cursor.execute("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'admin'")
             cursor.execute(
                 """
@@ -369,6 +412,30 @@ def initialize_schema() -> None:
             cursor.execute("UPDATE admin_users SET role = 'admin' WHERE is_owner = FALSE AND role NOT IN ('owner', 'admin', 'read_only')")
             cursor.execute("UPDATE admin_users SET is_owner = TRUE WHERE role = 'owner'")
             cursor.execute("UPDATE admin_users SET is_owner = FALSE WHERE role = 'admin' OR role = 'read_only'")
+            cursor.execute(
+                """
+                INSERT INTO user_permissions (name, description, features)
+                VALUES
+                    ('User', 'Can use their own phone, voicemail, contacts, and personal call history.', '["Own phone", "Voicemail", "Contacts"]'::jsonb),
+                    ('Supervisor', 'Can view team users, team call history, and basic reports.', '["Team users", "Team calls", "Reports"]'::jsonb),
+                    ('Admin', 'Can manage users, groups, phone lines, call flow, reports, and settings.', '["Users", "Trunks", "Call flow", "Settings"]'::jsonb)
+                ON CONFLICT (name) DO NOTHING
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO user_groups (name, description, permission_id)
+                SELECT group_row.name, group_row.description, permission.id
+                FROM (
+                    VALUES
+                        ('Sales', 'People who handle sales calls and customer follow-up.', 'User'),
+                        ('Support', 'People who help customers and manage support calls.', 'Supervisor'),
+                        ('Admin', 'People who manage the PBX system.', 'Admin')
+                ) AS group_row(name, description, permission_name)
+                LEFT JOIN user_permissions permission ON permission.name = group_row.permission_name
+                ON CONFLICT (name) DO NOTHING
+                """
+            )
             cursor.execute(
                 """
                 INSERT INTO api_push_settings (

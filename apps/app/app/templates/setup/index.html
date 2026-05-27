@@ -299,10 +299,9 @@
                 <div class="field">
                     <label>Access Mode</label>
                     <select name="access_mode">
-                        <option value="local_network">Private Network (HTTPS)</option>
-                        <option value="public_domain">Public Domain (Auto HTTPS)</option>
-                        <option value="public_ip">Public IP (HTTPS)</option>
-                        <option value="http_only">No HTTPS (HTTP only)</option>
+                        <option value="public_domain">Public Domain</option>
+                        <option value="local_network">Private Office Network</option>
+                        <option value="private_self_hosted">Bring Your Own Certificate</option>
                     </select>
                 </div>
               </div>
@@ -509,15 +508,15 @@ document.addEventListener('DOMContentLoaded', () => {
         depSelect.value = 'office';
         accSelect.value = 'local_network';
         behindNat.checked = true;
-        document.getElementById('location-label-text').textContent = "Office Access Address (IP)";
-        document.getElementById('location-help-text').textContent = "We recommend using your server's local IP address.";
+        document.getElementById('location-label-text').textContent = "Office Access Address";
+        document.getElementById('location-help-text').textContent = "Use the local name or IP address people will type inside the office.";
         document.getElementById('external_host').value = "{{ env_summary.detected_host }}";
     } else {
         depSelect.value = 'public_server';
         accSelect.value = 'public_domain';
         behindNat.checked = false;
         document.getElementById('location-label-text').textContent = "Business Domain Name";
-        document.getElementById('location-help-text').textContent = "Required for automatic HTTPS security on the public internet.";
+        document.getElementById('location-help-text').textContent = "Recommended for production HTTPS, Webphone, and remote access.";
         document.getElementById('external_host').placeholder = "e.g. pbx.mycompany.com";
         document.getElementById('external_host').value = "";
     }

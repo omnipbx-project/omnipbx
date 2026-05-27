@@ -9,8 +9,15 @@ from app.core.settings import get_settings
 from app.services.audio import normalize_sound_name
 
 
+DEFAULT_EXTENSION_TRANSPORT = "transport-udp"
+DEFAULT_EXTENSION_CODECS = "ulaw,alaw,g722"
+DEFAULT_EXTENSION_VIDEO_CODECS = ""
+WEBPHONE_TRANSPORT = "transport-wss"
+SOFTPHONE_TRANSPORT = "transport-udp-softphone"
+
+
 FETCH_ENABLED_EXTENSIONS_SQL = """
-SELECT extension, display_name, secret, context
+SELECT extension, display_name, secret, context, transport, codecs, video_codecs
 FROM extensions
 WHERE enabled = TRUE
 ORDER BY extension;
@@ -224,14 +231,32 @@ def render_pjsip_config(extensions: list[dict]) -> str:
         display_name = item["display_name"]
         secret = item["secret"]
         context = item["context"]
+        transport = item.get("transport") or DEFAULT_EXTENSION_TRANSPORT
+        pjsip_transport = WEBPHONE_TRANSPORT if transport == WEBPHONE_TRANSPORT else DEFAULT_EXTENSION_TRANSPORT
+        codecs = item.get("codecs") or DEFAULT_EXTENSION_CODECS
+        video_codecs = item.get("video_codecs") or DEFAULT_EXTENSION_VIDEO_CODECS
+        allowed_codecs = ",".join(
+            codec_group for codec_group in [codecs, video_codecs] if codec_group
+        )
+        webphone_options = ""
+        if transport == WEBPHONE_TRANSPORT:
+            webphone_options = (
+                "webrtc = yes\n"
+                "use_avpf = yes\n"
+                "media_encryption = dtls\n"
+                "dtls_auto_generate_cert = yes\n"
+                "ice_support = yes\n"
+                "rtcp_mux = yes\n"
+                "media_use_received_transport = yes\n"
+            )
         blocks.append(
             (
                 f"[{extension}]\n"
                 "type = endpoint\n"
-                "transport = transport-udp\n"
+                f"transport = {pjsip_transport}\n"
                 f"context = {context}\n"
                 "disallow = all\n"
-                "allow = ulaw,alaw\n"
+                f"allow = {allowed_codecs}\n"
                 "identify_by = username,auth_username\n"
                 f"auth = auth-{extension}\n"
                 f"aors = {extension}\n"
@@ -240,6 +265,7 @@ def render_pjsip_config(extensions: list[dict]) -> str:
                 "force_rport = yes\n"
                 "rewrite_contact = yes\n"
                 "rtp_symmetric = yes\n"
+                f"{webphone_options}"
                 "\n"
                 f"[auth-{extension}]\n"
                 "type = auth\n"

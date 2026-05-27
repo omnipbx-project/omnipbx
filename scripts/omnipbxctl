@@ -7,6 +7,7 @@ import os
 import secrets
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -14,6 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEPLOY_DIR = REPO_ROOT / "deploy"
 COMPOSE_FILE = DEPLOY_DIR / "compose.yaml"
 APP_WORKDIR = "/opt/omnipbx"
+DEFAULT_SERVICES = ("postgres", "app", "caddy")
 
 
 def main() -> int:
@@ -74,6 +76,41 @@ def main() -> int:
         help="Skip confirmation prompts.",
     )
 
+    restart_parser = subparsers.add_parser(
+        "restart",
+        help="Restart the OmniPBX Docker Compose stack.",
+    )
+    restart_parser.add_argument(
+        "services",
+        nargs="*",
+        default=list(DEFAULT_SERVICES),
+        help="Optional Compose services to restart. Defaults to postgres app caddy.",
+    )
+    restart_parser.add_argument(
+        "--project-root",
+        default=str(REPO_ROOT),
+        help="OmniPBX project root. Defaults to the omnipbxctl parent directory.",
+    )
+    restart_parser.add_argument(
+        "--compose-file",
+        action="append",
+        default=[],
+        help=(
+            "Compose file to use. Repeat for overrides. Defaults to the active "
+            "running stack files, then deploy/compose.yaml."
+        ),
+    )
+    restart_parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="Use deploy/compose.dev.yaml together with deploy/compose.yaml.",
+    )
+    restart_parser.add_argument(
+        "--no-status",
+        action="store_true",
+        help="Skip printing docker compose ps after restart.",
+    )
+
     args = parser.parse_args()
     if args.command == "reset-admin-password":
         return _reset_admin_password(
@@ -89,6 +126,14 @@ def main() -> int:
             check_only=args.check_only,
             force=args.force,
             non_interactive=args.non_interactive,
+        )
+    if args.command == "restart":
+        return _restart_stack(
+            project_root=Path(args.project_root),
+            compose_files=[Path(path) for path in args.compose_file],
+            dev=args.dev,
+            services=args.services,
+            show_status=not args.no_status,
         )
     return 1
 
@@ -254,6 +299,168 @@ def _run_update(
 
     completed = subprocess.run(command, env=os.environ.copy())
     return completed.returncode
+
+
+def _restart_stack(
+    *,
+    project_root: Path,
+    compose_files: list[Path],
+    dev: bool,
+    services: list[str],
+    show_status: bool,
+) -> int:
+    project_root = project_root.resolve()
+    if not project_root.exists():
+        print(f"Project root not found: {project_root}", file=sys.stderr)
+        return 2
+
+    selected_files = _select_compose_files(
+        project_root=project_root,
+        compose_files=compose_files,
+        dev=dev,
+    )
+    for compose_file in selected_files:
+        if not compose_file.exists():
+            print(f"Compose file not found: {compose_file}", file=sys.stderr)
+            return 2
+
+    service_names = [service.strip() for service in services if service.strip()]
+    if not service_names:
+        service_names = list(DEFAULT_SERVICES)
+
+    print("Restarting OmniPBX stack...", flush=True)
+    print("Compose files:", flush=True)
+    for compose_file in selected_files:
+        print(f"  - {compose_file}", flush=True)
+    print(f"Services: {' '.join(service_names)}", flush=True)
+
+    command = _compose_command(selected_files) + ["restart", *service_names]
+    completed = subprocess.run(command, cwd=project_root, env=os.environ.copy())
+    if completed.returncode != 0:
+        return completed.returncode
+
+    if show_status:
+        _wait_for_services(selected_files, service_names, cwd=project_root)
+        print()
+        status_command = _compose_command(selected_files) + ["ps"]
+        status = subprocess.run(status_command, cwd=project_root, env=os.environ.copy())
+        return status.returncode
+    return 0
+
+
+def _select_compose_files(
+    *,
+    project_root: Path,
+    compose_files: list[Path],
+    dev: bool,
+) -> list[Path]:
+    if compose_files:
+        return [_resolve_project_path(project_root, path) for path in compose_files]
+
+    compose_file = project_root / "deploy" / "compose.yaml"
+    dev_compose_file = project_root / "deploy" / "compose.dev.yaml"
+    if dev:
+        return [compose_file, dev_compose_file]
+
+    active_files = _active_compose_files(project_root)
+    if active_files:
+        return active_files
+
+    return [compose_file]
+
+
+def _active_compose_files(project_root: Path) -> list[Path]:
+    completed = subprocess.run(
+        [
+            "docker",
+            "inspect",
+            "omnipbx-app",
+            "--format",
+            '{{ index .Config.Labels "com.docker.compose.project.config_files" }}',
+        ],
+        text=True,
+        capture_output=True,
+    )
+    if completed.returncode != 0:
+        return []
+
+    files = []
+    for raw_file in completed.stdout.strip().split(","):
+        if not raw_file:
+            continue
+        compose_file = _resolve_project_path(project_root, Path(raw_file))
+        if compose_file.exists():
+            files.append(compose_file)
+    return files
+
+
+def _resolve_project_path(project_root: Path, path: Path) -> Path:
+    if path.is_absolute():
+        return path
+    return (project_root / path).resolve()
+
+
+def _compose_command(compose_files: list[Path]) -> list[str]:
+    command = ["docker", "compose", "--progress", "plain"]
+    for compose_file in compose_files:
+        command.extend(["-f", str(compose_file)])
+    return command
+
+
+def _wait_for_services(
+    compose_files: list[Path],
+    services: list[str],
+    *,
+    cwd: Path,
+    timeout_seconds: int = 30,
+) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    service_ids = _compose_service_ids(compose_files, services, cwd=cwd)
+    if not service_ids:
+        return
+
+    while time.monotonic() < deadline:
+        if _services_ready(service_ids):
+            return
+        time.sleep(1)
+
+
+def _compose_service_ids(
+    compose_files: list[Path],
+    services: list[str],
+    *,
+    cwd: Path,
+) -> list[str]:
+    command = _compose_command(compose_files) + ["ps", "-q", *services]
+    completed = subprocess.run(command, cwd=cwd, text=True, capture_output=True)
+    if completed.returncode != 0:
+        return []
+    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+
+
+def _services_ready(container_ids: list[str]) -> bool:
+    for container_id in container_ids:
+        completed = subprocess.run(
+            [
+                "docker",
+                "inspect",
+                "--format",
+                "{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}",
+                container_id,
+            ],
+            text=True,
+            capture_output=True,
+        )
+        if completed.returncode != 0:
+            return False
+        state = completed.stdout.strip().split()
+        status = state[0] if state else ""
+        health = state[1] if len(state) > 1 else ""
+        if status != "running":
+            return False
+        if health in {"starting", "unhealthy"}:
+            return False
+    return True
 
 
 if __name__ == "__main__":

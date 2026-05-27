@@ -9,41 +9,18 @@ templates = Jinja2Templates(directory="app/templates")
 
 NAV_SECTIONS = [
     {
-        "title": "Overview",
+        "title": "Main",
         "items": [
             {"href": "/dashboard", "label": "Dashboard", "icon": "📊"},
-            {"href": "/status", "label": "Live Status", "icon": "🟢"},
-            {"href": "/call-logs", "label": "Call Logs", "icon": "📜"},
-            {"href": "/callbacks", "label": "Callbacks", "icon": "🤙"},
-        ],
-    },
-    {
-        "title": "Users & Access",
-        "items": [
-            {"href": "/admin-accounts", "label": "Admin Accounts", "icon": "👤"},
-            {"href": "/extensions", "label": "Extensions", "icon": "📞"},
-            {"href": "/softphone", "label": "Softphone", "icon": "💻"},
-            {"href": "/setup", "label": "Setup Wizard", "icon": "🪄"},
-        ],
-    },
-    {
-        "title": "Routing",
-        "items": [
+            {"href": "/extensions", "label": "Users", "icon": "👥"},
             {"href": "/trunks", "label": "Trunks", "icon": "🌐"},
-            {"href": "/inbound-routes", "label": "Inbound", "icon": "📥"},
-            {"href": "/ring-groups", "label": "Ring Groups", "icon": "👥"},
-            {"href": "/queues", "label": "Queues", "icon": "⏳"},
-            {"href": "/ivrs", "label": "IVR Menus", "icon": "🤖"},
-            {"href": "/working-hours", "label": "Working Hours", "icon": "🕒"},
-            {"href": "/welcome-messages", "label": "Welcome", "icon": "👋"},
-        ],
-    },
-    {
-        "title": "Platform",
-        "items": [
-            {"href": "/api-push", "label": "API Push", "icon": "🚀"},
-            {"href": "/audit-log", "label": "Audit Log", "icon": "🔍"},
-            {"href": "/backup-restore", "label": "Backup", "icon": "💾"},
+            {"href": "/inbound-routes", "label": "Call Flow", "icon": "↗"},
+            {"href": "/call-logs", "label": "Calls", "icon": "☎"},
+            {"href": "/welcome-messages", "label": "Voicemail", "icon": "✉"},
+            {"href": "/callbacks", "label": "Contacts", "icon": "◎"},
+            {"href": "/audit-log", "label": "Reports", "icon": "▣"},
+            {"href": "/setup", "label": "Settings", "icon": "⚙"},
+            {"href": "/status", "label": "Advanced", "icon": "◇"},
         ],
     },
 ]

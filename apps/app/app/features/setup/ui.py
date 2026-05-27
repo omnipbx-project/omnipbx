@@ -57,29 +57,19 @@ def setup_page(
         ],
         access_modes=[
             {
-                "value": "local_network",
-                "label": "Private Network HTTPS",
-                "description": "Best for office LAN or private IP use. OmniPBX sets up local HTTPS with its own trusted local CA.",
-            },
-            {
                 "value": "public_domain",
-                "label": "Recommended: Domain + Free HTTPS",
-                "description": "Best production option. Use a real public domain and OmniPBX will request free HTTPS automatically.",
+                "label": "Public Domain",
+                "description": "Recommended for production. Use a real domain and OmniPBX will request trusted HTTPS automatically.",
             },
             {
-                "value": "public_ip",
-                "label": "Public IP + Free HTTPS",
-                "description": "Advanced option when you do not have a domain. Works with public IP certificates and shorter renewal cycles.",
+                "value": "local_network",
+                "label": "Private Office Network",
+                "description": "Best for office LAN use. OmniPBX sets up local HTTPS with its own trusted local CA.",
             },
             {
                 "value": "private_self_hosted",
-                "label": "Upload Existing Certificate",
-                "description": "Advanced option for teams who already manage their own certificate files.",
-            },
-            {
-                "value": "http_only",
-                "label": "No HTTPS Yet",
-                "description": "Temporary setup mode. Start with HTTP now and switch to HTTPS after the PBX is online.",
+                "label": "Bring Your Own Certificate",
+                "description": "Use this when you already have certificate files for your PBX address.",
             },
         ],
         countries=[

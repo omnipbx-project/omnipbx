@@ -1,282 +1,554 @@
-{% from "_ui_macros.html" import feature_card, stat_card %}
 {% extends "base.html" %}
 {% block content %}
-<section class="page-grid">
-  <div class="panel" id="updates" data-update-can-start="{{ 'true' if update_overview.can_start_update else 'false' }}">
+<section class="dashboard-grid">
+  <article class="panel dashboard-users">
     <div class="section-header">
-      <div class="section-copy">
-        <h3>Manual updates</h3>
-        <p>OmniPBX never auto-updates itself. This install watches its tracked git branch, shows you when upstream changes arrive, and updates only when you click or run the CLI manually.</p>
-      </div>
-      <div class="button-row">
-        <button type="button" class="secondary" id="refresh-update-status">Check now</button>
-        {% if current_user and current_user.role != 'read_only' %}
-        <button type="button" class="primary" id="start-update">Update OmniPBX</button>
-        {% endif %}
+      <h3>Users</h3>
+      <div class="button-row compact-actions">
+        <button type="button" class="secondary arrow-button" onclick="scrollUsers(-1)" aria-label="Previous users">&lt;</button>
+        <button type="button" class="secondary arrow-button" onclick="scrollUsers(1)" aria-label="Next users">&gt;</button>
+        <a href="/extensions" class="button-link secondary">View All</a>
       </div>
     </div>
-
-    <div class="metric-grid compact">
-      {{ stat_card("Current version", update_overview.current_version, "The version serving this dashboard right now", "default") }}
-      {{ stat_card("Latest version", update_overview.latest_version, "The version found on the tracked upstream branch", "success" if update_overview.update_available else "default") }}
-      {{ stat_card("Update mode", "Manual only", "The web UI will never auto-apply a release without an admin click", "warning") }}
-      {{ stat_card("Last check", update_overview.last_checked_at or "Not yet", "Latest git upstream check time", "default") }}
-    </div>
-
-    <div id="update-notice" class="notice {% if update_overview.update_status.state == 'error' %}notice-error{% elif update_overview.update_available %}notice-warn{% else %}notice-info{% endif %}" style="margin-top: 16px;">
-      <strong id="update-notice-title">
-        {% if update_overview.update_status.state in ['queued', 'updating'] %}
-        Update running
-        {% elif update_overview.update_status.state == 'error' %}
-        Update failed
-        {% elif update_overview.update_available %}
-        Update available
-        {% else %}
-        Update status
-        {% endif %}
-      </strong>
-      <span id="update-notice-copy">
-        {% if update_overview.update_status.state in ['queued', 'updating'] %}
-        {{ update_overview.update_status.message }}
-        {% elif update_overview.update_status.state == 'error' %}
-        {{ update_overview.update_status.message }}
-        {% elif update_overview.check_error %}
-        {{ update_overview.check_message }} {{ update_overview.check_error }}
-        {% else %}
-        {{ update_overview.check_message }}
-        {% endif %}
-      </span>
-    </div>
-
-    <div class="summary-grid" style="margin-top: 16px;">
-      <div class="summary-row">
-        <span>Git branch</span>
-        <strong id="update-branch-state">{{ update_overview.upstream_ref or "Not configured" }}</strong>
-      </div>
-      <div class="summary-row">
-        <span>Git remote</span>
-        <strong id="update-remote-link">{{ update_overview.remote_url or "Not available" }}</strong>
-      </div>
-      <div class="summary-row">
-        <span>Updater state</span>
-        <strong id="update-runner-state">{{ update_overview.update_status.state|replace('_', ' ')|title }}</strong>
-      </div>
-      <div class="summary-row">
-        <span>Commits behind</span>
-        <strong id="update-behind-count">{{ update_overview.commits_behind }}</strong>
-      </div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="section-header">
-      <div class="section-copy">
-        <h3>Realtime snapshot</h3>
-        <p>A clean operations view of extension inventory, live registrations, and where to go next.</p>
-      </div>
-      <div class="button-row">
-        <a class="button-link secondary" href="/status">Live Status</a>
-        <a class="button-link secondary" href="/extensions">Manage Extensions</a>
-      </div>
-    </div>
-    <div class="metric-grid">
-      {{ stat_card("Extensions", extension_count, "Configured endpoints in OmniPBX", "default") }}
-      {{ stat_card("Enabled", enabled_extension_count, "Ready to register and receive calls", "success") }}
-      {{ stat_card("Online phones", status_summary.extensions_online, "Live PJSIP registrations right now", "success") }}
-      {{ stat_card("Offline phones", status_summary.extensions_offline, "Needs registration or troubleshooting", "warning") }}
-    </div>
-  </div>
-
-  <section class="page-grid two-column">
-    <div class="panel">
-      <div class="section-header">
-        <div class="section-copy">
-          <h3>What is healthy right now</h3>
-          <p>Use this short operational readout before you jump into the deeper feature pages.</p>
+    <div class="user-row" id="user-carousel">
+      {% for ext in extensions %}
+      {% set status = extension_statuses.get(ext.extension, 'Unknown') %}
+      {% set status_class = 'online' if status == 'Online' else 'offline' if status == 'Offline' else 'unknown' %}
+      <div class="user-card">
+        <div class="avatar-wrap">
+          <div class="dashboard-avatar">{{ (ext.display_name or ext.extension)[:1]|upper }}</div>
+          <div class="status-dot {{ status_class }}"></div>
+        </div>
+        <div class="user-info">
+          <strong>{{ ext.display_name or 'User ' ~ ext.extension }}</strong>
+          <span>{{ ext.extension }}</span>
+          <small>Extension User</small>
+          <em>{{ status }}</em>
         </div>
       </div>
-      <div class="summary-grid">
-        <div class="summary-row">
-          <span>Registration health</span>
-          <strong>{{ status_summary.extensions_online }} online / {{ extension_count }} total</strong>
-        </div>
-        <div class="summary-row">
-          <span>Provisioning readiness</span>
-          <strong>{{ enabled_extension_count }} enabled endpoints</strong>
-        </div>
-        <div class="summary-row">
-          <span>Next task</span>
-          <strong>{% if extension_count < 2 %}Create more extensions{% else %}Add trunks and routes{% endif %}</strong>
-        </div>
+      {% else %}
+      <div class="empty-state compact-empty">
+        <p>No users configured</p>
       </div>
-      <hr class="divider">
-      <div class="button-row">
-        <a class="button-link secondary" href="/trunks">Configure trunks</a>
-        <a class="button-link secondary" href="/inbound-routes">Review inbound routing</a>
-        <a class="button-link secondary" href="/api-push">Open API push</a>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="section-header">
-        <div class="section-copy">
-          <h3>Product direction</h3>
-          <p>This redesign keeps the richer PBX feel from your demo, but uses maintainable feature templates instead of one giant file.</p>
-        </div>
-      </div>
-      <ul class="bullet-list">
-        <li>Feature pages stay separate and easy to reason about.</li>
-        <li>Light and dark mode are built into the shared shell.</li>
-        <li>Operational pages now favor clear status, quick actions, and readable density.</li>
-      </ul>
-    </div>
-  </section>
-
-  <div class="panel">
-    <div class="section-header">
-      <div class="section-copy">
-        <h3>Feature modules</h3>
-        <p>The core PBX areas below are still separate modules, routes, and templates, even after the visual refresh.</p>
-      </div>
-    </div>
-    <div class="feature-grid">
-      {% for card in feature_cards %}
-      {{ feature_card(card.title, card.href, card.detail, card.source) }}
       {% endfor %}
     </div>
+  </article>
+
+  <div class="dashboard-two">
+    <article class="panel">
+      <div class="section-header">
+        <h3>Ongoing Calls</h3>
+      </div>
+      {% if ongoing_calls %}
+      <div class="table-scroll short-table">
+        <table>
+          <thead>
+            <tr><th>From</th><th>To</th><th>Duration</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            {% for call in ongoing_calls[:4] %}
+            <tr>
+              <td>{{ call["from"] }}</td>
+              <td>{{ call["to"] }}</td>
+              <td>{{ call.duration }}</td>
+              <td><span class="status-pill online">{{ call.status }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty-state compact-empty">
+        <p>No ongoing calls right now</p>
+      </div>
+      {% endif %}
+    </article>
+
+    <article class="panel">
+      <div class="section-header">
+        <h3>Trunks</h3>
+        <a href="/trunks" class="button-link secondary">Manage</a>
+      </div>
+      {% if trunks %}
+      <div class="table-scroll short-table">
+        <table>
+          <thead>
+            <tr><th>Trunk</th><th>Provider</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            {% for trunk in trunks[:4] %}
+            {% set trunk_status = trunk.status|default('Warning') %}
+            {% set trunk_class = 'online' if trunk_status == 'Online' else 'offline' if trunk_status == 'Offline' else 'warn' %}
+            <tr>
+              <td>{{ trunk.name }}</td>
+              <td>{{ trunk.provider }}</td>
+              <td><span class="status-pill {{ trunk_class }}">{{ trunk_status }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty-state compact-empty">
+        <p>No trunks configured</p>
+      </div>
+      {% endif %}
+    </article>
+  </div>
+
+  <div class="dashboard-lower">
+    <article class="panel call-log-card">
+      <div class="section-header">
+        <h3>Recent Call Logs</h3>
+        <a href="/call-logs" class="button-link secondary">View All</a>
+      </div>
+      <div class="table-scroll call-log-scroll">
+        <table>
+          <thead>
+            <tr><th>Time</th><th>From</th><th>To</th><th>Type</th><th>Duration</th></tr>
+          </thead>
+          <tbody>
+            {% for call in recent_call_logs[:20] %}
+            <tr>
+              <td>{{ call.time }}</td>
+              <td>{{ call["from"] }}</td>
+              <td>{{ call["to"] }}</td>
+              <td>{{ call.type }}</td>
+              <td>{{ call.duration }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="muted">No recent calls</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <article class="panel">
+      <div class="section-header">
+        <h3>Server Performance</h3>
+      </div>
+      <div class="performance-grid">
+        {% for label, value in [("CPU", metrics.cpu), ("RAM", metrics.ram), ("Disk", metrics.disk)] %}
+        <div class="progress-metric" style="--value: {{ value|int }};">
+          <div class="progress-ring">
+            <span>{{ value }}%</span>
+          </div>
+          <strong>{{ label }}</strong>
+        </div>
+        {% endfor %}
+      </div>
+    </article>
+
+    <article class="panel system-log-card">
+      <div class="section-header">
+        <h3>System Logs</h3>
+        <a href="/audit-log" class="button-link secondary">View All</a>
+      </div>
+      <div class="log-list">
+        {% for log in logs %}
+        {% set severity = log.severity|default('INFO') %}
+        <div class="log-row">
+          <span>{{ log.time }}</span>
+          <strong>{{ log.message }}</strong>
+          <em class="severity-badge {{ severity|lower }}">{{ severity }}</em>
+        </div>
+        {% else %}
+        <div class="log-row">
+          <span>Now</span>
+          <strong>No recent system events.</strong>
+          <em class="severity-badge info">INFO</em>
+        </div>
+        {% endfor %}
+      </div>
+    </article>
   </div>
 </section>
 
+<style>
+  .dashboard-grid {
+    display: grid;
+    gap: 18px;
+  }
+
+  .dashboard-two,
+  .dashboard-lower {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 0.8fr);
+    gap: 18px;
+    align-items: start;
+  }
+
+  .dashboard-users {
+    overflow: hidden;
+  }
+
+  .system-log-card {
+    grid-column: 1 / -1;
+  }
+
+  .compact-actions {
+    flex-wrap: nowrap;
+  }
+
+  .arrow-button {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+  }
+
+  .user-row {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: calc((100% - 54px) / 4);
+    gap: 18px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 6px;
+  }
+
+  .user-card {
+    scroll-snap-align: start;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--bg-panel-strong) 94%, transparent);
+  }
+
+  .avatar-wrap {
+    position: relative;
+  }
+
+  .dashboard-avatar,
+  .profile-photo {
+    display: grid;
+    place-items: center;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+    color: white;
+    font-weight: 800;
+  }
+
+  .status-dot {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--bg-panel-strong);
+  }
+
+  .status-dot.online { background: var(--success); }
+  .status-dot.offline { background: var(--danger); }
+  .status-dot.on-call { background: var(--warning); }
+  .status-dot.unknown { background: var(--text-muted); }
+
+  .user-info {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .user-info strong,
+  .user-info span,
+  .user-info small,
+  .user-info em {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .user-info span,
+  .user-info small {
+    color: var(--text-muted);
+    font-style: normal;
+  }
+
+  .user-info em {
+    color: var(--text-soft);
+    font-size: 0.84rem;
+    font-style: normal;
+  }
+
+  .table-scroll {
+    overflow: auto;
+  }
+
+  .short-table {
+    min-height: 186px;
+  }
+
+  .call-log-scroll {
+    max-height: 292px;
+  }
+
+  .compact-empty {
+    min-height: 170px;
+    padding: 28px 12px;
+  }
+
+  .performance-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .progress-metric {
+    display: grid;
+    justify-items: center;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--bg-panel-strong) 94%, transparent);
+  }
+
+  .progress-ring {
+    display: grid;
+    place-items: center;
+    width: 86px;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle closest-side, var(--bg-panel-strong) 74%, transparent 76%),
+      conic-gradient(var(--accent) calc(var(--value) * 1%), var(--bg-subtle) 0);
+  }
+
+  .progress-ring span {
+    color: var(--text);
+    font-weight: 800;
+  }
+
+  .progress-metric strong {
+    color: var(--text-soft);
+    font-size: 0.82rem;
+  }
+
+  .log-list {
+    display: grid;
+    gap: 10px;
+    max-height: 244px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+
+  .log-row {
+    display: grid;
+    grid-template-columns: 62px minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    padding: 11px 12px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--bg-panel-strong) 92%, transparent);
+  }
+
+  .log-row span {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+  }
+
+  .log-row strong {
+    overflow: hidden;
+    color: var(--text-soft);
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .severity-badge {
+    padding: 5px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-style: normal;
+    font-weight: 800;
+  }
+
+  .severity-badge.info {
+    background: var(--bg-accent-soft);
+    color: var(--accent-strong);
+  }
+
+  .severity-badge.warn {
+    background: var(--warning-soft);
+    color: var(--warning);
+  }
+
+  .severity-badge.error {
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
+
+  .dashboard-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: min(360px, 36vw);
+    padding: 10px 13px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--bg-panel-strong) 94%, transparent);
+  }
+
+  .dashboard-search input {
+    width: 100%;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text);
+  }
+
+  .notification-menu {
+    position: relative;
+  }
+
+  .notification-trigger {
+    position: relative;
+    min-width: 44px;
+  }
+
+  .notification-badge {
+    position: absolute;
+    top: -6px;
+    right: -5px;
+    display: grid;
+    place-items: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--danger);
+    color: white;
+    font-size: 0.68rem;
+    font-weight: 800;
+  }
+
+  .notification-panel {
+    position: absolute;
+    top: calc(100% + 12px);
+    right: 0;
+    z-index: 30;
+    display: none;
+    width: min(360px, 86vw);
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--bg-panel-strong);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .notification-panel.open {
+    display: grid;
+    gap: 10px;
+  }
+
+  .notification-panel-title {
+    color: var(--text);
+    font-weight: 800;
+  }
+
+  .notification-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--bg-subtle) 40%, transparent);
+  }
+
+  .notification-severity {
+    width: 10px;
+    height: 10px;
+    margin-top: 4px;
+    border-radius: 50%;
+  }
+
+  .notification-severity.success { background: var(--success); }
+  .notification-severity.warning { background: var(--warning); }
+  .notification-severity.danger { background: var(--danger); }
+
+  .notification-item div {
+    display: grid;
+    gap: 3px;
+  }
+
+  .notification-item span,
+  .notification-item small,
+  .notification-empty {
+    color: var(--text-soft);
+  }
+
+  @media (max-width: 1120px) {
+    .dashboard-two,
+    .dashboard-lower {
+      grid-template-columns: 1fr;
+    }
+
+    .user-row {
+      grid-auto-columns: minmax(220px, 42%);
+    }
+  }
+
+  @media (max-width: 760px) {
+    .user-row {
+      grid-auto-columns: minmax(220px, 82%);
+    }
+
+    .performance-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .dashboard-search {
+      width: 100%;
+    }
+
+    .log-row {
+      grid-template-columns: 54px minmax(0, 1fr);
+    }
+
+    .severity-badge {
+      width: fit-content;
+      grid-column: 2;
+    }
+  }
+</style>
+
 <script>
-(() => {
-  const panel = document.getElementById('updates');
-  if (!panel) {
-    return;
+  function scrollUsers(direction) {
+    const carousel = document.getElementById("user-carousel");
+    if (!carousel) return;
+    carousel.scrollBy({ left: direction * carousel.clientWidth, behavior: "smooth" });
   }
 
-  const checkButton = document.getElementById('refresh-update-status');
-  const startButton = document.getElementById('start-update');
-  const notice = document.getElementById('update-notice');
-  const noticeTitle = document.getElementById('update-notice-title');
-  const noticeCopy = document.getElementById('update-notice-copy');
-  const branchState = document.getElementById('update-branch-state');
-  const remoteLink = document.getElementById('update-remote-link');
-  const runnerState = document.getElementById('update-runner-state');
-  const behindCount = document.getElementById('update-behind-count');
+  document.addEventListener("DOMContentLoaded", function () {
+    const trigger = document.getElementById("dashboard-notifications");
+    const panel = document.getElementById("dashboard-notification-panel");
+    if (!trigger || !panel) return;
 
-  function setNotice(tone, title, message) {
-    notice.className = `notice notice-${tone}`;
-    noticeTitle.textContent = title;
-    noticeCopy.textContent = message;
-  }
-
-  function setBusy(isBusy) {
-    if (checkButton) {
-      checkButton.disabled = isBusy;
-    }
-    if (startButton) {
-      startButton.disabled = isBusy;
-    }
-  }
-
-  function updateMetric(label, value) {
-    document.querySelectorAll('.metric-card').forEach((card) => {
-      const title = card.querySelector('strong')?.textContent?.trim();
-      if (title === label) {
-        const valueNode = card.querySelector('span');
-        if (valueNode) {
-          valueNode.textContent = value;
-        }
-      }
+    trigger.addEventListener("click", function (event) {
+      event.stopPropagation();
+      const isOpen = panel.classList.toggle("open");
+      trigger.setAttribute("aria-expanded", String(isOpen));
     });
-  }
 
-  function renderOverview(data) {
-    updateMetric('Current version', data.current_version);
-    updateMetric('Latest version', data.latest_version || data.current_version);
-    updateMetric('Last check', data.last_checked_at || 'Not yet');
-
-    branchState.textContent = data.upstream_ref || 'Not configured';
-    runnerState.textContent = (data.update_status?.state || 'idle').replaceAll('_', ' ');
-    behindCount.textContent = String(data.commits_behind ?? 0);
-    remoteLink.textContent = data.remote_url || 'Not available';
-
-    const updateState = data.update_status?.state || 'idle';
-    if (updateState === 'queued' || updateState === 'updating') {
-      setNotice('info', 'Update running', data.update_status.message || 'The manual update is still running.');
-    } else if (updateState === 'error') {
-      setNotice('error', 'Update failed', data.update_status.message || 'The last update did not complete.');
-    } else if (!data.git_ready) {
-      setNotice('warn', 'Git updates unavailable', data.check_message || 'This install is not a git checkout.');
-    } else if (!data.tracked_upstream) {
-      setNotice('warn', 'Tracking branch missing', data.check_message || 'No upstream tracking branch is configured.');
-    } else if (data.check_error) {
-      setNotice('warn', 'Check failed', `${data.check_message} ${data.check_error}`.trim());
-    } else if (data.update_available) {
-      setNotice('warn', 'Update available', data.check_message || `${data.upstream_ref} has new commits available.`);
-    } else {
-      setNotice('info', 'Up to date', data.check_message || `OmniPBX is on ${data.upstream_ref || 'its tracked branch'}.`);
-    }
-
-    if (startButton) {
-      startButton.disabled = !data.can_start_update;
-    }
-  }
-
-  async function fetchOverview(url, options = {}) {
-    setBusy(true);
-    try {
-      const response = await fetch(url, {
-        cache: 'no-store',
-        ...options,
-      });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.detail || 'Request failed');
-      }
-      renderOverview(payload);
-      return payload;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (checkButton) {
-    checkButton.addEventListener('click', async () => {
-      try {
-        await fetchOverview('/api/system/update/check', { method: 'POST' });
-      } catch (error) {
-        setNotice('error', 'Check failed', error.message || 'Unable to refresh update information.');
-      }
+    document.addEventListener("click", function () {
+      panel.classList.remove("open");
+      trigger.setAttribute("aria-expanded", "false");
     });
-  }
 
-  if (startButton) {
-    startButton.addEventListener('click', async () => {
-      setBusy(true);
-      try {
-        const response = await fetch('/api/system/update/run', { method: 'POST', cache: 'no-store' });
-        const result = await response.json();
-        if (!response.ok) {
-          throw new Error(result.detail || 'Unable to start the update helper.');
-        }
-        setNotice('info', 'Update queued', result.status === 'started'
-          ? `Detached updater started for ${result.target_version}.`
-          : 'The update helper was started.');
-        window.setTimeout(() => {
-          fetchOverview('/api/system/update').catch(() => {});
-        }, 3000);
-      } catch (error) {
-        setNotice('error', 'Update failed', error.message || 'Unable to start the update helper.');
-      } finally {
-        setBusy(false);
-      }
+    panel.addEventListener("click", function (event) {
+      event.stopPropagation();
     });
-  }
-
-  window.setInterval(() => {
-    fetchOverview('/api/system/update').catch(() => {});
-  }, 8000);
-})();
+  });
 </script>
 {% endblock %}

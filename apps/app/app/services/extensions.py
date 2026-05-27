@@ -6,9 +6,18 @@ from psycopg.rows import dict_row
 from app.core.settings import get_settings
 from app.models.extension import ExtensionCreate
 
+DESK_PHONE_TRANSPORT = "transport-udp"
+SOFTPHONE_TRANSPORT = "transport-udp-softphone"
+WEBPHONE_TRANSPORT = "transport-wss"
+PHONE_AUDIO_CODECS = "ulaw,alaw,g722"
+PHONE_VIDEO_CODECS = ""
+SOFTPHONE_AUDIO_CODECS = "g722,ulaw,alaw"
+SOFTPHONE_VIDEO_CODECS = "h264,vp8"
+WEBPHONE_AUDIO_CODECS = "opus,g722,ulaw,alaw"
+WEBPHONE_VIDEO_CODECS = "vp8,h264"
 
 LIST_EXTENSIONS_SQL = """
-SELECT id, extension, display_name, secret, context, enabled
+SELECT id, extension, display_name, secret, context, transport, codecs, video_codecs, enabled
 FROM extensions
 ORDER BY extension;
 """
@@ -19,10 +28,36 @@ WHERE extension = %(extension)s
 RETURNING extension;
 """
 
+UPDATE_EXTENSION_SQL = """
+UPDATE extensions
+SET extension = %(new_extension)s,
+    display_name = %(display_name)s,
+    secret = COALESCE(%(secret)s, secret),
+    transport = %(transport)s,
+    codecs = %(codecs)s,
+    video_codecs = %(video_codecs)s
+WHERE extension = %(extension)s
+RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, enabled;
+"""
+
+UPDATE_EXTENSION_SECRET_SQL = """
+UPDATE extensions
+SET secret = %(secret)s
+WHERE extension = %(extension)s
+RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, enabled;
+"""
+
+UPDATE_EXTENSION_ENABLED_SQL = """
+UPDATE extensions
+SET enabled = %(enabled)s
+WHERE extension = %(extension)s
+RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, enabled;
+"""
+
 INSERT_EXTENSION_SQL = """
-INSERT INTO extensions (extension, display_name, secret, context, enabled)
-VALUES (%(extension)s, %(display_name)s, %(secret)s, %(context)s, %(enabled)s)
-RETURNING id, extension, display_name, secret, context, enabled;
+INSERT INTO extensions (extension, display_name, secret, context, transport, codecs, video_codecs, enabled)
+VALUES (%(extension)s, %(display_name)s, %(secret)s, %(context)s, %(transport)s, %(codecs)s, %(video_codecs)s, %(enabled)s)
+RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, enabled;
 """
 
 
@@ -39,6 +74,9 @@ def create_extension(connection: psycopg.Connection, payload: ExtensionCreate) -
         "display_name": payload.display_name,
         "secret": payload.secret or secrets.token_hex(8),
         "context": settings.internal_context,
+        "transport": payload.transport,
+        "codecs": audio_codecs_for_transport(payload.transport),
+        "video_codecs": video_codecs_for_transport(payload.transport),
         "enabled": payload.enabled,
     }
     with connection.cursor(row_factory=dict_row) as cursor:
@@ -51,3 +89,67 @@ def delete_extension(connection: psycopg.Connection, extension: str) -> bool:
         cursor.execute(DELETE_EXTENSION_SQL, {"extension": extension})
         deleted = cursor.fetchone()
     return bool(deleted)
+
+
+def update_extension_user(
+    connection: psycopg.Connection,
+    extension: str,
+    new_extension: str,
+    display_name: str,
+    transport: str,
+    secret: str | None = None,
+) -> dict | None:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            UPDATE_EXTENSION_SQL,
+            {
+                "extension": extension,
+                "new_extension": new_extension,
+                "display_name": display_name,
+                "transport": transport,
+                "codecs": audio_codecs_for_transport(transport),
+                "video_codecs": video_codecs_for_transport(transport),
+                "secret": secret,
+            },
+        )
+        return cursor.fetchone()
+
+
+def update_extension_secret(connection: psycopg.Connection, extension: str, secret: str) -> dict | None:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            UPDATE_EXTENSION_SECRET_SQL,
+            {"extension": extension, "secret": secret},
+        )
+        return cursor.fetchone()
+
+
+def update_extension_enabled(connection: psycopg.Connection, extension: str, enabled: bool) -> dict | None:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            UPDATE_EXTENSION_ENABLED_SQL,
+            {"extension": extension, "enabled": enabled},
+        )
+        return cursor.fetchone()
+
+
+def audio_codecs_for_transport(transport: str) -> str:
+    if transport == WEBPHONE_TRANSPORT:
+        return WEBPHONE_AUDIO_CODECS
+    if transport == SOFTPHONE_TRANSPORT:
+        return SOFTPHONE_AUDIO_CODECS
+    return PHONE_AUDIO_CODECS
+
+
+def video_codecs_for_transport(transport: str) -> str:
+    if transport == WEBPHONE_TRANSPORT:
+        return WEBPHONE_VIDEO_CODECS
+    if transport == SOFTPHONE_TRANSPORT:
+        return SOFTPHONE_VIDEO_CODECS
+    return PHONE_VIDEO_CODECS
+
+
+def pjsip_transport_for_device(transport: str) -> str:
+    if transport == WEBPHONE_TRANSPORT:
+        return "transport-wss"
+    return "transport-udp"

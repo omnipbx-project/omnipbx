@@ -134,6 +134,7 @@ def render_caddyfile(system_settings: dict) -> str:
             + "\n".join(global_lines)
             + "\n}\n\n"
             f"{site_address} {{\n"
+            f"{_render_webphone_proxy_block()}"
             "  reverse_proxy app:18000\n"
             "}\n"
             + _render_http_redirect_block(host, public_base_url, settings.public_http_port)
@@ -149,6 +150,7 @@ def render_caddyfile(system_settings: dict) -> str:
             + "\n}\n\n"
             f"{site_address} {{\n"
             f"{tls_block}"
+            f"{_render_webphone_proxy_block()}"
             "  reverse_proxy app:18000\n"
             "}\n"
             + _render_http_redirect_block(host, public_base_url, settings.public_http_port)
@@ -170,6 +172,18 @@ def write_caddyfile(text: str) -> None:
     caddyfile = Path(settings.caddyfile_path)
     caddyfile.parent.mkdir(parents=True, exist_ok=True)
     caddyfile.write_text(text, encoding="utf-8")
+
+
+def _render_webphone_proxy_block() -> str:
+    return (
+        "  handle /ws* {\n"
+        "    reverse_proxy https://app:8089 {\n"
+        "      transport http {\n"
+        "        tls_insecure_skip_verify\n"
+        "      }\n"
+        "    }\n"
+        "  }\n"
+    )
 
 
 def get_internal_root_ca_path() -> Path:
