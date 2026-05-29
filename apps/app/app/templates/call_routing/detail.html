@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="routing-detail">
+  <article class="panel routing-detail-card">
+    <div class="routing-detail-heading">
+      <a class="button-link secondary" href="/call-routing">Back to Call Routing</a>
+      <span class="routing-status planned">{{ item.status }}</span>
+    </div>
+    <div class="routing-detail-copy">
+      <span class="routing-kicker">{{ section.title }}</span>
+      <h3>{{ item.title }}</h3>
+      <p>{{ item.description }}</p>
+    </div>
+    <div class="routing-next-box">
+      <strong>Suggested setup</strong>
+      <p>This page is reserved for a simple, non-technical setup flow. It can be connected to backend rules when this feature is ready.</p>
+    </div>
+  </article>
+</section>
+{% endblock %}

@@ -15,7 +15,7 @@ NAV_SECTIONS = [
             {"href": "/live-overview", "label": "Live Overview", "icon": "◉"},
             {"href": "/extensions", "label": "Users", "icon": "👥"},
             {"href": "/trunks", "label": "Trunks", "icon": "🌐"},
-            {"href": "/inbound-routes", "label": "Call Flow", "icon": "↗"},
+            {"href": "/call-routing", "label": "Call Routing", "icon": "↗"},
             {"href": "/call-logs", "label": "Calls", "icon": "☎"},
             {"href": "/welcome-messages", "label": "Voicemail", "icon": "✉"},
             {"href": "/callbacks", "label": "Contacts", "icon": "◎"},
@@ -55,10 +55,15 @@ def render_template(
             "placeholder": "Search trunk or provider...",
             "label": "Search trunk or provider",
         },
+        "/call-routing": {
+            "placeholder": "Search routing option...",
+            "label": "Search routing option",
+        },
     }
     topbar_search = context.pop("topbar_search", search_by_nav.get(active_nav))
-    show_notifications = context.pop("show_notifications", active_nav in {"/dashboard", "/live-overview", "/extensions", "/trunks"})
-    show_profile_avatar = context.pop("show_profile_avatar", active_nav in {"/dashboard", "/live-overview", "/extensions", "/trunks"})
+    topbar_navs = {"/dashboard", "/live-overview", "/extensions", "/trunks", "/call-routing"}
+    show_notifications = context.pop("show_notifications", active_nav in topbar_navs)
+    show_profile_avatar = context.pop("show_profile_avatar", active_nav in topbar_navs)
     topbar_action = context.pop("topbar_action", None)
     base_context = {
         "request": request,

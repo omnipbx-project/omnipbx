@@ -1,0 +1,178 @@
+.routing-layout {
+  display: grid;
+  gap: 22px;
+}
+
+.routing-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(260px, 0.55fr);
+  gap: 20px;
+  align-items: center;
+}
+
+.routing-intro h3,
+.routing-detail-copy h3 {
+  margin: 0;
+  max-width: 780px;
+  font-size: clamp(1.45rem, 2vw, 2rem);
+  line-height: 1.15;
+}
+
+.routing-intro p,
+.routing-detail-copy p,
+.routing-next-box p {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.routing-kicker {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--bg-accent-soft);
+  color: var(--accent-strong);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.routing-section {
+  display: grid;
+  gap: 16px;
+}
+
+.routing-card-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.routing-card {
+  display: grid;
+  min-height: 190px;
+  gap: 18px;
+  align-content: space-between;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--bg-panel-strong) 92%, transparent);
+  box-shadow: var(--shadow-card);
+  transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.routing-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+  box-shadow: var(--shadow-soft);
+}
+
+.routing-card-top,
+.routing-detail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.routing-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: var(--bg-accent-soft);
+  color: var(--accent-strong);
+  font-weight: 800;
+}
+
+.routing-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.routing-status.ready {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.routing-status.basic {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.routing-status.planned {
+  background: var(--bg-subtle);
+  color: var(--text-soft);
+}
+
+.routing-card h4 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.routing-card p {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+.routing-detail {
+  max-width: 860px;
+}
+
+.routing-detail-card {
+  display: grid;
+  gap: 24px;
+}
+
+.routing-detail-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.routing-next-box {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--bg-subtle) 46%, transparent);
+}
+
+@media (max-width: 1320px) {
+  .routing-card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .routing-intro {
+    grid-template-columns: 1fr;
+  }
+
+  .routing-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .routing-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .routing-detail-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

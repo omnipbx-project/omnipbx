@@ -15,6 +15,7 @@ from app.features.backup_restore.ui import router as backup_restore_ui_router
 from app.features.auth.ui import router as auth_ui_router
 from app.features.callbacks.api import router as callbacks_api_router
 from app.features.callbacks.ui import router as callbacks_ui_router
+from app.features.call_routing.ui import router as call_routing_ui_router
 from app.features.call_logs.api import router as call_logs_api_router
 from app.features.call_logs.ui import router as call_logs_ui_router
 from app.features.dashboard.ui import router as dashboard_ui_router
@@ -86,6 +87,7 @@ app.include_router(api_push_ui_router)
 app.include_router(audit_log_ui_router)
 app.include_router(callbacks_api_router)
 app.include_router(callbacks_ui_router)
+app.include_router(call_routing_ui_router)
 app.include_router(call_logs_api_router)
 app.include_router(call_logs_ui_router)
 app.include_router(dashboard_ui_router)
