@@ -9,29 +9,22 @@
     <p>Incoming calls are calls from customers, outgoing calls are calls your team makes, and internal calls stay inside your company.</p>
   </div>
 
-  {% for section in sections %}
   <section class="routing-section" data-routing-section>
-    <div class="section-header">
-      <div class="section-copy">
-        <h3>{{ section.title }}</h3>
-        <p>{{ section.summary }}</p>
-      </div>
-    </div>
-    <div class="routing-card-grid">
-      {% for item in section["items"] %}
-      <a class="routing-card" href="{{ item.href }}" data-routing-card>
+    <div class="routing-card-grid routing-type-grid">
+      {% for section in sections %}
+      <a class="routing-card routing-type-card" href="{{ section.href }}" data-routing-card>
         <div class="routing-card-top">
-          <span class="routing-icon">{{ item.title[:1] }}</span>
-          <span class="routing-status {% if item.status == 'Ready' %}ready{% elif item.status == 'Basic setup' %}basic{% else %}planned{% endif %}">{{ item.status }}</span>
+          <span class="routing-icon">{{ section.title[:1] }}</span>
+          <span class="routing-status {% if section.saved_count %}saved{% else %}basic{% endif %}">{{ section.status }}</span>
         </div>
         <div>
-          <h4>{{ item.title }}</h4>
-          <p>{{ item.description }}</p>
+          <h4>{{ section.title }}</h4>
+          <p>{{ section.summary }}</p>
         </div>
+        <small>{{ section["items"]|length }} routing options</small>
       </a>
       {% endfor %}
     </div>
   </section>
-  {% endfor %}
 </section>
 {% endblock %}

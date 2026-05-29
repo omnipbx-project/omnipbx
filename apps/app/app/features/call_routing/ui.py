@@ -212,13 +212,38 @@ def call_routing_page(
     connection: psycopg.Connection = Depends(get_connection),
 ) -> HTMLResponse:
     grouped_rules = rules_by_item(list_call_routing_rules(connection))
+    sections = _sections_with_counts(grouped_rules)
     return render_template(
         request,
         "call_routing/index.html",
         page_title="Call Routing",
         page_description="",
         active_nav="/call-routing",
-        sections=_sections_with_counts(grouped_rules),
+        sections=sections,
+        topbar_search={
+            "placeholder": "Search call type...",
+            "label": "Search call type",
+        },
+        page_css=["/static/css/call_routing.css"],
+        page_js=["/static/js/call_routing.js"],
+    )
+
+
+@router.get("/call-routing/{section_slug}", response_class=HTMLResponse)
+def call_routing_section_page(
+    section_slug: str,
+    request: Request,
+    connection: psycopg.Connection = Depends(get_connection),
+) -> HTMLResponse:
+    grouped_rules = rules_by_item(list_call_routing_rules(connection))
+    section = _find_section(section_slug, grouped_rules)
+    return render_template(
+        request,
+        "call_routing/section.html",
+        page_title=section["title"],
+        page_description="",
+        active_nav="/call-routing",
+        section=section,
         topbar_search={
             "placeholder": "Search routing option...",
             "label": "Search routing option",
@@ -235,7 +260,8 @@ def call_routing_detail_page(
     request: Request,
     connection: psycopg.Connection = Depends(get_connection),
 ) -> HTMLResponse:
-    section, item = _find_item(section_slug, item_slug)
+    grouped_rules = rules_by_item(list_call_routing_rules(connection))
+    section, item = _find_item(section_slug, item_slug, grouped_rules)
     return render_template(
         request,
         "call_routing/detail.html",
@@ -317,10 +343,15 @@ def delete_call_routing_detail(
 def _sections_with_counts(grouped_rules: dict[tuple[str, str], list[dict]]) -> list[dict[str, object]]:
     sections = _sections_with_links()
     for section in sections:
+        section_rule_count = 0
         for item in section["items"]:
             rules = grouped_rules.get((section["slug"], item["slug"]), [])
             if rules:
+                section_rule_count += len(rules)
                 item["status"] = f"{len(rules)} saved"
+        section["href"] = f"/call-routing/{section['slug']}"
+        section["saved_count"] = section_rule_count
+        section["status"] = f"{section_rule_count} saved" if section_rule_count else "Open"
     return sections
 
 
@@ -336,8 +367,12 @@ def _sections_with_links() -> list[dict[str, object]]:
     return sections
 
 
-def _find_item(section_slug: str, item_slug: str) -> tuple[dict[str, object], dict[str, str]]:
-    for section in _sections_with_links():
+def _find_item(
+    section_slug: str,
+    item_slug: str,
+    grouped_rules: dict[tuple[str, str], list[dict]] | None = None,
+) -> tuple[dict[str, object], dict[str, str]]:
+    for section in _sections_with_counts(grouped_rules or {}):
         if section["slug"] != section_slug:
             continue
         for item in section["items"]:
@@ -346,3 +381,14 @@ def _find_item(section_slug: str, item_slug: str) -> tuple[dict[str, object], di
     fallback_section = CALL_ROUTING_SECTIONS[0]
     fallback_item = fallback_section["items"][0]
     return fallback_section, fallback_item
+
+
+def _find_section(
+    section_slug: str,
+    grouped_rules: dict[tuple[str, str], list[dict]] | None = None,
+) -> dict[str, object]:
+    grouped_rules = grouped_rules or {}
+    for section in _sections_with_counts(grouped_rules):
+        if section["slug"] == section_slug:
+            return section
+    return _sections_with_counts(grouped_rules)[0]

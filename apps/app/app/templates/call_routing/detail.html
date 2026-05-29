@@ -3,8 +3,8 @@
 <section class="routing-detail">
   <article class="panel routing-detail-card">
     <div class="routing-detail-heading">
-      <a class="button-link secondary" href="/call-routing">Back to Call Routing</a>
-      <span class="routing-status planned">{{ item.status }}</span>
+      <a class="button-link secondary" href="/call-routing/{{ section.slug }}">Back to {{ section.title }}</a>
+      <span class="routing-status {% if item.status == 'Ready' %}ready{% elif item.status == 'Basic setup' %}basic{% elif 'saved' in item.status %}saved{% else %}planned{% endif %}">{{ item.status }}</span>
     </div>
     <div class="routing-detail-copy">
       <span class="routing-kicker">{{ section.title }}</span>

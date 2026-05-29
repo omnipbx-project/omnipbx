@@ -51,6 +51,10 @@
   gap: 16px;
 }
 
+.routing-type-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .routing-card {
   display: grid;
   min-height: 190px;
@@ -111,6 +115,11 @@
   color: var(--warning);
 }
 
+.routing-status.saved {
+  background: var(--bg-accent-soft);
+  color: var(--accent-strong);
+}
+
 .routing-status.planned {
   background: var(--bg-subtle);
   color: var(--text-soft);
@@ -127,6 +136,15 @@
   line-height: 1.55;
 }
 
+.routing-card small {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.routing-type-card {
+  min-height: 230px;
+}
+
 .routing-detail {
   display: grid;
   gap: 18px;
@@ -141,6 +159,10 @@
 .routing-detail-copy {
   display: grid;
   gap: 8px;
+}
+
+.routing-back-link {
+  margin-bottom: 16px;
 }
 
 .routing-next-box {
@@ -196,6 +218,10 @@
 
   .routing-card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .routing-type-grid {
+    grid-template-columns: 1fr;
   }
 }
 

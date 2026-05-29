@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="routing-layout">
+  <div class="routing-intro panel">
+    <div>
+      <a class="button-link secondary routing-back-link" href="/call-routing">Back to Call Routing</a>
+      <span class="routing-kicker">Call Routing</span>
+      <h3>{{ section.title }}</h3>
+    </div>
+    <p>{{ section.summary }}</p>
+  </div>
+
+  <section class="routing-section" data-routing-section>
+    <div class="routing-card-grid">
+      {% for item in section["items"] %}
+      <a class="routing-card" href="{{ item.href }}" data-routing-card>
+        <div class="routing-card-top">
+          <span class="routing-icon">{{ item.title[:1] }}</span>
+          <span class="routing-status {% if item.status == 'Ready' %}ready{% elif item.status == 'Basic setup' %}basic{% elif 'saved' in item.status %}saved{% else %}planned{% endif %}">{{ item.status }}</span>
+        </div>
+        <div>
+          <h4>{{ item.title }}</h4>
+          <p>{{ item.description }}</p>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+</section>
+{% endblock %}
