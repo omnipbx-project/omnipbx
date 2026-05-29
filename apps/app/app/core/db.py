@@ -147,6 +147,18 @@ def initialize_schema() -> None:
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS call_routing_rules (
+        id BIGSERIAL PRIMARY KEY,
+        section_slug VARCHAR(80) NOT NULL,
+        item_slug VARCHAR(80) NOT NULL,
+        name VARCHAR(120) NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        config_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (section_slug, item_slug, name)
+    );
+
     CREATE TABLE IF NOT EXISTS cdr_raw (
         id BIGSERIAL PRIMARY KEY,
         calldate TIMESTAMPTZ,

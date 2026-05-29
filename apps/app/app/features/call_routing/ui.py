@@ -1,6 +1,19 @@
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from urllib.parse import urlencode
 
+from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+import psycopg
+from starlette import status
+
+from app.core.db import get_connection
+from app.services.asterisk import sync_asterisk_config
+from app.services.call_routing import (
+    delete_call_routing_rule,
+    list_call_routing_item_rules,
+    list_call_routing_rules,
+    rules_by_item,
+    save_call_routing_rule,
+)
 from app.web import render_template
 
 
@@ -148,16 +161,64 @@ CALL_ROUTING_SECTIONS = [
     },
 ]
 
+ROUTING_FORMS = {
+    ("incoming-calls", "holiday-rules"): [
+        {"name": "route", "label": "Incoming route", "placeholder": "Main line"},
+        {"name": "date_range", "label": "Holiday dates", "placeholder": "2026-12-24 to 2026-12-26"},
+        {"name": "message", "label": "Message or sound", "placeholder": "holiday-closed"},
+    ],
+    ("incoming-calls", "voicemail"): [
+        {"name": "route", "label": "Incoming route", "placeholder": "Main line"},
+        {"name": "mailbox", "label": "Mailbox", "placeholder": "1001"},
+        {"name": "when", "label": "Send calls when", "placeholder": "No answer"},
+    ],
+    ("incoming-calls", "blocked-numbers"): [
+        {"name": "caller", "label": "Caller number", "placeholder": "+15551234567"},
+        {"name": "message", "label": "Message or sound", "placeholder": "ss-noservice"},
+    ],
+    ("incoming-calls", "failover"): [
+        {"name": "route", "label": "Incoming route", "placeholder": "Main line"},
+        {"name": "backup_type", "label": "Backup type", "placeholder": "Extension, Ring Group, Queue"},
+        {"name": "backup", "label": "Backup destination", "placeholder": "1001"},
+    ],
+    ("outgoing-calls", "routes"): [
+        {"name": "dial_pattern", "label": "Numbers starting with", "placeholder": "9"},
+        {"name": "trunk", "label": "Use trunk", "placeholder": "provider-main"},
+        {"name": "remove_digits", "label": "Remove first digits", "placeholder": "1"},
+    ],
+    ("outgoing-calls", "dial-rules"): [
+        {"name": "dial_pattern", "label": "User dials", "placeholder": "0"},
+        {"name": "replace_with", "label": "Send as", "placeholder": "+880"},
+        {"name": "note", "label": "Simple note", "placeholder": "Local mobile numbers"},
+    ],
+    ("outgoing-calls", "calling-permissions"): [
+        {"name": "group", "label": "User group", "placeholder": "Sales"},
+        {"name": "allowed", "label": "Allowed calls", "placeholder": "Local, Mobile"},
+    ],
+    ("internal-calls", "voicemail"): [
+        {"name": "extension", "label": "Extension", "placeholder": "1001"},
+        {"name": "mailbox", "label": "Mailbox", "placeholder": "1001"},
+    ],
+    ("internal-calls", "conference-rooms"): [
+        {"name": "room", "label": "Room extension", "placeholder": "7001"},
+        {"name": "pin", "label": "PIN", "placeholder": "1234"},
+    ],
+}
+
 
 @router.get("/call-routing", response_class=HTMLResponse)
-def call_routing_page(request: Request) -> HTMLResponse:
+def call_routing_page(
+    request: Request,
+    connection: psycopg.Connection = Depends(get_connection),
+) -> HTMLResponse:
+    grouped_rules = rules_by_item(list_call_routing_rules(connection))
     return render_template(
         request,
         "call_routing/index.html",
         page_title="Call Routing",
         page_description="",
         active_nav="/call-routing",
-        sections=_sections_with_links(),
+        sections=_sections_with_counts(grouped_rules),
         topbar_search={
             "placeholder": "Search routing option...",
             "label": "Search routing option",
@@ -168,7 +229,12 @@ def call_routing_page(request: Request) -> HTMLResponse:
 
 
 @router.get("/call-routing/{section_slug}/{item_slug}", response_class=HTMLResponse)
-def call_routing_detail_page(section_slug: str, item_slug: str, request: Request) -> HTMLResponse:
+def call_routing_detail_page(
+    section_slug: str,
+    item_slug: str,
+    request: Request,
+    connection: psycopg.Connection = Depends(get_connection),
+) -> HTMLResponse:
     section, item = _find_item(section_slug, item_slug)
     return render_template(
         request,
@@ -178,9 +244,84 @@ def call_routing_detail_page(section_slug: str, item_slug: str, request: Request
         active_nav="/call-routing",
         section=section,
         item=item,
+        fields=ROUTING_FORMS.get((section_slug, item_slug), []),
+        rules=list_call_routing_item_rules(connection, section_slug, item_slug),
+        result=request.query_params.get("result", ""),
+        detail=request.query_params.get("detail", ""),
         topbar_search=None,
         page_css=["/static/css/call_routing.css"],
     )
+
+
+@router.post("/call-routing/{section_slug}/{item_slug}/save")
+async def save_call_routing_detail(
+    section_slug: str,
+    item_slug: str,
+    request: Request,
+    name: str = Form(...),
+    enabled_raw: str | None = Form(default=None),
+    connection: psycopg.Connection = Depends(get_connection),
+) -> RedirectResponse:
+    fields = ROUTING_FORMS.get((section_slug, item_slug), [])
+    form = await request.form()
+    config = {field["name"]: str(form.get(field["name"], "")) for field in fields}
+    try:
+        save_call_routing_rule(
+            connection,
+            section_slug=section_slug,
+            item_slug=item_slug,
+            name=name,
+            enabled=enabled_raw is not None,
+            config=config,
+        )
+        reload_result = sync_asterisk_config(connection)
+        params = urlencode(
+            {
+                "result": "success",
+                "detail": f"Saved {name.strip()}. Asterisk reload status: {reload_result['status']}.",
+            }
+        )
+    except Exception as exc:
+        params = urlencode({"result": "error", "detail": str(exc)})
+    return RedirectResponse(
+        url=f"/call-routing/{section_slug}/{item_slug}?{params}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/call-routing/{section_slug}/{item_slug}/{rule_id}/delete")
+def delete_call_routing_detail(
+    section_slug: str,
+    item_slug: str,
+    rule_id: int,
+    connection: psycopg.Connection = Depends(get_connection),
+) -> RedirectResponse:
+    deleted = delete_call_routing_rule(connection, rule_id)
+    reload_result = sync_asterisk_config(connection)
+    params = urlencode(
+        {
+            "result": "success" if deleted else "error",
+            "detail": (
+                f"Deleted rule. Asterisk reload status: {reload_result['status']}."
+                if deleted
+                else "Rule was not found."
+            ),
+        }
+    )
+    return RedirectResponse(
+        url=f"/call-routing/{section_slug}/{item_slug}?{params}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+def _sections_with_counts(grouped_rules: dict[tuple[str, str], list[dict]]) -> list[dict[str, object]]:
+    sections = _sections_with_links()
+    for section in sections:
+        for item in section["items"]:
+            rules = grouped_rules.get((section["slug"], item["slug"]), [])
+            if rules:
+                item["status"] = f"{len(rules)} saved"
+    return sections
 
 
 def _sections_with_links() -> list[dict[str, object]]:

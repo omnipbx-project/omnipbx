@@ -11,10 +11,76 @@
       <h3>{{ item.title }}</h3>
       <p>{{ item.description }}</p>
     </div>
-    <div class="routing-next-box">
-      <strong>Suggested setup</strong>
-      <p>This page is reserved for a simple, non-technical setup flow. It can be connected to backend rules when this feature is ready.</p>
+    {% if result %}
+    <div class="notice notice-{{ 'success' if result == 'success' else 'error' }}">
+      <strong>{{ result|title }}</strong>
+      <span>{{ detail }}</span>
     </div>
+    {% endif %}
+
+    {% if fields %}
+    <form class="routing-rule-form" method="post" action="/call-routing/{{ section.slug }}/{{ item.slug }}/save">
+      <div class="field">
+        <label for="rule-name">Name</label>
+        <input id="rule-name" type="text" name="name" placeholder="{{ item.title }} rule" required>
+      </div>
+      <div class="field-grid two">
+        {% for field in fields %}
+        <div class="field">
+          <label for="{{ field.name }}">{{ field.label }}</label>
+          <input id="{{ field.name }}" type="text" name="{{ field.name }}" placeholder="{{ field.placeholder }}">
+        </div>
+        {% endfor %}
+      </div>
+      <label class="checkbox-row">
+        <input type="checkbox" name="enabled_raw" checked>
+        Enabled
+      </label>
+      <div class="button-row">
+        <button type="submit">Save Rule</button>
+      </div>
+    </form>
+    {% else %}
+    <div class="routing-next-box">
+      <strong>Managed somewhere else</strong>
+      <p>This option already has a full setup page in OmniPBX. Use the linked card from Call Routing to manage it.</p>
+    </div>
+    {% endif %}
   </article>
+
+  {% if fields %}
+  <article class="panel routing-detail-card">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Saved Rules</h3>
+        <p>These records are stored in OmniPBX and included when Asterisk configuration is generated.</p>
+      </div>
+    </div>
+    {% if rules %}
+    <div class="routing-rule-list">
+      {% for rule in rules %}
+      <div class="routing-rule-row">
+        <div>
+          <strong>{{ rule.name }}</strong>
+          <span>{{ 'Enabled' if rule.enabled else 'Disabled' }}</span>
+          <small>
+            {% for key, value in rule.config.items() %}
+            {{ key|replace('_', ' ')|title }}: {{ value }}{% if not loop.last %} · {% endif %}
+            {% endfor %}
+          </small>
+        </div>
+        <form method="post" action="/call-routing/{{ section.slug }}/{{ item.slug }}/{{ rule.id }}/delete">
+          <button type="submit" class="danger">Delete</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state compact-empty">
+      <p>No saved rules yet</p>
+    </div>
+    {% endif %}
+  </article>
+  {% endif %}
 </section>
 {% endblock %}
