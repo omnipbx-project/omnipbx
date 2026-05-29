@@ -56,8 +56,7 @@
     position: relative;
   }
 
-  .dashboard-avatar,
-  .profile-photo {
+  .dashboard-avatar {
     display: grid;
     place-items: center;
     width: 46px;
@@ -220,106 +219,6 @@
     color: var(--danger);
   }
 
-  .topbar-search {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: min(360px, 36vw);
-    padding: 10px 13px;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--bg-panel-strong) 94%, transparent);
-  }
-
-  .topbar-search input {
-    width: 100%;
-    border: 0;
-    outline: 0;
-    background: transparent;
-    color: var(--text);
-  }
-
-  .notification-menu {
-    position: relative;
-  }
-
-  .notification-trigger {
-    position: relative;
-    min-width: 44px;
-  }
-
-  .notification-badge {
-    position: absolute;
-    top: -6px;
-    right: -5px;
-    display: grid;
-    place-items: center;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 5px;
-    border-radius: 999px;
-    background: var(--danger);
-    color: white;
-    font-size: 0.68rem;
-    font-weight: 800;
-  }
-
-  .notification-panel {
-    position: absolute;
-    top: calc(100% + 12px);
-    right: 0;
-    z-index: 30;
-    display: none;
-    width: min(360px, 86vw);
-    padding: 14px;
-    border: 1px solid var(--line);
-    border-radius: 18px;
-    background: var(--bg-panel-strong);
-    box-shadow: var(--shadow-soft);
-  }
-
-  .notification-panel.open {
-    display: grid;
-    gap: 10px;
-  }
-
-  .notification-panel-title {
-    color: var(--text);
-    font-weight: 800;
-  }
-
-  .notification-item {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 10px;
-    padding: 10px;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--bg-subtle) 40%, transparent);
-  }
-
-  .notification-severity {
-    width: 10px;
-    height: 10px;
-    margin-top: 4px;
-    border-radius: 50%;
-  }
-
-  .notification-severity.success { background: var(--success); }
-  .notification-severity.warning { background: var(--warning); }
-  .notification-severity.danger { background: var(--danger); }
-
-  .notification-item div {
-    display: grid;
-    gap: 3px;
-  }
-
-  .notification-item span,
-  .notification-item small,
-  .notification-empty {
-    color: var(--text-soft);
-  }
-
   @media (max-width: 1120px) {
     .dashboard-two,
     .dashboard-lower {
@@ -340,9 +239,6 @@
       grid-template-columns: 1fr;
     }
 
-    .topbar-search {
-      width: 100%;
-    }
 
     .log-row {
       grid-template-columns: 54px minmax(0, 1fr);

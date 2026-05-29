@@ -12,6 +12,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const closeActionPanel = document.getElementById("close-action-panel");
     const actionForms = document.querySelectorAll(".action-form");
     const editUserForm = document.getElementById("edit-user-form");
+    const searchInput = document.querySelector(".topbar-search input");
     let activeTab = "users";
 
     function setActiveForm(target, title) {
@@ -129,6 +130,17 @@ document.addEventListener("DOMContentLoaded", function () {
           label.textContent = user.status;
         }
       });
+    }
+
+    function applySearch() {
+      const query = (searchInput?.value || "").trim().toLowerCase();
+      document.querySelectorAll(".user-management-card").forEach((card) => {
+        card.style.display = !query || card.textContent.toLowerCase().includes(query) ? "" : "none";
+      });
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener("input", applySearch);
     }
 
     if (window.EventSource) {

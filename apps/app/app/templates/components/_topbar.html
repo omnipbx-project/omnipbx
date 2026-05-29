@@ -24,7 +24,9 @@
         {% endif %}
       </button>
       <div class="notification-panel" id="dashboard-notification-panel" aria-labelledby="dashboard-notifications">
+        {% if dashboard_notifications %}
         <div class="notification-panel-title">Important Messages</div>
+        {% endif %}
         {% for item in dashboard_notifications %}
         <div class="notification-item">
           <span class="notification-severity {{ item.severity }}"></span>
@@ -46,9 +48,21 @@
     </button>
     {% if current_user %}
     {% if show_profile_avatar %}
-    <a href="/logout" class="topbar-profile" aria-label="Logged in as {{ current_user.username }}">
+    <div class="profile-menu">
+    <button type="button" class="topbar-profile" id="profile-menu-trigger" aria-label="Logged in as {{ current_user.username }}" aria-expanded="false">
       <span class="profile-photo">{{ current_user.username[:1]|upper }}</span>
-    </a>
+    </button>
+    <div class="profile-panel" id="profile-menu-panel" aria-labelledby="profile-menu-trigger">
+      <div class="profile-panel-user">
+        <span class="profile-photo small">{{ current_user.username[:1]|upper }}</span>
+        <div>
+          <strong>{{ current_user.username }}</strong>
+          <small>{{ current_user.role|replace('_', ' ')|title if current_user.role else 'Authenticated admin' }}</small>
+        </div>
+      </div>
+      <a href="/logout" class="button-link secondary">Logout</a>
+    </div>
+    </div>
     {% else %}
     <a href="/logout" class="button-link secondary">Logout</a>
     {% endif %}

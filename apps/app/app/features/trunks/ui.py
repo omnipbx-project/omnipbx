@@ -8,7 +8,6 @@ from pydantic import ValidationError
 from starlette import status
 
 from app.core.db import get_connection
-from app.features.live_overview.service import collect_live_overview
 from app.models.trunk import TrunkCreate
 from app.services.asterisk import sync_asterisk_config
 from app.services.trunks import create_trunk, delete_trunk, list_trunks, update_trunk, update_trunk_enabled
@@ -40,8 +39,6 @@ def trunks_page(
     connection: psycopg.Connection = Depends(get_connection),
 ) -> HTMLResponse:
     trunks = list_trunks(connection)
-    overview = collect_live_overview(connection)
-    trunk_statuses = {trunk["name"]: trunk for trunk in overview["trunks"]}
     result = request.query_params.get("result", "")
     detail = request.query_params.get("detail", "")
     return render_template(
@@ -51,13 +48,10 @@ def trunks_page(
         page_description="",
         active_nav="/trunks",
         trunks=trunks,
-        trunk_statuses=trunk_statuses,
+        trunk_statuses={},
         result=result,
         detail=detail,
-        topbar_search={"placeholder": "Search trunk or provider...", "label": "Search trunk or provider"},
         topbar_action={"id": "open-trunk-modal", "label": "+ Add Trunk"},
-        show_notifications=False,
-        show_profile_avatar=True,
         page_css=["/static/css/trunks.css"],
         page_js=["/static/js/trunks.js"],
     )

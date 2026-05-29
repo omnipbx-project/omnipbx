@@ -47,10 +47,18 @@ def render_template(
             "placeholder": "Search call, user, trunk...",
             "label": "Search call, user, trunk",
         },
+        "/extensions": {
+            "placeholder": "Search user or extension...",
+            "label": "Search user or extension",
+        },
+        "/trunks": {
+            "placeholder": "Search trunk or provider...",
+            "label": "Search trunk or provider",
+        },
     }
     topbar_search = context.pop("topbar_search", search_by_nav.get(active_nav))
-    show_notifications = context.pop("show_notifications", active_nav in {"/dashboard", "/live-overview"})
-    show_profile_avatar = context.pop("show_profile_avatar", active_nav in {"/dashboard", "/live-overview"})
+    show_notifications = context.pop("show_notifications", active_nav in {"/dashboard", "/live-overview", "/extensions", "/trunks"})
+    show_profile_avatar = context.pop("show_profile_avatar", active_nav in {"/dashboard", "/live-overview", "/extensions", "/trunks"})
     topbar_action = context.pop("topbar_action", None)
     base_context = {
         "request": request,
