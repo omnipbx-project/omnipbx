@@ -314,7 +314,7 @@ def _build_trunk_rows(
                 "name": name,
                 "provider": trunk.get("provider_name") or trunk.get("host") or "-",
                 "status": status,
-                "status_class": "online" if status == "Online" else "offline" if status == "Offline" else "unknown",
+                "status_class": "online" if status == "Online" else "offline" if status == "Offline" else "warn",
                 "active_calls": active_count,
                 "last_registered": "Now" if registered_state == "Registered" else "-",
                 "message": message,
@@ -327,12 +327,12 @@ def _trunk_status_message(trunk: dict, registered_state: str) -> tuple[str, str]
     if not trunk.get("enabled"):
         return "Offline", "Disabled"
     if not trunk.get("register_enabled"):
-        return "Unknown", "IP based connection"
+        return "Warning", "IP based connection"
     if registered_state == "Registered":
         return "Online", "Ready"
     if registered_state:
         return "Offline", "Waiting for provider"
-    return "Unknown", "No registration status yet"
+    return "Warning", "No registration status yet"
 
 
 def _system_status(errors: list[str], trunks: list[dict]) -> dict[str, str]:

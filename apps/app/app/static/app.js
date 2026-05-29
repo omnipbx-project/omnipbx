@@ -25,5 +25,28 @@
     document.querySelectorAll("#theme-toggle").forEach((button) => {
       button.addEventListener("click", toggleTheme);
     });
+
+    document.querySelectorAll(".notification-trigger").forEach((trigger) => {
+      const panelId = trigger.getAttribute("aria-controls") || "dashboard-notification-panel";
+      const panel = document.getElementById(panelId);
+      if (!panel) return;
+      trigger.addEventListener("click", function (event) {
+        event.stopPropagation();
+        const isOpen = panel.classList.toggle("open");
+        trigger.setAttribute("aria-expanded", String(isOpen));
+      });
+      panel.addEventListener("click", function (event) {
+        event.stopPropagation();
+      });
+    });
+
+    document.addEventListener("click", function () {
+      document.querySelectorAll(".notification-panel.open").forEach((panel) => {
+        panel.classList.remove("open");
+      });
+      document.querySelectorAll(".notification-trigger[aria-expanded='true']").forEach((trigger) => {
+        trigger.setAttribute("aria-expanded", "false");
+      });
+    });
   });
 })();

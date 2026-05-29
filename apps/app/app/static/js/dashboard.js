@@ -5,25 +5,6 @@ function scrollUsers(direction) {
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    const trigger = document.getElementById("dashboard-notifications");
-    const panel = document.getElementById("dashboard-notification-panel");
-    if (!trigger || !panel) return;
-
-    trigger.addEventListener("click", function (event) {
-      event.stopPropagation();
-      const isOpen = panel.classList.toggle("open");
-      trigger.setAttribute("aria-expanded", String(isOpen));
-    });
-
-    document.addEventListener("click", function () {
-      panel.classList.remove("open");
-      trigger.setAttribute("aria-expanded", "false");
-    });
-
-    panel.addEventListener("click", function (event) {
-      event.stopPropagation();
-    });
-
     function statusClass(status) {
       if (status === "Online") return "online";
       if (status === "On Call") return "on-call";

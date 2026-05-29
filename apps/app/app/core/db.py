@@ -32,6 +32,7 @@ def initialize_schema() -> None:
         id BIGSERIAL PRIMARY KEY,
         name VARCHAR(80) NOT NULL UNIQUE,
         provider_name VARCHAR(120),
+        main_number VARCHAR(80),
         host VARCHAR(255) NOT NULL,
         username VARCHAR(80),
         password VARCHAR(128),
@@ -391,6 +392,7 @@ def initialize_schema() -> None:
             cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS transport VARCHAR(40) NOT NULL DEFAULT 'transport-udp'")
             cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS codecs VARCHAR(200) NOT NULL DEFAULT 'ulaw,alaw,g722'")
             cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS video_codecs VARCHAR(200) NOT NULL DEFAULT ''")
+            cursor.execute("ALTER TABLE trunks ADD COLUMN IF NOT EXISTS main_number VARCHAR(80)")
             cursor.execute("ALTER TABLE extensions ALTER COLUMN codecs SET DEFAULT 'ulaw,alaw,g722'")
             cursor.execute("ALTER TABLE extensions ALTER COLUMN video_codecs SET DEFAULT ''")
             cursor.execute("UPDATE extensions SET transport = 'transport-udp' WHERE transport IS NULL OR transport = ''")

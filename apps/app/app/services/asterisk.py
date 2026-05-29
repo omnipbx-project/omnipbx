@@ -462,7 +462,7 @@ def render_trunk_pjsip_config(trunks: list[dict]) -> str:
                 (
                     f"[reg-{name}]\n"
                     "type = registration\n"
-                    "transport = transport-udp\n"
+                    f"transport = {transport}\n"
                     f"outbound_auth = auth-{name}\n"
                     f"server_uri = {_default_server_uri(trunk)}\n"
                     f"client_uri = {_default_client_uri(trunk)}\n"

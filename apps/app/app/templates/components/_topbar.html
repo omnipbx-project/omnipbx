@@ -12,6 +12,9 @@
       <input type="search" placeholder="{{ topbar_search.placeholder }}" aria-label="{{ topbar_search.label }}">
     </div>
     {% endif %}
+    {% if topbar_action %}
+    <button type="button" class="primary topbar-primary-action" id="{{ topbar_action.id }}">{{ topbar_action.label }}</button>
+    {% endif %}
     {% if show_notifications %}
     <div class="notification-menu">
       <button type="button" class="icon-button notification-trigger" id="dashboard-notifications" aria-label="Important messages" aria-expanded="false">

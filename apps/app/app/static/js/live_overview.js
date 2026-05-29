@@ -2,8 +2,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const tabs = document.querySelectorAll(".live-tab");
     const panels = document.querySelectorAll(".live-tab-panel");
     const refreshLabel = document.getElementById("live-refresh-label");
-    const trigger = document.getElementById("dashboard-notifications");
-    const panel = document.getElementById("dashboard-notification-panel");
     const searchInput = document.querySelector(".topbar-search input");
     const supervisorExtension = document.getElementById("supervisor-extension");
     const actionMessage = document.getElementById("live-action-message");
@@ -26,21 +24,6 @@ document.addEventListener("DOMContentLoaded", function () {
         panels.forEach((item) => item.classList.toggle("active", item.dataset.panel === target));
       });
     });
-
-    if (trigger && panel) {
-      trigger.addEventListener("click", function (event) {
-        event.stopPropagation();
-        const isOpen = panel.classList.toggle("open");
-        trigger.setAttribute("aria-expanded", String(isOpen));
-      });
-      document.addEventListener("click", function () {
-        panel.classList.remove("open");
-        trigger.setAttribute("aria-expanded", "false");
-      });
-      panel.addEventListener("click", function (event) {
-        event.stopPropagation();
-      });
-    }
 
     function escapeText(value) {
       return String(value ?? "").replace(/[&<>"']/g, function (char) {

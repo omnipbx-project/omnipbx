@@ -51,6 +51,7 @@ def render_template(
     topbar_search = context.pop("topbar_search", search_by_nav.get(active_nav))
     show_notifications = context.pop("show_notifications", active_nav in {"/dashboard", "/live-overview"})
     show_profile_avatar = context.pop("show_profile_avatar", active_nav in {"/dashboard", "/live-overview"})
+    topbar_action = context.pop("topbar_action", None)
     base_context = {
         "request": request,
         "app_name": settings.app_name,
@@ -65,6 +66,7 @@ def render_template(
         "topbar_search": topbar_search,
         "show_notifications": show_notifications,
         "show_profile_avatar": show_profile_avatar,
+        "topbar_action": topbar_action,
         "page_css": context.pop("page_css", []),
         "page_js": context.pop("page_js", []),
     }

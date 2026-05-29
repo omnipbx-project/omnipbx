@@ -276,6 +276,123 @@ textarea {
   justify-content: flex-end;
 }
 
+.topbar-primary-action {
+  width: 164px;
+  min-height: 46px;
+  white-space: nowrap;
+}
+
+.topbar-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(360px, 36vw);
+  padding: 10px 13px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-panel-strong) 94%, transparent);
+}
+
+.topbar-search input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+}
+
+.profile-photo {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+  color: white;
+  font-weight: 800;
+}
+
+.notification-menu {
+  position: relative;
+}
+
+.notification-trigger {
+  position: relative;
+  min-width: 44px;
+}
+
+.notification-badge {
+  position: absolute;
+  top: -6px;
+  right: -5px;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: white;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.notification-panel {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 30;
+  display: none;
+  width: min(360px, 86vw);
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--bg-panel-strong);
+  box-shadow: var(--shadow-soft);
+}
+
+.notification-panel.open {
+  display: grid;
+  gap: 10px;
+}
+
+.notification-panel-title {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.notification-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-subtle) 40%, transparent);
+}
+
+.notification-severity {
+  width: 10px;
+  height: 10px;
+  margin-top: 4px;
+  border-radius: 50%;
+}
+
+.notification-severity.success { background: var(--success); }
+.notification-severity.warning { background: var(--warning); }
+.notification-severity.danger { background: var(--danger); }
+
+.notification-item div {
+  display: grid;
+  gap: 3px;
+}
+
+.notification-item span,
+.notification-item small,
+.notification-empty {
+  color: var(--text-soft);
+}
+
 .content {
   padding: 28px;
 }
@@ -1110,5 +1227,13 @@ tbody tr:hover td {
   .topbar-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .topbar-search {
+    width: 100%;
+  }
+
+  .topbar-primary-action {
+    width: 100%;
   }
 }

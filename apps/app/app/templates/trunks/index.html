@@ -1,4 +1,4 @@
-{% from "_ui_macros.html" import empty_state, stat_card %}
+{% from "_ui_macros.html" import empty_state %}
 {% extends "base.html" %}
 {% block content %}
 {% if result %}
@@ -8,143 +8,119 @@
 </div>
 {% endif %}
 
-<section class="page-grid">
-  <div class="panel">
-    <div class="section-header">
-      <div class="section-copy">
-        <h3>Trunk overview</h3>
-        <p>Provider connectivity, outbound routing prefixes, and inbound identification now live in a cleaner operational view.</p>
+<section class="trunks-page">
+  {% if trunks %}
+  <div class="trunk-card-grid" id="trunk-card-grid">
+    {% for trunk in trunks %}
+    {% set live_status = trunk_statuses.get(trunk.name, {}) %}
+    {% set trunk_status = live_status.status or ('Offline' if not trunk.enabled else 'Warning') %}
+    {% set status_class = 'online' if trunk_status == 'Online' else 'offline' if trunk_status == 'Offline' else 'warn' %}
+    {% set protocol = 'UDP' if trunk.transport == 'transport-udp' else 'TCP' if trunk.transport == 'transport-tcp' else 'TLS' if trunk.transport == 'transport-tls' else 'WSS' if trunk.transport == 'transport-wss' else 'Auto Select' %}
+    <article class="trunk-card" data-trunk-card data-trunk="{{ trunk.name }}">
+      <details class="card-menu">
+        <summary aria-label="Trunk actions">⋯</summary>
+        <div class="menu-list">
+          <button type="button" class="edit-trunk-action"
+            data-name="{{ trunk.name }}"
+            data-provider="{{ trunk.provider_name or '' }}"
+            data-main-number="{{ trunk.main_number or '' }}"
+            data-host="{{ trunk.host }}"
+            data-username="{{ trunk.username or '' }}"
+            data-protocol="{{ protocol }}">Edit Trunk</button>
+          <button type="button" class="test-trunk-action" data-name="{{ trunk.name }}">Test Connection</button>
+          <form method="post" action="/trunks/{{ trunk.name }}/disable">
+            <button type="submit">Disable Trunk</button>
+          </form>
+          <form method="post" action="/trunks/{{ trunk.name }}/delete" onsubmit="return confirm('Delete trunk {{ trunk.name }}?');">
+            <button type="submit" class="danger-menu">Delete Trunk</button>
+          </form>
+        </div>
+      </details>
+
+      <div class="trunk-card-top">
+        <div class="trunk-icon">T</div>
+        <span class="trunk-status-dot {{ status_class }}"></span>
       </div>
-    </div>
-    <div class="metric-grid">
-      {{ stat_card("Total trunks", trunks|length, "All SIP provider definitions in OmniPBX") }}
-      {{ stat_card("Registered", trunks|selectattr("register_enabled")|list|length, "Trunks expecting registration", "success") }}
-      {{ stat_card("IP-auth trunks", trunks|rejectattr("register_enabled")|list|length, "Host-matched provider peers", "warning") }}
-      {{ stat_card("Enabled", trunks|selectattr("enabled")|list|length, "Participating in routing", "success") }}
-    </div>
+      <div class="trunk-card-copy">
+        <strong>{{ trunk.name }}</strong>
+        <span>{{ trunk.provider_name or "Provider" }}</span>
+      </div>
+      <span class="status-pill {{ status_class }}" data-trunk-status>{{ trunk_status }}</span>
+    </article>
+    {% endfor %}
   </div>
-
-  <section class="page-grid two-column">
-    <div class="panel">
-      <div class="section-header">
-        <div class="section-copy">
-          <h3>Create trunk</h3>
-          <p>Add a provider using either registration credentials or simple IP-based authentication.</p>
-        </div>
-      </div>
-      <form method="post" action="/trunks/create" class="stack">
-        <div class="field-grid two">
-          <div class="field">
-            <label for="name">Trunk name</label>
-            <input id="name" type="text" name="name" placeholder="icctalk" required>
-          </div>
-          <div class="field">
-            <label for="provider_name">Provider name</label>
-            <input id="provider_name" type="text" name="provider_name" placeholder="ICC Talk">
-          </div>
-        </div>
-        <div class="field-grid two">
-          <div class="field">
-            <label for="host">Provider IP or SIP host</label>
-            <input id="host" type="text" name="host" placeholder="sip.provider.example" required>
-          </div>
-          <div class="field">
-            <label for="match_ip">Identify match IP</label>
-            <input id="match_ip" type="text" name="match_ip" placeholder="203.0.113.10">
-          </div>
-        </div>
-        <div class="field-grid two">
-          <div class="field">
-            <label for="username">Username</label>
-            <input id="username" type="text" name="username" placeholder="Leave blank for IP-auth trunk">
-          </div>
-          <div class="field">
-            <label for="password">Password</label>
-            <input id="password" type="password" name="password" placeholder="Leave blank for IP-auth trunk">
-          </div>
-        </div>
-        <div class="field-grid two">
-          <div class="field">
-            <label for="outbound_prefix">Outbound prefix</label>
-            <input id="outbound_prefix" type="text" name="outbound_prefix" placeholder="9">
-          </div>
-          <div class="field">
-            <label for="strip_digits">Strip digits</label>
-            <input id="strip_digits" type="text" name="strip_digits" value="0">
-          </div>
-        </div>
-        <label class="checkbox-row">
-          <input type="checkbox" name="register_enabled_raw" checked>
-          Registration enabled
-        </label>
-        <label class="checkbox-row">
-          <input type="checkbox" name="enabled_raw" checked>
-          Enabled
-        </label>
-        <div class="button-row">
-          <button type="submit">Create trunk</button>
-        </div>
-      </form>
-    </div>
-
-    <div class="panel">
-      <div class="section-header">
-        <div class="section-copy">
-          <h3>How this stays lean</h3>
-          <p>OmniPBX only generates the PJSIP and dialplan blocks needed for provider routing instead of dragging in full legacy config.</p>
-        </div>
-      </div>
-      <ul class="bullet-list">
-        <li>Supports UDP trunks with optional registration.</li>
-        <li>Outbound prefixes and strip rules stay explicit and easy to audit.</li>
-        <li>Basic IP identify support keeps simple carrier setups lightweight.</li>
-      </ul>
-    </div>
-  </section>
-
+  {% else %}
   <div class="panel">
-    <div class="section-header">
-      <div class="section-copy">
-        <h3>Current trunks</h3>
-        <p>Review provider endpoints, registration mode, prefix behavior, and maintenance actions.</p>
-      </div>
-    </div>
-    {% if trunks %}
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Provider</th>
-          <th>Host</th>
-          <th>Register</th>
-          <th>Prefix</th>
-          <th>Match IP</th>
-          <th>Enabled</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for trunk in trunks %}
-        <tr>
-          <td class="mono">{{ trunk.name }}</td>
-          <td>{{ trunk.provider_name or "-" }}</td>
-          <td class="mono">{{ trunk.host }}</td>
-          <td><span class="status-pill {{ 'available' if trunk.register_enabled else 'warn' }}">{{ "Yes" if trunk.register_enabled else "No" }}</span></td>
-          <td class="mono">{{ trunk.outbound_prefix or "-" }}</td>
-          <td class="mono">{{ trunk.match_ip or "-" }}</td>
-          <td>{{ "Yes" if trunk.enabled else "No" }}</td>
-          <td>
-            <form method="post" action="/trunks/{{ trunk.name }}/delete" onsubmit="return confirm('Delete trunk {{ trunk.name }}?');">
-              <button type="submit" class="danger">Delete</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    {{ empty_state("No trunks yet", "Create your first provider trunk here, then attach it to outbound and inbound routing.") }}
-    {% endif %}
+    {{ empty_state("No trunks yet", "Add your first provider trunk to connect OmniPBX to outside calling.") }}
   </div>
+  {% endif %}
 </section>
+
+<div class="modal-backdrop" id="trunk-modal" hidden>
+  <section class="modal-card trunk-modal-card" role="dialog" aria-modal="true" aria-labelledby="trunk-modal-title">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3 id="trunk-modal-title">Add Trunk</h3>
+        <p>Enter the provider details needed to connect your trunk.</p>
+      </div>
+      <button type="button" class="secondary close-modal" id="close-trunk-modal" aria-label="Close trunk modal">×</button>
+    </div>
+
+    <form method="post" action="/trunks/create" class="stack" id="trunk-form">
+      <input type="hidden" name="main_number" id="main_number_hidden">
+      <div class="field-grid two">
+        <div class="field">
+          <label for="trunk_name">Trunk Name</label>
+          <input id="trunk_name" type="text" name="name" placeholder="primary" required>
+        </div>
+        <div class="field">
+          <label for="provider_name">Provider Name</label>
+          <input id="provider_name" type="text" name="provider_name" placeholder="Your provider">
+        </div>
+      </div>
+      <div class="field-grid two">
+        <div class="field">
+          <label for="main_number">Main Number</label>
+          <input id="main_number" type="text" placeholder="+15551234567">
+        </div>
+        <div class="field">
+          <label for="host">SIP Server</label>
+          <input id="host" type="text" name="host" placeholder="sip.provider.example" required>
+        </div>
+      </div>
+      <div class="field-grid two">
+        <div class="field">
+          <label for="username">SIP Username</label>
+          <input id="username" type="text" name="username">
+        </div>
+        <div class="field">
+          <label for="password">SIP Password</label>
+          <input id="password" type="password" name="password">
+        </div>
+      </div>
+      <div class="field-grid two">
+        <div class="field">
+          <label for="protocol">Protocol</label>
+          <select id="protocol" name="protocol">
+            <option value="auto">Auto Select</option>
+            <option value="udp">UDP</option>
+            <option value="tcp">TCP</option>
+            <option value="tls">TLS</option>
+            <option value="wss">WSS</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="port">Port</label>
+          <input id="port" type="number" name="port" min="1" max="65535" placeholder="Auto">
+        </div>
+      </div>
+      <div class="modal-message" id="trunk-modal-message" aria-live="polite"></div>
+      <div class="modal-actions">
+        <button type="button" class="secondary" id="cancel-trunk-modal">Cancel</button>
+        <button type="button" class="secondary" id="test-trunk-modal">Test Connection</button>
+        <button type="submit" class="primary">Save Trunk</button>
+      </div>
+    </form>
+  </section>
+</div>
 {% endblock %}
