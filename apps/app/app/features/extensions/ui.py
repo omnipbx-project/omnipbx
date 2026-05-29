@@ -6,7 +6,6 @@ import psycopg
 from starlette import status
 
 from app.core.db import get_connection
-from app.features.status.service import collect_status_snapshot
 from app.models.extension import ExtensionCreate
 from app.services.asterisk import sync_asterisk_config
 from app.services.extensions import (
@@ -41,12 +40,9 @@ def extensions_page(
     connection: psycopg.Connection = Depends(get_connection),
 ) -> HTMLResponse:
     extensions = list_extensions(connection)
-    status_snapshot = collect_status_snapshot(connection)
     result = request.query_params.get("result", "")
     detail = request.query_params.get("detail", "")
-    status_by_extension = {
-        row["extension"]: row["status"] for row in status_snapshot["extensions"]
-    }
+    status_by_extension = {row["extension"]: "Unknown" for row in extensions}
     groups = list_groups(connection)
     permissions = list_permissions(connection)
 
@@ -61,7 +57,12 @@ def extensions_page(
         profiles_by_extension=profiles_by_extension(connection),
         groups=groups,
         permissions=permissions,
-        summary=status_snapshot["summary"],
+        summary={
+            "extensions_total": len(extensions),
+            "extensions_online": 0,
+            "extensions_offline": 0,
+            "extensions_unknown": len(extensions),
+        },
         result=result,
         detail=detail,
         topbar_action={"id": "users-primary-action", "label": "+ Add User"},

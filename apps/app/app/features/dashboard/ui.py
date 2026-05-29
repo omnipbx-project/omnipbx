@@ -3,7 +3,6 @@ from fastapi.responses import HTMLResponse
 import psycopg
 
 from app.core.db import get_connection
-from app.features.status.service import collect_status_snapshot
 from app.services.extensions import list_extensions
 from app.web import render_template
 
@@ -81,9 +80,12 @@ def dashboard_page(
     connection: psycopg.Connection = Depends(get_connection),
 ) -> HTMLResponse:
     extensions = list_extensions(connection)
-    status_snapshot = collect_status_snapshot(connection)
-    extension_statuses = {
-        row["extension"]: row["status"] for row in status_snapshot["extensions"]
+    extension_statuses = {row["extension"]: "Unknown" for row in extensions}
+    status_snapshot = {
+        "summary": {
+            "extensions_offline": 0,
+            "extensions_unknown": len(extensions),
+        }
     }
 
     return render_template(
