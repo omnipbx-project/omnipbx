@@ -64,6 +64,8 @@ def extensions_page(
         summary=status_snapshot["summary"],
         result=result,
         detail=detail,
+        page_css=["/static/css/users.css"],
+        page_js=["/static/js/users.js"],
     )
 
 

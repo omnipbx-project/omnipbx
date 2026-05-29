@@ -4,6 +4,7 @@ import subprocess
 
 import psycopg
 
+from app.services.ami import AmiError, ami_command
 from app.services.extensions import list_extensions
 
 
@@ -12,6 +13,11 @@ OFFLINE_STATES = {"unavail", "unavailable", "nonqual", "unknown", "unregistered"
 
 
 def run_asterisk_command(command: str) -> str:
+    try:
+        return ami_command(command)
+    except (AmiError, OSError, TimeoutError) as ami_exc:
+        ami_error = f"AMI unavailable for {command}: {ami_exc}"
+
     completed = subprocess.run(
         ["asterisk", "-rx", command],
         capture_output=True,
@@ -19,7 +25,8 @@ def run_asterisk_command(command: str) -> str:
         check=False,
     )
     if completed.returncode != 0:
-        raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or "Asterisk CLI command failed.")
+        detail = completed.stderr.strip() or completed.stdout.strip() or "Asterisk CLI command failed."
+        raise RuntimeError(f"{ami_error}; {detail}")
     return completed.stdout
 
 

@@ -12,6 +12,7 @@ NAV_SECTIONS = [
         "title": "Main",
         "items": [
             {"href": "/dashboard", "label": "Dashboard", "icon": "📊"},
+            {"href": "/live-overview", "label": "Live Overview", "icon": "◉"},
             {"href": "/extensions", "label": "Users", "icon": "👥"},
             {"href": "/trunks", "label": "Trunks", "icon": "🌐"},
             {"href": "/inbound-routes", "label": "Call Flow", "icon": "↗"},
@@ -37,6 +38,19 @@ def render_template(
 ):
     settings = get_settings()
     current_user = getattr(request.state, "current_user", None)
+    search_by_nav = {
+        "/dashboard": {
+            "placeholder": "Search user, extension, call...",
+            "label": "Search user, extension, call",
+        },
+        "/live-overview": {
+            "placeholder": "Search call, user, trunk...",
+            "label": "Search call, user, trunk",
+        },
+    }
+    topbar_search = context.pop("topbar_search", search_by_nav.get(active_nav))
+    show_notifications = context.pop("show_notifications", active_nav in {"/dashboard", "/live-overview"})
+    show_profile_avatar = context.pop("show_profile_avatar", active_nav in {"/dashboard", "/live-overview"})
     base_context = {
         "request": request,
         "app_name": settings.app_name,
@@ -48,6 +62,11 @@ def render_template(
         "show_shell": context.pop("show_shell", True),
         "current_user": current_user,
         "update_banner": get_update_banner(settings),
+        "topbar_search": topbar_search,
+        "show_notifications": show_notifications,
+        "show_profile_avatar": show_profile_avatar,
+        "page_css": context.pop("page_css", []),
+        "page_js": context.pop("page_js", []),
     }
     base_context.update(context)
     return templates.TemplateResponse(template_name, base_context)

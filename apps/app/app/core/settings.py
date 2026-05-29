@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     update_check_timeout_seconds: int = 20
     update_status_path: str = "/var/lib/omnipbx/update-status.json"
     update_check_cache_path: str = "/var/lib/omnipbx/update-check.json"
+    ami_host: str = "127.0.0.1"
+    ami_port: int = 5038
+    ami_username: str = "omnipbx"
+    ami_password: str = "change-me"
+    ami_timeout_seconds: float = 3.0
 
     model_config = SettingsConfigDict(
         env_prefix="OMNIPBX_",

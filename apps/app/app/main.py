@@ -24,6 +24,7 @@ from app.features.inbound.api import router as inbound_api_router
 from app.features.inbound.ui import router as inbound_ui_router
 from app.features.ivrs.api import router as ivrs_api_router
 from app.features.ivrs.ui import router as ivrs_ui_router
+from app.features.live_overview.ui import router as live_overview_ui_router
 from app.features.queues.api import router as queues_api_router
 from app.features.queues.ui import router as queues_ui_router
 from app.features.ring_groups.api import router as ring_groups_api_router
@@ -41,6 +42,7 @@ from app.features.working_hours.ui import router as working_hours_ui_router
 from app.services.asterisk import sync_asterisk_config
 from app.services.api_push import start_api_push_worker
 from app.services.auth import AUTH_COOKIE_NAME, has_admin_users, resolve_session
+from app.services.live_events import live_event_hub
 from app.services.setup import get_system_settings, is_setup_complete, render_caddyfile, write_caddyfile
 import psycopg
 
@@ -55,7 +57,9 @@ async def lifespan(_: FastAPI):
         sync_asterisk_config(connection, reload_config=True)
         write_caddyfile(render_caddyfile(get_system_settings(connection)))
     start_api_push_worker()
+    live_event_hub.start()
     yield
+    live_event_hub.stop()
 
 app = FastAPI(
     title="OmniPBX",
@@ -83,6 +87,7 @@ app.include_router(inbound_api_router)
 app.include_router(inbound_ui_router)
 app.include_router(ivrs_api_router)
 app.include_router(ivrs_ui_router)
+app.include_router(live_overview_ui_router)
 app.include_router(queues_api_router)
 app.include_router(queues_ui_router)
 app.include_router(ring_groups_api_router)

@@ -26,7 +26,7 @@
       {{ stat_card("SSL verify", "On" if settings.verify_ssl else "Off", "Outbound TLS verification mode", "warning") }}
     </div>
     {% if run_output %}
-    <pre class="code-block" style="margin-top: 16px;">{{ run_output }}</pre>
+    <pre class="code-block block-spaced">{{ run_output }}</pre>
     {% endif %}
   </div>
 

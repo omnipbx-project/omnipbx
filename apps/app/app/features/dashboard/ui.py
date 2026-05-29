@@ -101,4 +101,6 @@ def dashboard_page(
         logs=get_recent_logs(),
         recent_call_logs=get_recent_call_logs(),
         dashboard_notifications=get_dashboard_notifications(status_snapshot),
+        page_css=["/static/css/dashboard.css"],
+        page_js=["/static/js/dashboard.js"],
     )

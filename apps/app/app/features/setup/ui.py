@@ -88,6 +88,8 @@ def setup_page(
         show_shell=bool(system_settings.get("setup_completed")),
         public_url=public_url,
         local_ca_ready=root_ca_path.is_file(),
+        page_css=["/static/css/setup.css"],
+        page_js=["/static/js/setup.js"],
     )
 
 

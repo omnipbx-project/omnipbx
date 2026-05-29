@@ -1031,6 +1031,18 @@ tbody tr:hover td {
   white-space: pre-wrap;
 }
 
+.block-spaced {
+  margin-top: 16px;
+}
+
+.compact-note {
+  margin-top: 10px;
+}
+
+.flush-top {
+  padding-top: 0;
+}
+
 .empty-state {
   display: grid;
   gap: 10px;

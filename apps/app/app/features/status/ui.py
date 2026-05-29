@@ -23,6 +23,8 @@ def status_page(
         page_description="Live SIP endpoint health for OmniPBX. This page replaces the old mixed status UI with a dedicated feature module and template.",
         active_nav="/status",
         snapshot=snapshot,
+        page_css=["/static/css/status.css"],
+        page_js=["/static/js/status.js"],
     )
 
 
