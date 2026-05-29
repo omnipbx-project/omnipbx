@@ -9,6 +9,12 @@ document.addEventListener("DOMContentLoaded", function () {
   const searchInput = document.querySelector(".topbar-search input");
   const mainNumber = document.getElementById("main_number");
   const mainNumberHidden = document.getElementById("main_number_hidden");
+  const trunkCards = new Map(
+    Array.from(document.querySelectorAll("[data-trunk-card]")).map((card) => [
+      String(card.dataset.trunk),
+      card,
+    ])
+  );
 
   function splitHost(value) {
     const clean = String(value || "").replace(/^sips?:/, "");
@@ -145,9 +151,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function updateTrunks(trunks) {
     trunks.forEach((trunk) => {
-      const card = Array.from(document.querySelectorAll("[data-trunk-card]")).find(
-        (item) => item.dataset.trunk === String(trunk.name)
-      );
+      const card = trunkCards.get(String(trunk.name));
       if (!card) return;
       const dot = card.querySelector(".trunk-status-dot");
       const badge = card.querySelector("[data-trunk-status]");
@@ -162,16 +166,22 @@ document.addEventListener("DOMContentLoaded", function () {
 
   if (window.EventSource) {
     const source = new EventSource("/live-overview/events");
+    window.addEventListener("pagehide", function () {
+      source.close();
+    });
     source.onmessage = function (event) {
       const data = JSON.parse(event.data);
       updateTrunks(data.trunks || []);
     };
   } else {
-    window.setInterval(async function () {
+    const intervalId = window.setInterval(async function () {
       const response = await fetch("/live-overview/data", {headers: {"Accept": "application/json"}});
       if (!response.ok) return;
       const data = await response.json();
       updateTrunks(data.trunks || []);
     }, 5000);
+    window.addEventListener("pagehide", function () {
+      window.clearInterval(intervalId);
+    });
   }
 });

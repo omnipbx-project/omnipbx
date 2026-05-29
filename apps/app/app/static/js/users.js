@@ -13,6 +13,12 @@ document.addEventListener("DOMContentLoaded", function () {
     const actionForms = document.querySelectorAll(".action-form");
     const editUserForm = document.getElementById("edit-user-form");
     const searchInput = document.querySelector(".topbar-search input");
+    const userCards = new Map(
+      Array.from(document.querySelectorAll(".user-management-card[data-extension]")).map((card) => [
+        String(card.dataset.extension),
+        card,
+      ])
+    );
     let activeTab = "users";
 
     function setActiveForm(target, title) {
@@ -117,9 +123,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function updateUserCards(users) {
       users.forEach((user) => {
-        const card = Array.from(document.querySelectorAll(".user-management-card[data-extension]")).find(
-          (item) => item.dataset.extension === String(user.extension)
-        );
+        const card = userCards.get(String(user.extension));
         if (!card) return;
         const dot = card.querySelector(".user-status-dot");
         const label = card.querySelector("[data-user-status]");
@@ -145,16 +149,22 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (window.EventSource) {
       const source = new EventSource("/live-overview/events");
+      window.addEventListener("pagehide", function () {
+        source.close();
+      });
       source.onmessage = function (event) {
         const data = JSON.parse(event.data);
         updateUserCards(data.active_users || []);
       };
     } else {
-      window.setInterval(async function () {
+      const intervalId = window.setInterval(async function () {
         const response = await fetch("/live-overview/data", {headers: {"Accept": "application/json"}});
         if (!response.ok) return;
         const data = await response.json();
         updateUserCards(data.active_users || []);
       }, 5000);
+      window.addEventListener("pagehide", function () {
+        window.clearInterval(intervalId);
+      });
     }
   });

@@ -118,6 +118,9 @@ async def setup_guard(request: Request, call_next):
     path = request.url.path
     public_prefixes = ("/static", "/health", "/login", "/forgot-password", "/reset-password")
 
+    if path.startswith(("/static", "/health")) or path == "/favicon.ico":
+        return await call_next(request)
+
     with psycopg.connect(settings.db_dsn, autocommit=True) as connection:
         setup_complete = is_setup_complete(connection)
         admin_ready = has_admin_users(connection)

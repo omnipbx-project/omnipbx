@@ -188,11 +188,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function connectLiveEvents() {
       if (!window.EventSource) {
-        window.setInterval(refreshOverview, 5000);
+        const fallbackIntervalId = window.setInterval(refreshOverview, 5000);
+        window.addEventListener("pagehide", function () {
+          window.clearInterval(fallbackIntervalId);
+        });
         return;
       }
 
       const source = new EventSource("/live-overview/events");
+      window.addEventListener("pagehide", function () {
+        source.close();
+      });
       source.onmessage = function (event) {
         const data = JSON.parse(event.data);
         renderCalls(data.active_calls || []);
@@ -205,7 +211,10 @@ document.addEventListener("DOMContentLoaded", function () {
       source.onerror = function () {
         if (refreshLabel) refreshLabel.textContent = "Reconnecting";
       };
-      window.setInterval(refreshOverview, 30000);
+      const refreshIntervalId = window.setInterval(refreshOverview, 30000);
+      window.addEventListener("pagehide", function () {
+        window.clearInterval(refreshIntervalId);
+      });
     }
 
     connectLiveEvents();
