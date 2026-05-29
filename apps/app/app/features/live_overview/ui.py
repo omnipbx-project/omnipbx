@@ -6,7 +6,6 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 import psycopg
 
 from app.core.db import get_connection
-from app.core.settings import get_settings
 from app.features.live_overview.service import collect_live_overview, start_supervisor_action
 from app.services.live_events import live_event_hub
 from app.services.trunks import list_trunks
@@ -44,17 +43,15 @@ def live_overview_data(
 
 @router.get("/live-overview/events")
 async def live_overview_events(request: Request) -> StreamingResponse:
-    settings = get_settings()
-
     async def event_stream():
         version = live_event_hub.version
-        overview = await asyncio.to_thread(_collect_overview_snapshot, settings.db_dsn)
+        overview = live_event_hub.get_snapshot() or _empty_overview()
         overview["event"] = "snapshot"
         yield f"data: {json.dumps(overview, default=str)}\n\n"
 
         while not await request.is_disconnected():
             version, event_name = await asyncio.to_thread(live_event_hub.wait_for_change, version)
-            overview = await asyncio.to_thread(_collect_overview_snapshot, settings.db_dsn)
+            overview = live_event_hub.get_snapshot() or _empty_overview()
             overview["event"] = event_name
             yield f"data: {json.dumps(overview, default=str)}\n\n"
 
@@ -112,6 +109,21 @@ def _initial_overview(connection: psycopg.Connection) -> dict[str, object]:
     }
 
 
-def _collect_overview_snapshot(db_dsn: str) -> dict[str, object]:
-    with psycopg.connect(db_dsn, autocommit=True) as connection:
-        return collect_live_overview(connection)
+def _empty_overview() -> dict[str, object]:
+    return {
+        "summary": {
+            "active_calls": 0,
+            "active_users": 0,
+            "trunks_online": 0,
+            "system_status": "Loading",
+        },
+        "active_calls": [],
+        "active_users": [],
+        "trunks": [],
+        "system_status": {
+            "label": "Loading",
+            "class": "warning",
+            "message": "Live status is loading.",
+        },
+        "notifications": [],
+    }

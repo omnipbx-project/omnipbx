@@ -1,6 +1,8 @@
 import socket
 import threading
 import time
+from copy import deepcopy
+from collections.abc import Callable
 
 from app.core.settings import get_settings
 
@@ -29,11 +31,39 @@ class LiveEventHub:
         self._last_event = "startup"
         self._running = False
         self._thread: threading.Thread | None = None
+        self._snapshot_loader: Callable[[], dict[str, object]] | None = None
+        self._snapshot: dict[str, object] | None = None
+        self._snapshot_refreshing = False
 
     @property
     def version(self) -> int:
         with self._condition:
             return self._version
+
+    def set_snapshot_loader(self, loader: Callable[[], dict[str, object]]) -> None:
+        with self._condition:
+            self._snapshot_loader = loader
+
+    def get_snapshot(self) -> dict[str, object] | None:
+        with self._condition:
+            if self._snapshot is None:
+                return None
+            return deepcopy(self._snapshot)
+
+    def refresh_snapshot_async(self, event_name: str = "snapshot") -> None:
+        with self._condition:
+            loader = self._snapshot_loader
+            if not loader or self._snapshot_refreshing:
+                return
+            self._snapshot_refreshing = True
+
+        thread = threading.Thread(
+            target=self._refresh_snapshot,
+            args=(loader, event_name),
+            name="omnipbx-live-snapshot",
+            daemon=True,
+        )
+        thread.start()
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -47,6 +77,7 @@ class LiveEventHub:
         self.notify("shutdown")
 
     def notify(self, event_name: str) -> None:
+        self.refresh_snapshot_async(event_name)
         with self._condition:
             self._version += 1
             self._last_event = event_name
@@ -94,6 +125,21 @@ class LiveEventHub:
                 event_name = message.get("Event", "")
                 if event_name in INTERESTING_EVENTS:
                     self.notify(event_name)
+
+    def _refresh_snapshot(self, loader: Callable[[], dict[str, object]], event_name: str) -> None:
+        try:
+            snapshot = loader()
+        except Exception:
+            with self._condition:
+                self._snapshot_refreshing = False
+            return
+
+        with self._condition:
+            self._snapshot = snapshot
+            self._snapshot_refreshing = False
+            self._version += 1
+            self._last_event = event_name
+            self._condition.notify_all()
 
 
 def _send_message(stream, fields: dict[str, str]) -> None:

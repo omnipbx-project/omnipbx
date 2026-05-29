@@ -22,6 +22,15 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     applyTheme(preferredTheme());
+
+    function closeCardMenus(exceptMenu) {
+      document.querySelectorAll(".card-menu[open]").forEach((menu) => {
+        if (menu !== exceptMenu) {
+          menu.open = false;
+        }
+      });
+    }
+
     document.querySelectorAll("#theme-toggle").forEach((button) => {
       button.addEventListener("click", toggleTheme);
     });
@@ -53,6 +62,7 @@
       document.querySelectorAll(".topbar-profile[aria-expanded='true']").forEach((trigger) => {
         trigger.setAttribute("aria-expanded", "false");
       });
+      closeCardMenus();
     });
 
     document.querySelectorAll(".topbar-profile").forEach((trigger) => {
@@ -66,6 +76,27 @@
       panel.addEventListener("click", function (event) {
         event.stopPropagation();
       });
+    });
+
+    document.querySelectorAll(".card-menu").forEach((menu) => {
+      menu.addEventListener("toggle", function () {
+        if (menu.open) {
+          closeCardMenus(menu);
+        }
+      });
+      menu.addEventListener("click", function (event) {
+        event.stopPropagation();
+      });
+    });
+
+    window.addEventListener("pagehide", function () {
+      closeCardMenus();
+    });
+
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "hidden") {
+        closeCardMenus();
+      }
     });
   });
 })();

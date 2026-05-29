@@ -24,6 +24,7 @@ from app.features.inbound.api import router as inbound_api_router
 from app.features.inbound.ui import router as inbound_ui_router
 from app.features.ivrs.api import router as ivrs_api_router
 from app.features.ivrs.ui import router as ivrs_ui_router
+from app.features.live_overview.service import collect_live_overview
 from app.features.live_overview.ui import router as live_overview_ui_router
 from app.features.queues.api import router as queues_api_router
 from app.features.queues.ui import router as queues_ui_router
@@ -57,6 +58,8 @@ async def lifespan(_: FastAPI):
         sync_asterisk_config(connection, reload_config=True)
         write_caddyfile(render_caddyfile(get_system_settings(connection)))
     start_api_push_worker()
+    live_event_hub.set_snapshot_loader(_collect_live_snapshot)
+    live_event_hub.refresh_snapshot_async("startup")
     live_event_hub.start()
     yield
     live_event_hub.stop()
@@ -67,6 +70,11 @@ app = FastAPI(
     summary="Portable business PBX built with Asterisk and FastAPI.",
     lifespan=lifespan,
 )
+
+
+def _collect_live_snapshot() -> dict[str, object]:
+    with psycopg.connect(settings.db_dsn, autocommit=True) as connection:
+        return collect_live_overview(connection)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
