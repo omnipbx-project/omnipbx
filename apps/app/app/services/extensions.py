@@ -17,7 +17,7 @@ WEBPHONE_AUDIO_CODECS = "opus,g722,ulaw,alaw"
 WEBPHONE_VIDEO_CODECS = "vp8,h264"
 
 LIST_EXTENSIONS_SQL = """
-SELECT id, extension, display_name, secret, context, transport, codecs, video_codecs, enabled
+SELECT id, extension, display_name, secret, context, transport, codecs, video_codecs, call_recording_enabled, enabled
 FROM extensions
 ORDER BY extension;
 """
@@ -35,29 +35,30 @@ SET extension = %(new_extension)s,
     secret = COALESCE(%(secret)s, secret),
     transport = %(transport)s,
     codecs = %(codecs)s,
-    video_codecs = %(video_codecs)s
+    video_codecs = %(video_codecs)s,
+    call_recording_enabled = %(call_recording_enabled)s
 WHERE extension = %(extension)s
-RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, enabled;
+RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, call_recording_enabled, enabled;
 """
 
 UPDATE_EXTENSION_SECRET_SQL = """
 UPDATE extensions
 SET secret = %(secret)s
 WHERE extension = %(extension)s
-RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, enabled;
+RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, call_recording_enabled, enabled;
 """
 
 UPDATE_EXTENSION_ENABLED_SQL = """
 UPDATE extensions
 SET enabled = %(enabled)s
 WHERE extension = %(extension)s
-RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, enabled;
+RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, call_recording_enabled, enabled;
 """
 
 INSERT_EXTENSION_SQL = """
-INSERT INTO extensions (extension, display_name, secret, context, transport, codecs, video_codecs, enabled)
-VALUES (%(extension)s, %(display_name)s, %(secret)s, %(context)s, %(transport)s, %(codecs)s, %(video_codecs)s, %(enabled)s)
-RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, enabled;
+INSERT INTO extensions (extension, display_name, secret, context, transport, codecs, video_codecs, call_recording_enabled, enabled)
+VALUES (%(extension)s, %(display_name)s, %(secret)s, %(context)s, %(transport)s, %(codecs)s, %(video_codecs)s, %(call_recording_enabled)s, %(enabled)s)
+RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, call_recording_enabled, enabled;
 """
 
 
@@ -77,6 +78,7 @@ def create_extension(connection: psycopg.Connection, payload: ExtensionCreate) -
         "transport": payload.transport,
         "codecs": audio_codecs_for_transport(payload.transport),
         "video_codecs": video_codecs_for_transport(payload.transport),
+        "call_recording_enabled": payload.call_recording_enabled,
         "enabled": payload.enabled,
     }
     with connection.cursor(row_factory=dict_row) as cursor:
@@ -97,6 +99,7 @@ def update_extension_user(
     new_extension: str,
     display_name: str,
     transport: str,
+    call_recording_enabled: bool,
     secret: str | None = None,
 ) -> dict | None:
     with connection.cursor(row_factory=dict_row) as cursor:
@@ -109,6 +112,7 @@ def update_extension_user(
                 "transport": transport,
                 "codecs": audio_codecs_for_transport(transport),
                 "video_codecs": video_codecs_for_transport(transport),
+                "call_recording_enabled": call_recording_enabled,
                 "secret": secret,
             },
         )

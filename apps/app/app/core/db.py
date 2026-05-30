@@ -23,6 +23,7 @@ def initialize_schema() -> None:
         transport VARCHAR(40) NOT NULL DEFAULT 'transport-udp',
         codecs VARCHAR(200) NOT NULL DEFAULT 'ulaw,alaw,g722',
         video_codecs VARCHAR(200) NOT NULL DEFAULT '',
+        call_recording_enabled BOOLEAN NOT NULL DEFAULT FALSE,
         enabled BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -169,12 +170,17 @@ def initialize_schema() -> None:
         clid VARCHAR(120),
         channel VARCHAR(120),
         dstchannel VARCHAR(120),
+        dcontext VARCHAR(120),
         lastapp VARCHAR(80),
         lastdata TEXT,
         duration INTEGER,
         billsec INTEGER,
         disposition VARCHAR(45),
         amaflags VARCHAR(20),
+        accountcode VARCHAR(80),
+        peeraccount VARCHAR(80),
+        userfield TEXT,
+        sequence INTEGER,
         recordingfile VARCHAR(255),
         direction VARCHAR(20),
         trunk_name VARCHAR(80),
@@ -191,15 +197,60 @@ def initialize_schema() -> None:
     CREATE INDEX IF NOT EXISTS idx_cdr_raw_linkedid ON cdr_raw (linkedid);
     CREATE INDEX IF NOT EXISTS idx_cdr_raw_direction ON cdr_raw (direction);
 
+    ALTER TABLE cdr_raw ADD COLUMN IF NOT EXISTS dcontext VARCHAR(120);
+    ALTER TABLE cdr_raw ADD COLUMN IF NOT EXISTS accountcode VARCHAR(80);
+    ALTER TABLE cdr_raw ADD COLUMN IF NOT EXISTS peeraccount VARCHAR(80);
+    ALTER TABLE cdr_raw ADD COLUMN IF NOT EXISTS userfield TEXT;
+    ALTER TABLE cdr_raw ADD COLUMN IF NOT EXISTS sequence INTEGER;
+
+    CREATE TABLE IF NOT EXISTS cel_raw (
+        id BIGSERIAL PRIMARY KEY,
+        eventtype VARCHAR(40),
+        eventtime TIMESTAMPTZ,
+        cid_name VARCHAR(120),
+        cid_num VARCHAR(80),
+        cid_ani VARCHAR(80),
+        cid_rdnis VARCHAR(80),
+        cid_dnid VARCHAR(80),
+        exten VARCHAR(80),
+        context VARCHAR(120),
+        channame VARCHAR(160),
+        appname VARCHAR(120),
+        appdata TEXT,
+        amaflags VARCHAR(20),
+        accountcode VARCHAR(80),
+        peeraccount VARCHAR(80),
+        uniqueid VARCHAR(150),
+        linkedid VARCHAR(150),
+        userfield TEXT,
+        peer VARCHAR(160),
+        extra TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cel_raw_eventtime ON cel_raw (eventtime DESC);
+    CREATE INDEX IF NOT EXISTS idx_cel_raw_linkedid ON cel_raw (linkedid);
+    CREATE INDEX IF NOT EXISTS idx_cel_raw_uniqueid ON cel_raw (uniqueid);
+    CREATE INDEX IF NOT EXISTS idx_cel_raw_eventtype ON cel_raw (eventtype);
+
     CREATE TABLE IF NOT EXISTS callback_followups (
         linkedid VARCHAR(150) PRIMARY KEY,
         callback_number VARCHAR(80),
+        status VARCHAR(24) NOT NULL DEFAULT 'open',
+        assigned_to VARCHAR(120),
+        assigned_at TIMESTAMPTZ,
+        completed_by VARCHAR(120),
         completed BOOLEAN NOT NULL DEFAULT FALSE,
         completed_at TIMESTAMPTZ,
         note TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    ALTER TABLE callback_followups ADD COLUMN IF NOT EXISTS status VARCHAR(24) NOT NULL DEFAULT 'open';
+    ALTER TABLE callback_followups ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(120);
+    ALTER TABLE callback_followups ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ;
+    ALTER TABLE callback_followups ADD COLUMN IF NOT EXISTS completed_by VARCHAR(120);
 
     CREATE TABLE IF NOT EXISTS softphone_settings (
         id SMALLINT PRIMARY KEY,
@@ -389,6 +440,33 @@ def initialize_schema() -> None:
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS advanced_security_rules (
+        id BIGSERIAL PRIMARY KEY,
+        rule_type VARCHAR(40) NOT NULL,
+        value VARCHAR(160) NOT NULL,
+        note TEXT,
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(rule_type, value)
+    );
+
+    CREATE TABLE IF NOT EXISTS advanced_custom_config (
+        config_key VARCHAR(40) PRIMARY KEY,
+        content TEXT NOT NULL DEFAULT '',
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS advanced_network_settings (
+        id SMALLINT PRIMARY KEY,
+        trusted_ips TEXT NOT NULL DEFAULT '',
+        blocked_ips TEXT NOT NULL DEFAULT '',
+        open_ports TEXT NOT NULL DEFAULT '',
+        note TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
     """
     with psycopg.connect(settings.db_dsn, autocommit=True) as connection:
         with connection.cursor() as cursor:
@@ -404,6 +482,9 @@ def initialize_schema() -> None:
             cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS transport VARCHAR(40) NOT NULL DEFAULT 'transport-udp'")
             cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS codecs VARCHAR(200) NOT NULL DEFAULT 'ulaw,alaw,g722'")
             cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS video_codecs VARCHAR(200) NOT NULL DEFAULT ''")
+            cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS call_recording_enabled BOOLEAN NOT NULL DEFAULT FALSE")
+            cursor.execute("ALTER TABLE advanced_security_rules ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE")
+            cursor.execute("ALTER TABLE advanced_security_rules ADD COLUMN IF NOT EXISTS note TEXT")
             cursor.execute("ALTER TABLE trunks ADD COLUMN IF NOT EXISTS main_number VARCHAR(80)")
             cursor.execute("ALTER TABLE extensions ALTER COLUMN codecs SET DEFAULT 'ulaw,alaw,g722'")
             cursor.execute("ALTER TABLE extensions ALTER COLUMN video_codecs SET DEFAULT ''")
@@ -482,6 +563,22 @@ def initialize_schema() -> None:
                     mail_port, mail_starttls, mail_ssl_tls, use_credentials, validate_certs
                 )
                 VALUES (1, FALSE, NULL, 'OmniPBX', NULL, NULL, 587, TRUE, FALSE, TRUE, TRUE)
+                ON CONFLICT (id) DO NOTHING
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO advanced_custom_config (config_key, content, enabled)
+                VALUES
+                    ('pjsip', '', FALSE),
+                    ('dialplan', '', FALSE)
+                ON CONFLICT (config_key) DO NOTHING
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO advanced_network_settings (id, trusted_ips, blocked_ips, open_ports, note)
+                VALUES (1, '', '', '5060/udp,10000-10100/udp,18000/tcp', '')
                 ON CONFLICT (id) DO NOTHING
                 """
             )

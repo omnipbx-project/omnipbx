@@ -219,6 +219,14 @@
     color: var(--danger);
   }
 
+  .dashboard-usage-meta {
+    display: grid;
+    gap: 8px;
+    margin-top: 16px;
+    color: var(--text-soft);
+    font-size: 0.86rem;
+  }
+
   @media (max-width: 1120px) {
     .dashboard-two,
     .dashboard-lower {

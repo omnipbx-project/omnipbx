@@ -1,0 +1,20 @@
+services:
+  host-security-agent:
+    build:
+      context: ./host-security-agent
+    container_name: omnipbx-host-security-agent
+    restart: unless-stopped
+    profiles:
+      - host-security
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      OMNIPBX_SECURITY_AGENT_HOST: ${OMNIPBX_SECURITY_AGENT_HOST:-127.0.0.1}
+      OMNIPBX_SECURITY_AGENT_PORT: ${OMNIPBX_SECURITY_AGENT_PORT:-8765}
+      OMNIPBX_SECURITY_AGENT_TOKEN: ${OMNIPBX_HOST_SECURITY_AGENT_TOKEN:?Set OMNIPBX_HOST_SECURITY_AGENT_TOKEN}
+      OMNIPBX_SECURITY_AGENT_EMERGENCY_ALLOWLIST: ${OMNIPBX_SECURITY_AGENT_EMERGENCY_ALLOWLIST:-127.0.0.1,::1}
+    volumes:
+      - /var/run/fail2ban:/var/run/fail2ban
+      - /etc/fail2ban:/etc/fail2ban:ro

@@ -29,10 +29,12 @@ class Settings(BaseSettings):
     queues_dialplan_generated_file: str = "/etc/asterisk/generated/queues_dialplan.generated.conf"
     ivrs_generated_file: str = "/etc/asterisk/generated/ivrs.generated.conf"
     musiconhold_generated_file: str = "/etc/asterisk/generated/musiconhold.generated.conf"
+    voicemail_generated_file: str = "/etc/asterisk/generated/voicemail.generated.conf"
     custom_sounds_dir: str = "/var/lib/asterisk/sounds/custom"
     moh_root_dir: str = "/var/lib/asterisk/moh"
     cdr_custom_file: str = "/var/log/asterisk/cdr-custom/omnipbx.csv"
     recordings_dir: str = "/var/spool/asterisk/monitor"
+    voicemail_spool_dir: str = "/var/spool/asterisk/voicemail"
     runtime_dir: str = "/var/lib/omnipbx"
     host_project_path: str = "/opt/omnipbx-host"
     caddyfile_path: str = "/var/lib/omnipbx/caddy/Caddyfile"
@@ -48,6 +50,9 @@ class Settings(BaseSettings):
     ami_username: str = "omnipbx"
     ami_password: str = "change-me"
     ami_timeout_seconds: float = 3.0
+    host_security_agent_url: str = ""
+    host_security_agent_token: str = ""
+    host_security_agent_timeout_seconds: float = 3.0
 
     model_config = SettingsConfigDict(
         env_prefix="OMNIPBX_",

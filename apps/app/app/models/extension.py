@@ -6,6 +6,7 @@ class ExtensionCreate(BaseModel):
     display_name: str = Field(min_length=1, max_length=128)
     secret: str | None = Field(default=None, min_length=8, max_length=128)
     transport: str = "transport-udp"
+    call_recording_enabled: bool = False
     enabled: bool = True
 
 
@@ -18,4 +19,5 @@ class ExtensionRead(BaseModel):
     transport: str
     codecs: str
     video_codecs: str
+    call_recording_enabled: bool
     enabled: bool

@@ -16,11 +16,12 @@ NAV_SECTIONS = [
             {"href": "/extensions", "label": "Users", "icon": "👥"},
             {"href": "/trunks", "label": "Trunks", "icon": "🌐"},
             {"href": "/call-routing", "label": "Call Routing", "icon": "↗"},
-            {"href": "/call-logs", "label": "Calls", "icon": "☎"},
+            {"href": "/call-logs", "label": "Call Log", "icon": "☎"},
+            {"href": "/callbacks", "label": "Follow Up", "icon": "◎"},
+            {"href": "/call-records", "label": "Call Records", "icon": "◌"},
             {"href": "/welcome-messages", "label": "Voicemail", "icon": "✉"},
-            {"href": "/callbacks", "label": "Contacts", "icon": "◎"},
-            {"href": "/audit-log", "label": "Reports", "icon": "▣"},
-            {"href": "/setup", "label": "Settings", "icon": "⚙"},
+            {"href": "/reports", "label": "Reports", "icon": "▣"},
+            {"href": "/settings", "label": "Settings", "icon": "⚙"},
             {"href": "/status", "label": "Advanced", "icon": "◇"},
         ],
     },
@@ -59,9 +60,41 @@ def render_template(
             "placeholder": "Search routing option...",
             "label": "Search routing option",
         },
+        "/call-logs": {
+            "placeholder": "Search caller, number...",
+            "label": "Search call log",
+        },
+        "/callbacks": {
+            "placeholder": "Search customer...",
+            "label": "Search follow up",
+        },
+        "/call-records": {
+            "placeholder": "Search recording...",
+            "label": "Search call records",
+        },
+        "/welcome-messages": {
+            "placeholder": "Search voicemail...",
+            "label": "Search voicemail",
+        },
+        "/audit-log": {
+            "placeholder": "Search report...",
+            "label": "Search reports",
+        },
+        "/reports": {
+            "placeholder": "Search report...",
+            "label": "Search reports",
+        },
+        "/settings": {
+            "placeholder": "Search settings...",
+            "label": "Search settings",
+        },
+        "/status": {
+            "placeholder": "Search status...",
+            "label": "Search status",
+        },
     }
     topbar_search = context.pop("topbar_search", search_by_nav.get(active_nav))
-    topbar_navs = {"/dashboard", "/live-overview", "/extensions", "/trunks", "/call-routing"}
+    topbar_navs = {item["href"] for section in NAV_SECTIONS for item in section["items"]}
     show_notifications = context.pop("show_notifications", active_nav in topbar_navs)
     show_profile_avatar = context.pop("show_profile_avatar", active_nav in topbar_navs)
     topbar_action = context.pop("topbar_action", None)

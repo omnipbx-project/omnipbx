@@ -77,6 +77,7 @@ def create_extension_from_ui(
     display_name: str = Form(...),
     secret: str = Form(default=""),
     enabled_raw: str | None = Form(default=None),
+    call_recording_raw: str | None = Form(default=None),
     email: str = Form(default=""),
     group_name: str = Form(default=""),
     transport: str = Form(default="transport-udp"),
@@ -101,6 +102,7 @@ def create_extension_from_ui(
         display_name=display_name.strip(),
         secret=secret.strip() or None,
         transport=transport if transport in ALLOWED_USER_TRANSPORTS else "transport-udp",
+        call_recording_enabled=call_recording_raw is not None,
         enabled=enabled_raw is not None,
     )
     try:
@@ -150,6 +152,7 @@ def update_extension_from_ui(
     email: str = Form(default=""),
     group_name: str = Form(default=""),
     transport: str = Form(default="transport-udp"),
+    call_recording_raw: str | None = Form(default=None),
     photo: UploadFile | None = File(default=None),
     connection: psycopg.Connection = Depends(get_connection),
 ) -> RedirectResponse:
@@ -173,6 +176,7 @@ def update_extension_from_ui(
             extension_value,
             display_name.strip(),
             transport if transport in ALLOWED_USER_TRANSPORTS else "transport-udp",
+            call_recording_raw is not None,
             secret.strip() or None,
         )
     except psycopg.errors.UniqueViolation:

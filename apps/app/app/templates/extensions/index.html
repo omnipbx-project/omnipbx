@@ -58,6 +58,10 @@
           </select>
         </div>
       </div>
+      <label class="toggle-line">
+        <input type="checkbox" name="call_recording_raw">
+        Record this user's calls
+      </label>
       <input type="hidden" name="enabled_raw" value="on">
       <div class="button-row">
         <button type="submit" class="primary">Create User</button>
@@ -106,6 +110,10 @@
           </select>
         </div>
       </div>
+      <label class="toggle-line">
+        <input id="edit_call_recording" type="checkbox" name="call_recording_raw">
+        Record this user's calls
+      </label>
       <div class="button-row">
         <button type="submit" class="primary">Save User</button>
         <button type="button" class="secondary cancel-action">Cancel</button>
@@ -194,7 +202,7 @@
         <details class="card-menu">
           <summary aria-label="User actions">⋯</summary>
           <div class="menu-list">
-            <button type="button" class="edit-user-action" data-extension="{{ extension.extension }}" data-name="{{ extension.display_name }}" data-email="{{ email }}" data-group="{{ group_name }}" data-transport="{{ extension.transport or 'transport-udp' }}">Edit</button>
+            <button type="button" class="edit-user-action" data-extension="{{ extension.extension }}" data-name="{{ extension.display_name }}" data-email="{{ email }}" data-group="{{ group_name }}" data-transport="{{ extension.transport or 'transport-udp' }}" data-call-recording="{{ '1' if extension.call_recording_enabled else '0' }}">Edit</button>
             <form method="post" action="/extensions/{{ extension.extension }}/set-enabled">
               {% if extension.enabled %}
               <button type="submit">Disable User</button>
@@ -216,6 +224,9 @@
           <strong>{{ extension.display_name }}</strong>
           <span>{{ extension.extension }}</span>
           <small>{{ group_name }}</small>
+          {% if extension.call_recording_enabled %}
+          <small>Recording on</small>
+          {% endif %}
           <em data-user-status>{{ runtime_state }}</em>
         </div>
       </article>

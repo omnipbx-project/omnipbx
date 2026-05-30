@@ -126,24 +126,30 @@
 
     <article class="panel">
       <div class="section-header">
-        <h3>Server Performance</h3>
+        <h3>System Usage</h3>
+        <a href="/status" class="button-link secondary">Advanced</a>
       </div>
       <div class="performance-grid">
-        {% for label, value in [("CPU", metrics.cpu), ("RAM", metrics.ram), ("Disk", metrics.disk)] %}
-        <div class="progress-metric" style="--value: {{ value|int }};">
+        {% for label, key, value in [("CPU", "cpu", metrics.cpu), ("RAM", "ram", metrics.ram), ("Disk", "disk", metrics.disk)] %}
+        <div class="progress-metric" data-usage-card="{{ key }}" style="--value: {{ value|float }};">
           <div class="progress-ring">
-            <span>{{ value }}%</span>
+            <span data-usage-value>{{ value }}%</span>
           </div>
           <strong>{{ label }}</strong>
         </div>
         {% endfor %}
+      </div>
+      <div class="dashboard-usage-meta" id="dashboard-usage-meta">
+        <span data-usage-meta="ram">RAM {{ metrics.ram_used }} / {{ metrics.ram_total }}</span>
+        <span data-usage-meta="disk">Disk free {{ metrics.disk_free }}</span>
+        <span data-usage-meta="load">Load {{ metrics.load }}</span>
       </div>
     </article>
 
     <article class="panel system-log-card">
       <div class="section-header">
         <h3>System Logs</h3>
-        <a href="/audit-log" class="button-link secondary">View All</a>
+        <a href="/reports?section=system" class="button-link secondary">View All</a>
       </div>
       <div class="log-list">
         {% for log in logs %}

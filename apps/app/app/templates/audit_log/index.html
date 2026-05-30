@@ -1,54 +1,354 @@
 {% from "_ui_macros.html" import empty_state, stat_card %}
 {% extends "base.html" %}
 {% block content %}
-<section class="page-grid">
-  <div class="panel">
-    <div class="section-header">
+<section class="reports-page">
+  <aside class="reports-rail" aria-label="Report sections">
+    {% for item in report.sections %}
+    <a class="reports-rail-item {% if item.active %}active{% endif %}" href="/reports?section={{ item.key }}&range={{ report.active_range }}&extension={{ report.user_detail.selected_extension }}&date_from={{ report.date_from }}&date_to={{ report.date_to }}">
+      <span>{{ item.label }}</span>
+      <strong>{{ item.count }}</strong>
+    </a>
+    {% endfor %}
+  </aside>
+
+  <div class="reports-main">
+    <div class="reports-toolbar">
       <div class="section-copy">
-        <h3>Audit history</h3>
-        <p>Keep an eye on account changes, password resets, SMTP changes, and backup activity. Read-only accounts can view this page without editing anything.</p>
+        <h3>{{ report.sections|selectattr("active")|map(attribute="label")|first }} Report</h3>
+        <p>Clear numbers for managers and agents. No technical terms needed.</p>
       </div>
+      <div class="reports-range" aria-label="Report date range">
+        {% for item in report.ranges %}
+        <a class="{% if item.key == report.active_range and not report.date_from and not report.date_to %}active{% endif %}" href="/reports?section={{ report.active_section }}&range={{ item.key }}&extension={{ report.user_detail.selected_extension }}">{{ item.label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% if report.active_section == "overview" %}
+    <div class="metric-grid">
+      {{ stat_card("Total Calls", report.calls.total, "Calls in selected period") }}
+      {{ stat_card("Answered", report.calls.answered, report.calls.answer_rate ~ "% answer rate", "success") }}
+      {{ stat_card("Missed", report.calls.missed, report.calls.missed_rate ~ "% missed", "warning") }}
+      {{ stat_card("Abandoned", report.calls.abandoned, report.calls.abandoned_rate ~ "% abandoned", "danger") }}
+    </div>
+    <div class="reports-two-column">
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>Call mix</h3><p>Simple incoming and outgoing count.</p></div></div>
+        <table>
+          <tbody>
+            <tr><td>Incoming calls</td><td class="mono">{{ report.calls.inbound }}</td></tr>
+            <tr><td>Outgoing calls</td><td class="mono">{{ report.calls.outbound }}</td></tr>
+            <tr><td>Total talk time</td><td class="mono">{{ report.calls.total_talk_time_label }}</td></tr>
+            <tr><td>Last call</td><td class="mono">{{ report.calls.last_call_label }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>Follow up</h3><p>Work that still needs attention.</p></div></div>
+        <table>
+          <tbody>
+            <tr><td>Needs callback</td><td class="mono">{{ report.follow_up.open_callbacks }}</td></tr>
+            <tr><td>In progress</td><td class="mono">{{ report.follow_up.in_progress }}</td></tr>
+            <tr><td>Done today</td><td class="mono">{{ report.follow_up.done_today }}</td></tr>
+            <tr><td>Answered later</td><td class="mono">{{ report.follow_up.answered_later }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% elif report.active_section == "kpi" %}
+    <div class="metric-grid">
+      {{ stat_card("Answer Rate", report.calls.answer_rate ~ "%", "Higher is better", "success") }}
+      {{ stat_card("Missed Rate", report.calls.missed_rate ~ "%", "Needs follow up", "warning") }}
+      {{ stat_card("Abandoned Rate", report.calls.abandoned_rate ~ "%", "Caller left before help", "danger") }}
+      {{ stat_card("Avg Talk Time", report.calls.avg_talk_time_label, "Average answered call length") }}
+    </div>
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>Peak hours</h3><p>When call volume is highest.</p></div></div>
+      {% if report.hourly %}
+      <table>
+        <thead><tr><th>Hour</th><th>Total calls</th><th>Answered</th></tr></thead>
+        <tbody>
+          {% for row in report.hourly %}
+          <tr><td class="mono">{{ row.hour_label }}</td><td>{{ row.total_calls }}</td><td>{{ row.answered }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      {{ empty_state("No peak hour data", "Calls will appear here after CDR starts receiving records.") }}
+      {% endif %}
+    </div>
+    {% elif report.active_section == "calls" %}
+    <div class="metric-grid">
+      {{ stat_card("All Calls", report.calls.total, "Selected period") }}
+      {{ stat_card("Incoming", report.calls.inbound, "Customers calling in") }}
+      {{ stat_card("Outgoing", report.calls.outbound, "Team calling out") }}
+      {{ stat_card("Talk Time", report.calls.total_talk_time_label, "Answered conversation time") }}
+    </div>
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>Recent calls</h3><p>Latest calls in this report range.</p></div><a class="button-link secondary" href="/call-logs">Open Call Log</a></div>
+      {% if report.recent_calls %}
+      <table>
+        <thead><tr><th>Time</th><th>Caller</th><th>To</th><th>Direction</th><th>Status</th><th>Talk</th></tr></thead>
+        <tbody>
+          {% for row in report.recent_calls %}
+          <tr>
+            <td class="mono">{{ row.call_time }}</td>
+            <td>{{ row.caller }}</td>
+            <td>{{ row.callee }}</td>
+            <td>{{ row.direction|title }}</td>
+            <td><span class="status-pill {{ 'success' if row.simple_status == 'Answered' else 'danger' if row.simple_status == 'Abandoned' else 'warning' }}">{{ row.simple_status }}</span></td>
+            <td class="mono">{{ row.talk_time_label }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      {{ empty_state("No calls yet", "CDR records will appear here when calls are made.") }}
+      {% endif %}
+    </div>
+    {% elif report.active_section == "follow-up" %}
+    <div class="metric-grid">
+      {{ stat_card("Needs Callback", report.follow_up.open_callbacks, "Open customer follow ups", "warning") }}
+      {{ stat_card("In Progress", report.follow_up.in_progress, "Taken by an agent") }}
+      {{ stat_card("Done Today", report.follow_up.done_today, "Completed callbacks", "success") }}
+      {{ stat_card("Answered Later", report.follow_up.answered_later, "Auto-cleared repeat callers") }}
+    </div>
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>Follow up list</h3><p>Same simple list your team uses every day.</p></div><a class="button-link secondary" href="/callbacks">Open Follow Up</a></div>
+      {% if report.follow_up.rows %}
+      <table>
+        <thead><tr><th>Customer</th><th>Last call</th><th>Status</th><th>Assigned to</th></tr></thead>
+        <tbody>
+          {% for row in report.follow_up.rows %}
+          <tr>
+            <td>{{ row.callback_number or row.caller_number }}</td>
+            <td class="mono">{{ row.call_time }}</td>
+            <td>
+              {% if row.followup_status == "done" %}Done{% elif row.followup_status == "in_progress" %}In Progress{% elif row.followup_status == "answered_later" %}Answered Later{% else %}Needs Callback{% endif %}
+            </td>
+            <td>{{ row.assigned_to or "-" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      {{ empty_state("Nothing waiting", "Missed and abandoned calls will appear here when they need a callback.") }}
+      {% endif %}
+    </div>
+    {% elif report.active_section == "users" %}
+    <div class="metric-grid">
+      {{ stat_card("Users", report.users.total, "Total extensions") }}
+      {{ stat_card("Enabled", report.users.enabled, "Can make or receive calls", "success") }}
+      {{ stat_card("Online", report.users.online, "Registered phones", "success") }}
+      {{ stat_card("Offline", report.users.offline, "Not registered", "warning") }}
+    </div>
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>User activity</h3><p>Most active team members in selected period.</p></div></div>
+      {% if report.users.top_users %}
+      <table>
+        <thead><tr><th>User</th><th>Extension</th><th>Calls</th><th>Answered</th><th>Talk time</th></tr></thead>
+        <tbody>
+          {% for row in report.users.top_users %}
+          <tr><td>{{ row.display_name }}</td><td class="mono">{{ row.extension }}</td><td>{{ row.total_calls }}</td><td>{{ row.answered }}</td><td class="mono">{{ row.talk_time_label }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      {{ empty_state("No user activity", "User call activity appears after extensions make or receive calls.") }}
+      {% endif %}
+    </div>
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Individual user report</h3>
+          <p>Pick one extension to see incoming, outgoing, talk time, and daily performance.</p>
+        </div>
+      </div>
+      <form class="reports-user-filter" method="get" action="/reports">
+        <input type="hidden" name="section" value="users">
+        <label>
+          User
+          <select name="extension">
+            {% for extension in report.user_detail.extensions %}
+            <option value="{{ extension.extension }}" {% if extension.extension == report.user_detail.selected_extension %}selected{% endif %}>{{ extension.extension }} - {{ extension.display_name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Range
+          <select name="range">
+            {% for item in report.ranges %}
+            <option value="{{ item.key }}" {% if item.key == report.active_range %}selected{% endif %}>{{ item.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          From
+          <input type="date" name="date_from" value="{{ report.date_from }}">
+        </label>
+        <label>
+          To
+          <input type="date" name="date_to" value="{{ report.date_to }}">
+        </label>
+        <button type="submit" class="button-link">View</button>
+      </form>
     </div>
     <div class="metric-grid">
-      {{ stat_card("Events", entries|length, "Recent actions recorded in OmniPBX") }}
-      {{ stat_card("Admins", "Tracked", "Account actions are tied back to usernames", "success") }}
-      {{ stat_card("Recovery", "Visible", "Reset and CLI recovery events stay auditable", "warning") }}
-      {{ stat_card("Backups", "Tracked", "Backup and restore activity is logged", "success") }}
+      {{ stat_card("Incoming", report.user_detail.summary.incoming, "Calls received by " ~ report.user_detail.selected_extension) }}
+      {{ stat_card("Outgoing", report.user_detail.summary.outgoing, "Calls made by " ~ report.user_detail.selected_extension) }}
+      {{ stat_card("Talk Time", report.user_detail.summary.talk_time_label, "Total talking time", "success") }}
+      {{ stat_card("Avg Talk", report.user_detail.summary.avg_talk_time_label, "Average per answered call") }}
     </div>
-  </div>
-
-  <div class="panel">
-    <div class="section-header">
-      <div class="section-copy">
-        <h3>Recent events</h3>
-        <p>Latest 200 entries from the OmniPBX admin audit trail.</p>
+    <div class="metric-grid">
+      {{ stat_card("Total Calls", report.user_detail.summary.total_calls, report.user_detail.selected_user.display_name) }}
+      {{ stat_card("Answered", report.user_detail.summary.answered, report.user_detail.summary.answer_rate ~ "% answer rate", "success") }}
+      {{ stat_card("Missed", report.user_detail.summary.missed, report.user_detail.summary.missed_rate ~ "% missed", "warning") }}
+      {{ stat_card("Performance", report.user_detail.summary.answer_rate ~ "%", "Simple answer-rate score", "success" if report.user_detail.summary.answer_rate >= 80 else "warning") }}
+    </div>
+    <div class="reports-two-column">
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>Daily performance</h3><p>Day by day result for this extension.</p></div></div>
+        {% if report.user_detail.daily %}
+        <table>
+          <thead><tr><th>Date</th><th>Calls</th><th>In</th><th>Out</th><th>Answered</th><th>Missed</th><th>Talk</th><th>Avg</th></tr></thead>
+          <tbody>
+            {% for row in report.user_detail.daily %}
+            <tr>
+              <td class="mono">{{ row.day }}</td>
+              <td>{{ row.total_calls }}</td>
+              <td>{{ row.incoming }}</td>
+              <td>{{ row.outgoing }}</td>
+              <td>{{ row.answered }}</td>
+              <td>{{ row.missed }}</td>
+              <td class="mono">{{ row.talk_time_label }}</td>
+              <td class="mono">{{ row.avg_talk_time_label }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        {{ empty_state("No calls for this user", "Choose another date range or extension.") }}
+        {% endif %}
+      </div>
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>Recent user calls</h3><p>Latest calls for this extension.</p></div></div>
+        {% if report.user_detail.recent %}
+        <table>
+          <thead><tr><th>Time</th><th>Type</th><th>Caller</th><th>To</th><th>Status</th><th>Talk</th></tr></thead>
+          <tbody>
+            {% for row in report.user_detail.recent %}
+            <tr>
+              <td class="mono">{{ row.call_time }}</td>
+              <td>{{ row.direction }}</td>
+              <td>{{ row.caller }}</td>
+              <td>{{ row.callee }}</td>
+              <td>{{ row.disposition or "Unknown" }}</td>
+              <td class="mono">{{ row.talk_time_label }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        {{ empty_state("No recent calls", "Calls for this user will appear here.") }}
+        {% endif %}
       </div>
     </div>
-    {% if entries %}
-    <table>
-      <thead>
-        <tr>
-          <th>Time</th>
-          <th>Type</th>
-          <th>Actor</th>
-          <th>Target</th>
-          <th>Message</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for entry in entries %}
-        <tr>
-          <td class="mono">{{ entry.created_at }}</td>
-          <td><span class="status-pill {{ 'success' if 'backup' in entry.event_type or 'smtp' in entry.event_type else 'warning' }}">{{ entry.event_type }}</span></td>
-          <td>{{ entry.actor_username or "-" }}</td>
-          <td>{{ entry.target_kind or "-" }} {{ entry.target_value or "" }}</td>
-          <td>{{ entry.message or "-" }}</td>
-        </tr>
+    {% elif report.active_section == "queues" %}
+    <div class="metric-grid">
+      {{ stat_card("Queues", report.queues.configured, "Configured queues") }}
+      {{ stat_card("Enabled", report.queues.enabled, "Active queues", "success") }}
+      {{ stat_card("Queue Calls", report.queues.rows|sum(attribute="total_calls"), "Calls handled by queues") }}
+      {{ stat_card("Answered", report.queues.rows|sum(attribute="answered"), "Answered from queues", "success") }}
+    </div>
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>Queue performance</h3><p>Simple service-level view for each queue.</p></div></div>
+      {% if report.queues.rows %}
+      <table>
+        <thead><tr><th>Queue</th><th>Calls</th><th>Answered</th><th>Missed</th><th>Answer rate</th><th>Avg wait</th></tr></thead>
+        <tbody>
+          {% for row in report.queues.rows %}
+          <tr><td>{{ row.queue_name }}</td><td>{{ row.total_calls }}</td><td>{{ row.answered }}</td><td>{{ row.missed }}</td><td>{{ row.answer_rate }}%</td><td class="mono">{{ row.avg_wait_label }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      {{ empty_state("No queue calls", "Queue activity appears after calls are routed through queues.") }}
+      {% endif %}
+    </div>
+    {% elif report.active_section == "system" %}
+    <div class="metric-grid">
+      {{ stat_card("PBX Status", report.system.status, "Current system report", report.system.status_class) }}
+      {{ stat_card("Trunks", report.system.trunks_enabled ~ "/" ~ report.system.trunks_total, "Enabled trunks") }}
+      {{ stat_card("Disk Free", report.system.runtime_disk.free_label, report.system.runtime_disk.free_percent ~ "% available", "success" if report.system.runtime_disk.free_percent >= 15 else "warning") }}
+      {{ stat_card("Backups", report.system.backups.count, report.system.backups.latest_label) }}
+    </div>
+    {% if report.system.warnings %}
+    <div class="notice notice-warning">
+      <strong>Needs attention</strong>
+      <span>{{ report.system.warnings|join(", ") }}</span>
+    </div>
+    {% endif %}
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>System health</h3><p>PBX, phones, trunks, and call-data status.</p></div></div>
+      <div class="system-check-grid">
+        {% for item in report.system.health_checks %}
+        <div class="system-check">
+          <span class="status-pill {{ item.tone }}">{{ item.value }}</span>
+          <strong>{{ item.label }}</strong>
+        </div>
         {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    {{ empty_state("No audit entries", "Actions will appear here once admins start using OmniPBX.") }}
+      </div>
+    </div>
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>Data & storage</h3><p>Call records, recordings, voicemail, backups, and disk usage.</p></div></div>
+      <div class="system-check-grid">
+        {% for item in report.system.data_checks %}
+        <div class="system-check">
+          <span class="status-pill {{ item.tone }}">{{ item.value }}</span>
+          <strong>{{ item.label }}</strong>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="system-storage-table">
+        <table>
+          <tbody>
+            <tr><td>CDR rows</td><td class="mono">{{ report.system.cdr_rows }}</td></tr>
+            <tr><td>CEL rows</td><td class="mono">{{ report.system.cel_rows }}</td></tr>
+            <tr><td>Recording folder</td><td class="mono">{{ report.system.recordings.path }}</td></tr>
+            <tr><td>Voicemail mailboxes</td><td class="mono">{{ report.system.voicemail.mailboxes }}</td></tr>
+            <tr><td>Disk used</td><td class="mono">{{ report.system.runtime_disk.used_label }} ({{ report.system.runtime_disk.used_percent }}%)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="reports-two-column">
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>Security & errors</h3><p>Admin login, setting changes, failed deliveries, and warnings.</p></div></div>
+        <div class="system-check-list">
+          {% for item in report.system.security_checks %}
+          <div class="system-check-row">
+            <strong>{{ item.label }}</strong>
+            <span class="status-pill {{ item.tone }}">{{ item.value }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>Recent admin activity</h3><p>Latest system changes.</p></div></div>
+        {% if report.audit_entries %}
+        <table>
+          <thead><tr><th>Time</th><th>Type</th><th>Who</th></tr></thead>
+          <tbody>
+            {% for entry in report.audit_entries %}
+            <tr><td class="mono">{{ entry.created_at }}</td><td>{{ entry.event_type }}</td><td>{{ entry.actor_username or "-" }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        {{ empty_state("No admin events", "System changes will appear here.") }}
+        {% endif %}
+      </div>
+    </div>
     {% endif %}
   </div>
 </section>

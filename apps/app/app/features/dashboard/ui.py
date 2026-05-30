@@ -4,6 +4,7 @@ import psycopg
 
 from app.core.db import get_connection
 from app.services.extensions import list_extensions
+from app.services.system_tools import collect_system_usage, read_logs
 from app.web import render_template
 
 def get_ongoing_calls():
@@ -15,11 +16,14 @@ def get_trunk_status():
 
 
 def get_system_metrics():
-    return {"cpu": 25, "ram": 45, "disk": 60}
+    return collect_system_usage()
 
 
 def get_recent_logs():
-    return []
+    return [
+        {"time": "Now", "message": line.strip()[-120:], "severity": "INFO"}
+        for line in read_logs(limit=4)["lines"][-4:]
+    ]
 
 
 def get_recent_call_logs():

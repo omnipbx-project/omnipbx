@@ -53,11 +53,19 @@ See `docs/release.md` for Docker Hub and GitHub Actions release setup.
 
 OmniPBX keeps Asterisk lean by storing product data in PostgreSQL and
 generating only the Asterisk files needed for the current feature set.
+Call history is written by Asterisk directly into PostgreSQL through ODBC:
+`cdr_adaptive_odbc` stores final call records in `cdr_raw`, while `cel_odbc`
+stores event-level call flow history in `cel_raw`. The older CSV CDR importer
+remains in the app as a fallback for legacy data, but ODBC is the primary
+runtime path.
 
 Phase 1 keeps the runtime focused on these core files:
 
 - `asterisk.conf`
 - `modules.conf`
+- `res_odbc.conf`
+- `cdr_adaptive_odbc.conf`
+- `cel_odbc.conf`
 - `pjsip.conf`
 - `extensions.conf`
 - `rtp.conf`

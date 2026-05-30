@@ -16,6 +16,7 @@ router = APIRouter(tags=["call-logs"])
 def call_logs_page(
     request: Request,
     search: str = "",
+    category: str = "all",
     direction: str = "all",
     date_from: str | None = None,
     date_to: str | None = None,
@@ -23,15 +24,25 @@ def call_logs_page(
     connection: psycopg.Connection = Depends(get_connection),
 ) -> HTMLResponse:
     sync_result = sync_cdr_from_asterisk(connection)
-    report = list_call_logs(connection, search=search, direction=direction, date_from=date_from, date_to=date_to, limit=limit)
+    report = list_call_logs(
+        connection,
+        search=search,
+        direction=direction,
+        category=category,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+    )
     return render_template(
         request,
         "call_logs/index.html",
-        page_title="Call Logs",
-        page_description="Call logs now live in a dedicated feature with CDR sync, recording metadata, and searchable reporting.",
+        page_title="Call Log",
+        page_description="A simple 3CX-style call log for all, missed, abandoned, incoming, and outgoing calls.",
         active_nav="/call-logs",
         rows=report["rows"],
         summary=report["summary"],
+        categories=report["categories"],
+        category=report["category"],
         search=search,
         direction=direction,
         date_from=date_from or "",
@@ -46,6 +57,6 @@ def sync_call_logs_from_ui(
     connection: psycopg.Connection = Depends(get_connection),
 ) -> RedirectResponse:
     result = sync_cdr_from_asterisk(connection)
-    params = urlencode({"search": "", "direction": "all", "limit": 100})
+    params = urlencode({"search": "", "category": "all", "direction": "all", "limit": 100})
     params = f"{params}&synced={result['imported']}&updated={result['updated']}"
     return RedirectResponse(url=f"/call-logs?{params}", status_code=303)

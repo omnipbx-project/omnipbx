@@ -34,6 +34,31 @@ function scrollUsers(direction) {
       });
     }
 
+    function formatPercent(value) {
+      const number = Number(value || 0);
+      return `${number.toFixed(1).replace(/\.0$/, "")}%`;
+    }
+
+    async function refreshSystemUsage() {
+      const response = await fetch("/status/usage", {cache: "no-store"});
+      if (!response.ok) return;
+      const data = await response.json();
+      ["cpu", "ram", "disk"].forEach((key) => {
+        const card = document.querySelector(`[data-usage-card="${key}"]`);
+        if (!card) return;
+        const value = Number(data[key] || 0);
+        card.style.setProperty("--value", String(value));
+        const label = card.querySelector("[data-usage-value]");
+        if (label) label.textContent = formatPercent(value);
+      });
+      const ram = document.querySelector('[data-usage-meta="ram"]');
+      const disk = document.querySelector('[data-usage-meta="disk"]');
+      const load = document.querySelector('[data-usage-meta="load"]');
+      if (ram) ram.textContent = `RAM ${data.ram_used} / ${data.ram_total}`;
+      if (disk) disk.textContent = `Disk free ${data.disk_free}`;
+      if (load) load.textContent = `Load ${data.load}`;
+    }
+
     if (window.EventSource) {
       const source = new EventSource("/live-overview/events");
       window.addEventListener("pagehide", function () {
@@ -54,4 +79,9 @@ function scrollUsers(direction) {
         window.clearInterval(intervalId);
       });
     }
+    refreshSystemUsage();
+    const usageIntervalId = window.setInterval(refreshSystemUsage, 4000);
+    window.addEventListener("pagehide", function () {
+      window.clearInterval(usageIntervalId);
+    });
   });

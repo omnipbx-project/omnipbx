@@ -13,12 +13,24 @@ router = APIRouter(prefix="/api", tags=["call-logs"])
 def get_call_logs(
     search: str = "",
     direction: str = "all",
+    category: str = "all",
     date_from: str | None = None,
     date_to: str | None = None,
     limit: int = 250,
     connection: psycopg.Connection = Depends(get_connection),
 ) -> dict[str, object]:
-    return {"status": "ok", **list_call_logs(connection, search=search, direction=direction, date_from=date_from, date_to=date_to, limit=limit)}
+    return {
+        "status": "ok",
+        **list_call_logs(
+            connection,
+            search=search,
+            direction=direction,
+            category=category,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
+        ),
+    }
 
 
 @router.post("/call-logs/sync")

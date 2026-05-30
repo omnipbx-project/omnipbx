@@ -1,108 +1,85 @@
-{% from "_ui_macros.html" import empty_state, stat_card %}
+{% from "_ui_macros.html" import empty_state %}
 {% extends "base.html" %}
 {% block content %}
-<section class="page-grid">
-  <div class="panel">
-    <div class="section-header">
-      <div class="section-copy">
-        <h3>Callback worklist</h3>
-        <p>Track missed-call follow-up without burying callback notes and completion state inside call logs.</p>
+<section class="followup-page" data-followup-page data-open-only="{{ '1' if open_only else '0' }}">
+  <div class="panel followup-shell">
+    <div class="followup-header">
+      <div>
+        <h3>Follow Up</h3>
+        <p>Missed and abandoned calls that still need a simple team callback.</p>
       </div>
-    </div>
-    <div class="metric-grid">
-      {{ stat_card("Open", summary.open_callbacks, "Callbacks still waiting for follow-up", "warning") }}
-      {{ stat_card("Done today", summary.done_today, "Completed callback items today", "success") }}
-      {{ stat_card("Visible rows", rows|length, "Rows after current filters") }}
-    </div>
-  </div>
-
-  <section class="page-grid two-column">
-    <div class="panel">
-      <div class="section-header">
-        <div class="section-copy">
-          <h3>Filter callbacks</h3>
-          <p>Search by caller number or limit the worklist to only open items.</p>
-        </div>
-      </div>
-      <form method="get" action="/callbacks" class="stack">
-        <div class="field">
-          <label for="search">Search number</label>
-          <input id="search" type="text" name="search" value="{{ search }}" placeholder="019..., 8801..., 1001">
-        </div>
-        <label class="checkbox-row">
-          <input type="checkbox" name="open_only" value="1" {% if open_only %}checked{% endif %}>
-          Show open callbacks only
-        </label>
-        <div class="button-row">
-          <button type="submit">Apply filters</button>
-        </div>
+      <form method="get" action="/callbacks" class="followup-search">
+        <input type="hidden" name="open_only" value="1">
+        <input type="text" name="search" value="{{ search }}" placeholder="Search number">
+        <button type="submit">Search</button>
       </form>
     </div>
 
-    <div class="panel">
-      <div class="section-header">
-        <div class="section-copy">
-          <h3>Operator flow</h3>
-          <p>Keep the callback loop practical: find the caller, write the note, mark it complete, and move on.</p>
-        </div>
+    <div class="followup-summary" aria-label="Follow up summary">
+      <div>
+        <strong>{{ summary.open_callbacks }}</strong>
+        <span>Needs Callback</span>
       </div>
-      <ul class="bullet-list">
-        <li>Rows stay editable directly from the callback table.</li>
-        <li>Open-only mode keeps the follow-up queue focused.</li>
-        <li>Route and queue context help operators know where the missed call originated.</li>
-      </ul>
+      <div>
+        <strong>{{ summary.in_progress }}</strong>
+        <span>In Progress</span>
+      </div>
+      <div>
+        <strong>{{ summary.done_today }}</strong>
+        <span>Done Today</span>
+      </div>
+      <div>
+        <strong>{{ summary.answered_later }}</strong>
+        <span>Answered Later</span>
+      </div>
     </div>
-  </section>
 
-  <div class="panel">
-    <div class="section-header">
-      <div class="section-copy">
-        <h3>Current callbacks</h3>
-        <p>Use inline updates to capture notes and mark follow-up completion without leaving the worklist.</p>
-      </div>
+    <div class="followup-list" id="followup-list">
+      {% if rows %}
+      {% for row in rows %}
+      <article class="followup-item" data-linkedid="{{ row.linkedid }}">
+        <div class="followup-main">
+          <div class="followup-avatar">{{ row.caller_number[:1] }}</div>
+          <div>
+            <h4>{{ row.caller_number }}</h4>
+            <p>{{ row.callback_reason }}{% if row.target %} · {{ row.target }}{% endif %}</p>
+            <small>{{ row.call_time }} · {{ row.route_name or row.queue_name or row.ivr_name or "Inbound" }}</small>
+          </div>
+        </div>
+        <div class="followup-state">
+          {% if row.followup_status == "done" %}
+          <span class="followup-badge done">Done</span>
+          <small>Completed by {{ row.completed_by or "team" }}</small>
+          {% elif row.followup_status == "in_progress" %}
+          <span class="followup-badge progress">In Progress</span>
+          <small>By {{ row.assigned_to }}</small>
+          {% elif row.followup_status == "answered_later" %}
+          <span class="followup-badge answered">Answered Later</span>
+          <small>No callback needed</small>
+          {% else %}
+          <span class="followup-badge needed">Needs Callback</span>
+          <small>Not taken yet</small>
+          {% endif %}
+        </div>
+        <div class="followup-actions">
+          {% if row.followup_status == "needs_callback" %}
+          <form method="post" action="/callbacks/{{ row.linkedid }}/take">
+            <button type="submit">Take</button>
+          </form>
+          {% endif %}
+          {% if row.followup_status in ["needs_callback", "in_progress"] %}
+          <a class="button-link secondary" href="tel:{{ row.caller_number }}">Call</a>
+          <form method="post" action="/callbacks/{{ row.linkedid }}/done">
+            <button type="submit" class="secondary">Done</button>
+          </form>
+          {% endif %}
+        </div>
+      </article>
+      {% endfor %}
+      {% else %}
+      {{ empty_state("No follow ups", "Missed and abandoned calls will appear here only while they still need a callback.") }}
+      {% endif %}
     </div>
-    {% if rows %}
-    <table>
-      <thead>
-        <tr>
-          <th>Time</th>
-          <th>Caller</th>
-          <th>Reason</th>
-          <th>Target</th>
-          <th>Route</th>
-          <th>Status</th>
-          <th>Follow-up</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in rows %}
-        <tr>
-          <td class="mono">{{ row.call_time }}</td>
-          <td class="mono">{{ row.caller_number }}</td>
-          <td>{{ row.callback_reason }}</td>
-          <td class="mono">{{ row.target or "-" }}</td>
-          <td class="mono">{{ row.route_name or row.queue_name or row.ivr_name or "-" }}</td>
-          <td><span class="status-pill {{ 'available' if row.completed else 'warn' }}">{{ "Done" if row.completed else "Open" }}</span></td>
-          <td>
-            <form method="post" action="/callbacks/{{ row.linkedid }}/update" class="stack">
-              <input type="hidden" name="callback_number" value="{{ row.caller_number }}">
-              <div class="field">
-                <textarea name="note" rows="2" placeholder="Optional callback note">{{ row.note or "" }}</textarea>
-              </div>
-              <label class="checkbox-row">
-                <input type="checkbox" name="completed_raw" value="1" {% if row.completed %}checked{% endif %}>
-                Completed
-              </label>
-              <button type="submit" class="secondary">Save</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    {{ empty_state("No callback items", "When missed-call or follow-up logic creates callback work items, they will appear here.") }}
-    {% endif %}
   </div>
 </section>
 {% endblock %}

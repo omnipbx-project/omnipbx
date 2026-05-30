@@ -1,57 +1,190 @@
-{% from "_ui_macros.html" import stat_card %}
+{% from "_ui_macros.html" import stat_card, empty_state %}
 {% extends "base.html" %}
 {% block content %}
-<section class="page-grid">
-  <div class="panel">
-    <div class="section-header">
-      <div class="section-copy">
-        <h3>Realtime SIP status</h3>
-        <p>This page refreshes automatically so operators can spot registration issues without digging through a CLI.</p>
-      </div>
-      <span class="status-pill available">Refreshing every 4 seconds</span>
-    </div>
-    <div class="metric-grid">
-      {{ stat_card("Total endpoints", snapshot.summary.extensions_total, "Provisioned extensions known to OmniPBX", "default") }}
-      {{ stat_card("Online", snapshot.summary.extensions_online, "Responding and registered now", "success") }}
-      {{ stat_card("Offline", snapshot.summary.extensions_offline, "Expected but unavailable", "warning") }}
-      {{ stat_card("Unknown", snapshot.summary.extensions_unknown, "No usable state reported", "danger") }}
-    </div>
-    <p class="muted status-refresh-time">Last refresh: <span id="generated-at" class="mono">{{ snapshot.generated_at }}</span></p>
+<section class="advanced-page">
+  {% if result %}
+  <div class="notice notice-{{ result }}">
+    <strong>{{ result|capitalize }}</strong>
+    <span>{{ detail }}</span>
+  </div>
+  {% endif %}
+
+  <div class="advanced-tabs" role="tablist">
+    <button type="button" class="advanced-tab active" data-tab="monitor">System Monitor</button>
+    <button type="button" class="advanced-tab" data-tab="logs">Logs</button>
+    <button type="button" class="advanced-tab" data-tab="asterisk">Asterisk CLI</button>
+    <button type="button" class="advanced-tab" data-tab="network">Network</button>
+    <button type="button" class="advanced-tab" data-tab="security">Security</button>
+    <button type="button" class="advanced-tab" data-tab="custom">Custom Config</button>
   </div>
 
-  <div class="panel">
-    <div class="section-header">
-      <div class="section-copy">
-        <h3>Endpoint status board</h3>
-        <p>Live endpoint state, contact details, and transport visibility for quick troubleshooting.</p>
+  <section class="advanced-panel active" data-panel="monitor">
+    <div class="metric-grid" id="advanced-usage">
+      {{ stat_card("CPU", snapshot.usage.cpu ~ "%", "Realtime processor use") }}
+      {{ stat_card("RAM", snapshot.usage.ram ~ "%", snapshot.usage.ram_used ~ " / " ~ snapshot.usage.ram_total) }}
+      {{ stat_card("Disk", snapshot.usage.disk ~ "%", snapshot.usage.disk_free ~ " free") }}
+      {{ stat_card("Uptime", snapshot.usage.uptime, "Load " ~ snapshot.usage.load, "success") }}
+    </div>
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>Service status</h3><p>Quick view for firewall and fail2ban availability.</p></div></div>
+      <div class="notice notice-{{ 'success' if snapshot.host_security_agent.connected else 'warning' }}">
+        <strong>Host Security Agent</strong>
+        <span>{% if snapshot.host_security_agent.connected %}Connected. Firewall and fail2ban actions are handled through the safe host agent.{% else %}Not connected. Configure the optional host agent to manage firewall/fail2ban safely.{% endif %}</span>
+      </div>
+      <div class="advanced-service-grid">
+        <div>
+          <div class="advanced-service-title">
+            <strong>Fail2ban</strong>
+            <span class="status-pill {{ 'success' if snapshot.services.fail2ban.ok else 'warning' }}">{{ "Running" if snapshot.services.fail2ban.ok else "Not active" }}</span>
+          </div>
+          <pre class="code-block">{{ snapshot.services.fail2ban.output }}</pre>
+        </div>
+        <div>
+          <div class="advanced-service-title">
+            <strong>Firewall</strong>
+            <span class="status-pill {{ 'success' if snapshot.services.firewall.ok else 'warning' }}">{{ "Working" if snapshot.services.firewall.ok else "Not active" }}</span>
+          </div>
+          <pre class="code-block">{{ snapshot.services.firewall.output }}</pre>
+        </div>
       </div>
     </div>
-    <table>
-      <thead>
-        <tr>
-          <th>Extension</th>
-          <th>Name</th>
-          <th>Status</th>
-          <th>Endpoint state</th>
-          <th>Contact</th>
-          <th>RTT</th>
-          <th>Transport</th>
-        </tr>
-      </thead>
-      <tbody id="status-rows">
-        {% for row in snapshot.extensions %}
-        <tr>
-          <td class="mono">{{ row.extension }}</td>
-          <td>{{ row.display_name }}</td>
-          <td><span class="status-pill {{ row.status|lower }}">{{ row.status }}</span></td>
-          <td>{{ row.endpoint_state }}</td>
-          <td class="mono">{{ row.contact_uri or "Not registered" }}</td>
-          <td class="mono">{{ row.contact_rtt or "-" }}</td>
-          <td class="mono">{{ row.transport }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  </section>
+
+  <section class="advanced-panel" data-panel="logs">
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>Debug logs</h3><p>Read recent Asterisk, app, firewall, or fail2ban log lines.</p></div></div>
+      <form class="advanced-inline-form" id="log-filter">
+        <select name="source">
+          <option value="asterisk">Asterisk full</option>
+          <option value="asterisk_messages">Asterisk messages</option>
+          <option value="fail2ban">Fail2ban</option>
+          <option value="app">App</option>
+        </select>
+        <input type="search" name="keyword" placeholder="Filter keyword">
+        <button type="submit" class="button-link">Load</button>
+      </form>
+      <div class="advanced-log-table">
+        <table>
+          <thead><tr><th>Time</th><th>Level</th><th>Message</th></tr></thead>
+          <tbody id="log-output">
+            {% for entry in snapshot.logs.entries %}
+            <tr>
+              <td class="mono">{{ entry.time }}</td>
+              <td><span class="severity-badge {{ entry.level|lower }}">{{ entry.level }}</span></td>
+              <td>{{ entry.message }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" class="muted">No log lines available.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="advanced-panel" data-panel="asterisk">
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>Asterisk CLI</h3><p>Run safe Asterisk show and reload commands.</p></div></div>
+      <form class="advanced-inline-form" id="asterisk-cli-form">
+        <input type="text" name="command" list="asterisk-command-list" placeholder="pjsip show endpoints">
+        <datalist id="asterisk-command-list">
+          {% for command in snapshot.asterisk.suggested_commands %}
+          <option value="{{ command }}"></option>
+          {% endfor %}
+        </datalist>
+        <button type="submit" class="button-link">Run</button>
+      </form>
+      <pre class="code-block" id="asterisk-cli-output">Command output appears here.</pre>
+    </div>
+  </section>
+
+  <section class="advanced-panel" data-panel="network">
+    <div class="metric-grid">
+      {{ stat_card("Hostname", snapshot.network.hostname, "Server name") }}
+      {{ stat_card("Local IP", snapshot.network.local_ip, "Detected interface") }}
+      {{ stat_card("Ports", snapshot.network.settings.open_ports or "-", "Planned open ports") }}
+    </div>
+    <div class="reports-two-column">
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>Network check</h3><p>DNS lookup or TCP port reachability test.</p></div></div>
+        <form class="advanced-inline-form" id="network-check-form">
+          <input type="text" name="host" placeholder="example.com or 192.168.1.10">
+          <input type="number" name="port" placeholder="Port">
+          <button type="submit" class="button-link">Check</button>
+        </form>
+        <pre class="code-block" id="network-check-output">Network result appears here.</pre>
+      </div>
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>Port settings</h3><p>Store planned open ports and network notes. IP allow/block lists are in Security.</p></div></div>
+        <form method="post" action="/status/network-settings" class="stack">
+          <input type="hidden" name="trusted_ips" value="">
+          <input type="hidden" name="blocked_ips" value="">
+          <label>Open ports<textarea name="open_ports" rows="2">{{ snapshot.network.settings.open_ports }}</textarea></label>
+          <label>Note<textarea name="note" rows="2">{{ snapshot.network.settings.note }}</textarea></label>
+          <button type="submit">Save Port Settings</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section class="advanced-panel" data-panel="security">
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>Blocklist and whitelist</h3><p>Single place for number blocklist, IP whitelist, and IP blocklist.</p></div></div>
+      <form method="post" action="/status/security-rules" class="advanced-inline-form">
+        <select name="rule_type">
+          <option value="number_block">Block phone number</option>
+          <option value="ip_whitelist">Whitelist IP</option>
+          <option value="ip_blocklist">Block IP</option>
+        </select>
+        <input type="text" name="value" placeholder="Number or IP">
+        <input type="text" name="note" placeholder="Reason">
+        <label class="toggle-line"><input type="checkbox" name="enabled_raw" checked> Enabled</label>
+        <button type="submit" class="button-link">Save</button>
+      </form>
+      {% if snapshot.security_rules %}
+      <table>
+        <thead><tr><th>Type</th><th>Value</th><th>Note</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {% for rule in snapshot.security_rules %}
+          <tr>
+            <td>{{ rule.rule_type|replace('_', ' ')|title }}</td>
+            <td class="mono">{{ rule.value }}</td>
+            <td>{{ rule.note or "-" }}</td>
+            <td><span class="status-pill {{ 'success' if rule.enabled else 'warning' }}">{{ "Enabled" if rule.enabled else "Disabled" }}</span></td>
+            <td>
+              <div class="button-row">
+                {% if rule.rule_type in ["ip_whitelist", "ip_blocklist"] %}
+                <button type="button" class="secondary apply-security-rule" data-rule-type="{{ rule.rule_type }}" data-value="{{ rule.value }}">Dry Run</button>
+                {% endif %}
+                <form method="post" action="/status/security-rules/{{ rule.id }}/delete"><button type="submit" class="secondary">Delete</button></form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      {{ empty_state("No security rules", "Add number blocklist or IP whitelist/blocklist entries here.") }}
+      {% endif %}
+      <pre class="code-block block-spaced" id="security-agent-output">Host agent output appears here.</pre>
+    </div>
+  </section>
+
+  <section class="advanced-panel" data-panel="custom">
+    <div class="reports-two-column">
+      {% for key, title in [("pjsip", "Custom PJSIP"), ("dialplan", "Custom Dialplan")] %}
+      {% set config = snapshot.custom_config.get(key, {}) %}
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>{{ title }}</h3><p>Appended to generated {{ key }} config when enabled.</p></div></div>
+        <form method="post" action="/status/custom-config" class="stack">
+          <input type="hidden" name="config_key" value="{{ key }}">
+          <label class="toggle-line"><input type="checkbox" name="enabled_raw" {% if config.enabled %}checked{% endif %}> Enable custom {{ key }}</label>
+          <textarea name="content" rows="14" spellcheck="false" class="advanced-code-input">{{ config.content or "" }}</textarea>
+          <button type="submit">Save and Reload</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
 </section>
 {% endblock %}

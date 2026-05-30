@@ -11,11 +11,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libedit-dev \
     libjansson-dev \
     libncurses-dev \
+    libpq-dev \
     libsqlite3-dev \
     libssl-dev \
     libxml2-dev \
     pkg-config \
     tar \
+    unixodbc-dev \
     uuid-dev \
     wget \
     build-essential \
@@ -48,12 +50,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libedit2 \
     libjansson4 \
     libncurses6 \
+    libpq5 \
     libsqlite3-0 \
     libssl3 \
     libxml2 \
+    odbc-postgresql \
     python3 \
     python3-pip \
     tini \
+    unixodbc \
     && mkdir -p /usr/local/lib/docker/cli-plugins \
     && arch="$(dpkg --print-architecture)" \
     && case "${arch}" in amd64) compose_arch="x86_64" ;; arm64) compose_arch="aarch64" ;; *) compose_arch="${arch}" ;; esac \
