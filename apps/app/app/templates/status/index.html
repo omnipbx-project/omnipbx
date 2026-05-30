@@ -101,7 +101,7 @@
   <section class="advanced-panel" data-panel="network">
     <div class="metric-grid">
       {{ stat_card("Hostname", snapshot.network.hostname, "Server name") }}
-      {{ stat_card("Local IP", snapshot.network.local_ip, "Detected interface") }}
+      {{ stat_card("Local IP", snapshot.network.local_ip, snapshot.network.local_ip_note) }}
       {{ stat_card("Ports", snapshot.network.settings.open_ports or "-", "Planned open ports") }}
     </div>
     <div class="reports-two-column">

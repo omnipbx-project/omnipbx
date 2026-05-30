@@ -53,10 +53,10 @@ function scrollUsers(direction) {
       });
       const ram = document.querySelector('[data-usage-meta="ram"]');
       const disk = document.querySelector('[data-usage-meta="disk"]');
-      const load = document.querySelector('[data-usage-meta="load"]');
+      const pressure = document.querySelector('[data-usage-meta="pressure"]');
       if (ram) ram.textContent = `RAM ${data.ram_used} / ${data.ram_total}`;
       if (disk) disk.textContent = `Disk free ${data.disk_free}`;
-      if (load) load.textContent = `Load ${data.load}`;
+      if (pressure) pressure.textContent = `System ${data.system_pressure || "Normal"}`;
     }
 
     if (window.EventSource) {

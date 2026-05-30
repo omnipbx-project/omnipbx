@@ -4,6 +4,7 @@ import ipaddress
 import json
 import os
 import shutil
+import socket
 import subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -70,6 +71,7 @@ def handle_action(payload: dict) -> dict:
             "dry_run": dry_run,
             "firewall": firewall_status(),
             "fail2ban": fail2ban_status(),
+            "network": network_status(),
             "emergency_allowlist": EMERGENCY_ALLOWLIST,
         }
     if action == "firewall_status":
@@ -160,6 +162,22 @@ def fail2ban_unban(value: str, *, dry_run: bool) -> dict:
     if not shutil.which("fail2ban-client"):
         return {"ok": False, "installed": False, "output": "fail2ban-client is not installed"}
     return run(["fail2ban-client", "unban", value], dry_run=dry_run)
+
+
+def network_status() -> dict:
+    return {
+        "hostname": socket.gethostname(),
+        "local_ip": local_ip(),
+    }
+
+
+def local_ip() -> str:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+    except OSError:
+        return "Unknown"
 
 
 def run(command: list[str], *, dry_run: bool) -> dict:

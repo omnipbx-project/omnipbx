@@ -43,6 +43,7 @@ def collect_system_usage() -> dict[str, object]:
     memory = _memory_percent()
     disk = shutil.disk_usage("/")
     load = os.getloadavg() if hasattr(os, "getloadavg") else (0.0, 0.0, 0.0)
+    pressure = _system_pressure(load)
     return {
         "cpu": cpu,
         "ram": memory["percent"],
@@ -53,6 +54,8 @@ def collect_system_usage() -> dict[str, object]:
         "ram_used": memory["used_label"],
         "ram_total": memory["total_label"],
         "load": ", ".join(f"{value:.2f}" for value in load),
+        "system_pressure": pressure["label"],
+        "system_pressure_detail": pressure["detail"],
         "uptime": _uptime_label(),
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
@@ -113,7 +116,11 @@ def run_asterisk_cli(command: str) -> dict[str, object]:
 def collect_network_snapshot(connection: psycopg.Connection) -> dict[str, object]:
     settings = get_settings()
     rows = get_network_settings(connection)
-    local_ip = _local_ip()
+    agent_status = host_security_agent_action("status", dry_run=True)
+    host_network = agent_status.get("network") if agent_status.get("connected") else None
+    host_ip = host_network.get("local_ip") if isinstance(host_network, dict) else ""
+    local_ip = str(host_ip or _local_ip())
+    ip_note = "Host LAN address" if host_ip else "Detected inside PBX container"
     ports = [
         {"label": "SIP", "port": settings.sip_port, "protocol": "udp"},
         {"label": "Web", "port": settings.http_port, "protocol": "tcp"},
@@ -123,6 +130,7 @@ def collect_network_snapshot(connection: psycopg.Connection) -> dict[str, object
     return {
         "hostname": socket.gethostname(),
         "local_ip": local_ip,
+        "local_ip_note": ip_note,
         "settings": rows,
         "ports": ports,
     }
@@ -408,6 +416,16 @@ def _uptime_label() -> str:
     if hours:
         return f"{hours}h {minutes}m"
     return f"{minutes}m"
+
+
+def _system_pressure(load: tuple[float, float, float]) -> dict[str, str]:
+    cores = _effective_cpu_count()
+    ratio = load[0] / cores if cores else 0.0
+    if ratio < 0.7:
+        return {"label": "Normal", "detail": "System has room for calls."}
+    if ratio < 1.0:
+        return {"label": "Busy", "detail": "System is working harder than usual."}
+    return {"label": "High", "detail": "System may feel slow."}
 
 
 def _tail_file(path: Path, *, limit: int) -> list[str]:
