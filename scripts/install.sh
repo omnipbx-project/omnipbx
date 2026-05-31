@@ -240,6 +240,15 @@ PY
 }
 
 detect_host() {
+  local route_host=""
+  if command_exists ip; then
+    route_host="$(ip route get 1.1.1.1 2>/dev/null | awk '/src/ {for (i = 1; i <= NF; i++) if ($i == "src") print $(i+1); exit}')"
+  fi
+  if [[ -n "${route_host}" && "${route_host}" != "127.0.0.1" && "${route_host}" != "::1" ]]; then
+    DETECTED_HOST="${route_host}"
+    return 0
+  fi
+
   local first_host=""
   while IFS= read -r ip; do
     [[ -z "${ip}" ]] && continue
@@ -501,18 +510,23 @@ ports = [
 print(json.dumps(ports))
 PY
 )"
-  ips_json="$(python3 - <<'PY'
-import json, socket
-addresses = {"127.0.0.1"}
-for family in (socket.AF_INET, socket.AF_INET6):
-    try:
-        for result in socket.getaddrinfo(socket.gethostname(), None, family, socket.SOCK_STREAM):
-            ip = result[4][0]
-            if ip and ip != "::1" and not ip.startswith("127."):
-                addresses.add(ip)
-    except OSError:
-        pass
-print(json.dumps(sorted(addresses)))
+  ips_json="$(DETECTED_HOST_VALUE="${DETECTED_HOST}" DETECTED_IPS="$(detect_ip_addresses)" python3 - <<'PY'
+import json, os
+
+addresses = []
+seen = set()
+
+def add(value):
+    value = (value or "").strip()
+    if value and value not in seen:
+        seen.add(value)
+        addresses.append(value)
+
+add(os.environ.get("DETECTED_HOST_VALUE"))
+for line in os.environ.get("DETECTED_IPS", "").splitlines():
+    add(line)
+add("127.0.0.1")
+print(json.dumps(addresses))
 PY
 )"
   python3 - <<PY
