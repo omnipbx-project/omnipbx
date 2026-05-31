@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import os
 import secrets
 import socket
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import BinaryIO
 
 import psycopg
 from psycopg.rows import dict_row
@@ -18,6 +20,7 @@ from app.services.extensions import WEBPHONE_AUDIO_CODECS, WEBPHONE_TRANSPORT, W
 
 
 SETTINGS_ID = 1
+MAX_CERT_UPLOAD_BYTES = 256 * 1024
 
 
 def get_system_settings(connection: psycopg.Connection) -> dict:
@@ -96,6 +99,46 @@ def save_ssl_settings(
     return refresh_caddy_config(connection)
 
 
+def custom_certificate_paths() -> tuple[Path, Path]:
+    cert_dir = Path(get_settings().caddyfile_path).parent.parent / "certs"
+    return cert_dir / "fullchain.pem", cert_dir / "privkey.pem"
+
+
+def custom_certificate_ready() -> bool:
+    cert_path, key_path = custom_certificate_paths()
+    return cert_path.is_file() and key_path.is_file()
+
+
+def save_custom_certificate_files(cert_file: BinaryIO, key_file: BinaryIO) -> None:
+    cert_text = _read_certificate_upload(cert_file, "certificate")
+    key_text = _read_certificate_upload(key_file, "private key")
+    if "-----BEGIN CERTIFICATE-----" not in cert_text or "-----END CERTIFICATE-----" not in cert_text:
+        raise ValueError("Upload a PEM certificate file that starts with BEGIN CERTIFICATE.")
+    if "-----BEGIN " not in key_text or "PRIVATE KEY-----" not in key_text or "-----END " not in key_text:
+        raise ValueError("Upload a PEM private key file.")
+
+    cert_path, key_path = custom_certificate_paths()
+    cert_path.parent.mkdir(parents=True, exist_ok=True)
+    cert_path.write_text(cert_text.rstrip() + "\n", encoding="utf-8")
+    key_path.write_text(key_text.rstrip() + "\n", encoding="utf-8")
+    os.chmod(cert_path, 0o644)
+    os.chmod(key_path, 0o600)
+
+
+def _read_certificate_upload(file_obj: BinaryIO, label: str) -> str:
+    file_obj.seek(0)
+    data = file_obj.read(MAX_CERT_UPLOAD_BYTES + 1)
+    if len(data) > MAX_CERT_UPLOAD_BYTES:
+        raise ValueError(f"The {label} file is too large. Upload a PEM file under 256 KB.")
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"The {label} file must be a text PEM file.") from exc
+    if not text.strip():
+        raise ValueError(f"Upload the {label} file.")
+    return text
+
+
 def refresh_caddy_config(connection: psycopg.Connection) -> dict[str, object]:
     settings_snapshot = get_system_settings(connection)
     caddyfile = render_caddyfile(settings_snapshot)
@@ -118,6 +161,8 @@ def save_setup_wizard(connection: psycopg.Connection, payload: SetupWizardPayloa
         raise ValueError("Public domain HTTPS needs a domain name, not an IP address.")
     if ssl_mode == "public_ip" and host and not _is_ip_address(host):
         raise ValueError("Public IP HTTPS needs a public IP address, not a domain name.")
+    if ssl_mode == "custom_certificate" and not custom_certificate_ready():
+        raise ValueError("Upload the certificate and private key before using Bring Your Own Certificate.")
 
     with connection.cursor() as cursor:
         cursor.execute(

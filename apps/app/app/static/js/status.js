@@ -61,6 +61,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
   const accessMode = document.getElementById("advanced-access-mode");
   const sslMode = document.getElementById("advanced-ssl-mode");
+  const customCertUpload = document.getElementById("advanced-custom-certificate-upload");
+  function updateCustomCertUpload() {
+    const show = sslMode?.value === "custom_certificate" || accessMode?.value === "private_self_hosted";
+    if (customCertUpload) customCertUpload.style.display = show ? "block" : "none";
+  }
   accessMode?.addEventListener("change", function () {
     const recommended = {
       local_network: "internal_local",
@@ -70,7 +75,10 @@ document.addEventListener("DOMContentLoaded", function () {
       http_only: "http",
     };
     if (sslMode && recommended[accessMode.value]) sslMode.value = recommended[accessMode.value];
+    updateCustomCertUpload();
   });
+  sslMode?.addEventListener("change", updateCustomCertUpload);
+  updateCustomCertUpload();
 
   refreshUsage();
   const usageTimer = window.setInterval(refreshUsage, 4000);

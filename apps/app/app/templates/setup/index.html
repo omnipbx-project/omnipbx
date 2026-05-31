@@ -19,7 +19,7 @@
       <div class="progress-dot" title="Finish"></div>
     </div>
 
-    <form method="post" action="/setup" class="stack wizard-form" data-detected-host="{{ env_summary.detected_host }}">
+    <form method="post" action="/setup" enctype="multipart/form-data" class="stack wizard-form" data-detected-host="{{ env_summary.detected_host }}">
       <!-- STEP 1: Welcome -->
       <section class="wizard-step active" id="step-1">
         <div class="step-header-compact">
@@ -185,6 +185,21 @@
                         <option value="local_network">Private Office Network</option>
                         <option value="private_self_hosted">Bring Your Own Certificate</option>
                     </select>
+                </div>
+              </div>
+              <div id="custom-certificate-upload" class="custom-certificate-upload setup-hidden">
+                <h4 class="setup-subheading">Custom Certificate Files</h4>
+                <div class="field-grid two">
+                  <div class="field">
+                    <label for="custom_certificate_file">Certificate file</label>
+                    <input id="custom_certificate_file" type="file" name="custom_certificate_file" accept=".pem,.crt,.cer">
+                    <small class="muted">Upload the full chain or certificate PEM file.</small>
+                  </div>
+                  <div class="field">
+                    <label for="custom_private_key_file">Private key file</label>
+                    <input id="custom_private_key_file" type="file" name="custom_private_key_file" accept=".pem,.key">
+                    <small class="muted">Upload the matching private key PEM file.</small>
+                  </div>
                 </div>
               </div>
           </div>

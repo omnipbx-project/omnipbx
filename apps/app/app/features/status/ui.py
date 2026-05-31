@@ -1,13 +1,13 @@
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 import psycopg
 
 from app.core.db import get_connection
 from app.features.status.service import collect_status_snapshot
 from app.services.asterisk import sync_asterisk_config
-from app.services.setup import refresh_caddy_config, save_ssl_settings
+from app.services.setup import custom_certificate_ready, refresh_caddy_config, save_custom_certificate_files, save_ssl_settings
 from app.services.system_tools import (
     build_advanced_snapshot,
     collect_system_usage,
@@ -80,6 +80,8 @@ def status_save_ssl_settings(
     external_host: str = Form(default=""),
     ssl_contact_email: str = Form(default=""),
     action: str = Form(default="save"),
+    custom_certificate_file: UploadFile | None = File(default=None),
+    custom_private_key_file: UploadFile | None = File(default=None),
     connection: psycopg.Connection = Depends(get_connection),
 ) -> RedirectResponse:
     try:
@@ -88,6 +90,15 @@ def status_save_ssl_settings(
             url = result.get("public_base_url") or "current address"
             detail = f"SSL config refreshed. Open OmniPBX at {url}."
         else:
+            cert_uploaded = _upload_has_file(custom_certificate_file)
+            key_uploaded = _upload_has_file(custom_private_key_file)
+            if ssl_mode == "custom_certificate":
+                if cert_uploaded != key_uploaded:
+                    raise ValueError("Upload both the certificate file and the private key file.")
+                if cert_uploaded and key_uploaded and custom_certificate_file and custom_private_key_file:
+                    save_custom_certificate_files(custom_certificate_file.file, custom_private_key_file.file)
+                if not custom_certificate_ready():
+                    raise ValueError("Upload the certificate and private key before using custom certificate mode.")
             result = save_ssl_settings(
                 connection,
                 access_mode=access_mode,
@@ -101,6 +112,10 @@ def status_save_ssl_settings(
     except ValueError as exc:
         params = urlencode({"result": "error", "detail": str(exc)})
     return RedirectResponse(url=f"/status?{params}", status_code=303)
+
+
+def _upload_has_file(upload: UploadFile | None) -> bool:
+    return bool(upload and upload.filename)
 
 
 @router.post("/status/security-rules")

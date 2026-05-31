@@ -92,6 +92,11 @@
   line-height: 1.45;
 }
 
+.custom-certificate-upload {
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
 @media (max-width: 900px) {
   .advanced-service-grid,
   .advanced-inline-form {

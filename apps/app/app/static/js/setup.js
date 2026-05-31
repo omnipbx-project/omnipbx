@@ -66,6 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     details.style.display = 'block';
     nextBtn.style.display = 'inline-flex';
+    updateCustomCertificateFields();
   };
 
   window.toggleAdvancedNetwork = (event) => {
@@ -73,7 +74,22 @@ document.addEventListener('DOMContentLoaded', () => {
       const isVisible = adv.style.display === 'block';
       adv.style.display = isVisible ? 'none' : 'block';
       event.currentTarget.textContent = isVisible ? 'Show advanced settings' : 'Hide advanced settings';
+      updateCustomCertificateFields();
   };
+
+  function updateCustomCertificateFields() {
+      const accessMode = document.querySelector('select[name="access_mode"]');
+      const uploadBlock = document.getElementById('custom-certificate-upload');
+      const certInput = document.getElementById('custom_certificate_file');
+      const keyInput = document.getElementById('custom_private_key_file');
+      const showUploads = accessMode?.value === 'private_self_hosted';
+      if (uploadBlock) uploadBlock.style.display = showUploads ? 'block' : 'none';
+      if (certInput) certInput.required = showUploads;
+      if (keyInput) keyInput.required = showUploads;
+  }
+
+  document.querySelector('select[name="access_mode"]')?.addEventListener('change', updateCustomCertificateFields);
+  updateCustomCertificateFields();
 
   window.generateSummary = () => {
       const box = document.getElementById('final-summary-box');

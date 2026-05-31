@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 import psycopg
 
@@ -10,7 +10,14 @@ from app.core.db import get_connection
 from app.core.settings import get_settings
 from app.models.setup import SetupWizardPayload
 from app.services.auth import AUTH_COOKIE_NAME, issue_session_cookie
-from app.services.setup import get_environment_summary, get_internal_root_ca_path, get_system_settings, save_setup_wizard
+from app.services.setup import (
+    custom_certificate_ready,
+    get_environment_summary,
+    get_internal_root_ca_path,
+    get_system_settings,
+    save_custom_certificate_files,
+    save_setup_wizard,
+)
 from app.web import render_template
 
 
@@ -115,6 +122,8 @@ def save_setup_page(
     first_extension: str = Form(default="10000"),
     first_extension_name: str = Form(default="Admin"),
     first_extension_secret: str = Form(default="pass10000"),
+    custom_certificate_file: UploadFile | None = File(default=None),
+    custom_private_key_file: UploadFile | None = File(default=None),
     connection: psycopg.Connection = Depends(get_connection),
 ) -> RedirectResponse:
     try:
@@ -127,6 +136,15 @@ def save_setup_page(
             "private_self_hosted": "custom_certificate",
             "http_only": "http",
         }.get(access_mode, "http")
+        cert_uploaded = _upload_has_file(custom_certificate_file)
+        key_uploaded = _upload_has_file(custom_private_key_file)
+        if access_mode == "private_self_hosted":
+            if cert_uploaded != key_uploaded:
+                raise ValueError("Upload both the certificate file and the private key file.")
+            if cert_uploaded and key_uploaded and custom_certificate_file and custom_private_key_file:
+                save_custom_certificate_files(custom_certificate_file.file, custom_private_key_file.file)
+            if not custom_certificate_ready():
+                raise ValueError("Upload the certificate and private key before continuing.")
         payload = SetupWizardPayload(
             company_name=company_name,
             country=country,
@@ -192,3 +210,7 @@ def download_internal_ca() -> FileResponse:
 def _request_is_secure(request: Request) -> bool:
     forwarded_proto = request.headers.get("x-forwarded-proto", "")
     return request.url.scheme == "https" or forwarded_proto == "https"
+
+
+def _upload_has_file(upload: UploadFile | None) -> bool:
+    return bool(upload and upload.filename)

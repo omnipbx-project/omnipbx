@@ -136,6 +136,12 @@
     border-top: 1px dashed var(--line);
   }
 
+  .custom-certificate-upload {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px dashed var(--line);
+  }
+
   .setup-subheading {
     margin-bottom: 12px;
   }

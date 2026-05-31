@@ -110,7 +110,7 @@
     <div class="reports-two-column">
       <div class="panel">
         <div class="section-header"><div class="section-copy"><h3>Browser phone SSL</h3><p>Set the LAN IP or domain users open in the browser.</p></div></div>
-        <form method="post" action="/status/ssl-settings" class="stack">
+        <form method="post" action="/status/ssl-settings" enctype="multipart/form-data" class="stack">
           <label>Access type
             <select name="access_mode" id="advanced-access-mode">
               <option value="local_network" {% if ssl_settings.access_mode == "local_network" %}selected{% endif %}>LAN IP or local domain</option>
@@ -135,6 +135,17 @@
           <label>Certificate email
             <input type="email" name="ssl_contact_email" value="{{ ssl_settings.ssl_contact_email or ssl_settings.admin_email or '' }}" placeholder="admin@example.com">
           </label>
+          <div id="advanced-custom-certificate-upload" class="custom-certificate-upload">
+            <div class="field-grid two">
+              <label>Certificate file
+                <input type="file" name="custom_certificate_file" accept=".pem,.crt,.cer">
+              </label>
+              <label>Private key file
+                <input type="file" name="custom_private_key_file" accept=".pem,.key">
+              </label>
+            </div>
+            <p class="muted">Required only when using custom certificate files. Upload the certificate/full chain and the matching private key.</p>
+          </div>
           <div class="button-row">
             <button type="submit" name="action" value="save">Save SSL</button>
             <button type="submit" name="action" value="refresh" class="secondary">Redo SSL</button>
