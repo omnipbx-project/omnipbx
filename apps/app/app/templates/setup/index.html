@@ -15,7 +15,6 @@
       <div class="progress-dot" title="Business"></div>
       <div class="progress-dot" title="Location"></div>
       <div class="progress-dot" title="Network"></div>
-      <div class="progress-dot" title="Extension"></div>
       <div class="progress-dot" title="Finish"></div>
     </div>
 
@@ -23,7 +22,7 @@
       <!-- STEP 1: Welcome -->
       <section class="wizard-step active" id="step-1">
         <div class="step-header-compact">
-          <span class="eyebrow">Step 1 of 7</span>
+          <span class="eyebrow">Step 1 of 6</span>
           <h2>Welcome to OmniPBX</h2>
           <p>The smallest foundation for your business communication.</p>
         </div>
@@ -60,7 +59,7 @@
       <!-- STEP 2: Owner Login -->
       <section class="wizard-step" id="step-2">
         <div class="step-header-compact">
-          <span class="eyebrow">Step 2 of 7</span>
+          <span class="eyebrow">Step 2 of 6</span>
           <h2>Create Owner Account</h2>
           <p>You'll use these details to manage your PBX.</p>
         </div>
@@ -93,7 +92,7 @@
       <!-- STEP 3: Business Basics -->
       <section class="wizard-step" id="step-3">
         <div class="step-header-compact">
-          <span class="eyebrow">Step 3 of 7</span>
+          <span class="eyebrow">Step 3 of 6</span>
           <h2>Business Basics</h2>
           <p>Set your local time and company identity.</p>
         </div>
@@ -142,7 +141,7 @@
       <!-- STEP 4: Location Choice -->
       <section class="wizard-step" id="step-4">
         <div class="step-header-compact">
-          <span class="eyebrow">Step 4 of 7</span>
+          <span class="eyebrow">Step 4 of 6</span>
           <h2>Where is OmniPBX?</h2>
           <p>Tell us where you are installing the server so we can secure it.</p>
         </div>
@@ -217,7 +216,7 @@
       <!-- STEP 5: Calling Network -->
       <section class="wizard-step" id="step-5">
         <div class="step-header-compact">
-          <span class="eyebrow">Step 5 of 7</span>
+          <span class="eyebrow">Step 5 of 6</span>
           <h2>Quality of Service</h2>
           <p>Ensure your phone calls are clear and reliable.</p>
         </div>
@@ -256,52 +255,16 @@
 
         <div class="wizard-nav">
           <button type="button" class="secondary" onclick="goToStep(4)">&larr; Back</button>
-          <button type="button" class="primary" onclick="goToStep(6)">Continue &rarr;</button>
+          <button type="button" class="primary" onclick="generateSummary(); goToStep(6);">Review &rarr;</button>
         </div>
       </section>
 
-      <!-- STEP 6: Test Extension -->
+      <input id="first_extension" type="hidden" name="first_extension" value="10000">
+      <input id="first_extension_name" type="hidden" name="first_extension_name" value="Admin">
+      <input id="first_extension_secret" type="hidden" name="first_extension_secret" value="pass10000">
+
+      <!-- STEP 6: Review & Finish -->
       <section class="wizard-step" id="step-6">
-        <div class="step-header-compact">
-          <span class="eyebrow">Step 6 of 7</span>
-          <h2>Admin Webphone</h2>
-          <p>OmniPBX creates a permanent admin phone so you can call from the browser immediately.</p>
-        </div>
-
-        <div class="panel">
-          <div class="field-grid two">
-            <div class="field">
-              <label for="first_extension">Extension Number</label>
-              <input id="first_extension" type="text" name="first_extension" value="10000" readonly>
-              <small>Permanent admin extension. You can change phone type later, but this number stays reserved.</small>
-            </div>
-            <div class="field">
-              <label for="first_extension_name">User Name</label>
-              <input id="first_extension_name" type="text" name="first_extension_name" value="Admin" placeholder="Admin">
-            </div>
-          </div>
-          <div class="field-grid two setup-spaced-sm">
-            <div class="field">
-              <label for="first_extension_secret">Phone Password</label>
-              <input id="first_extension_secret" type="text" name="first_extension_secret" value="pass10000" placeholder="Pick a strong secret">
-              <small>Used by the built-in browser phone.</small>
-            </div>
-            <div class="field">
-              <label>Default Phone Type</label>
-              <input type="text" value="Webphone" readonly>
-              <small>Later you can switch this user to Desk Phone, Softphone, or Webphone from Users.</small>
-            </div>
-          </div>
-        </div>
-
-        <div class="wizard-nav">
-          <button type="button" class="secondary" onclick="goToStep(5)">&larr; Back</button>
-          <button type="button" class="primary" onclick="generateSummary(); goToStep(7);">Review &rarr;</button>
-        </div>
-      </section>
-
-      <!-- STEP 7: Review & Finish -->
-      <section class="wizard-step" id="step-7">
         <div class="step-header-compact">
           <span class="eyebrow">Final Step</span>
           <h2>Ready to Launch?</h2>
@@ -318,7 +281,7 @@
         </div>
 
         <div class="wizard-nav">
-          <button type="button" class="secondary" onclick="goToStep(6)">&larr; Back</button>
+          <button type="button" class="secondary" onclick="goToStep(5)">&larr; Back</button>
           <button type="submit" class="primary">Launch OmniPBX</button>
         </div>
       </section>

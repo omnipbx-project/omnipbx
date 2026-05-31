@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
   let currentStep = 1;
-  const totalSteps = 7;
+  const totalSteps = 6;
   const steps = document.querySelectorAll('.wizard-step');
   const dots = document.querySelectorAll('.progress-dot');
 
