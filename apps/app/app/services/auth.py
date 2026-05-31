@@ -48,17 +48,20 @@ def authenticate_principal(connection: psycopg.Connection, username: str, passwo
 
 
 def authenticate_extension_user(connection: psycopg.Connection, username: str, password: str) -> dict | None:
-    extension = username.strip()
-    if not extension:
+    login = username.strip()
+    if not login:
         return None
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             """
             SELECT id, extension, display_name, secret, enabled
             FROM extensions
-            WHERE extension = %(extension)s
+            WHERE lower(extension) = lower(%(login)s)
+               OR lower(display_name) = lower(%(login)s)
+            ORDER BY CASE WHEN lower(extension) = lower(%(login)s) THEN 0 ELSE 1 END, extension
+            LIMIT 1
             """,
-            {"extension": extension},
+            {"login": login},
         )
         row = cursor.fetchone()
     if not row or not row["enabled"] or not hmac.compare_digest(password, row["secret"]):

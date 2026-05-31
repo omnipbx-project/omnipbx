@@ -163,7 +163,9 @@ def _resolved_webphone_settings(settings: dict, *, request_host: str, request_sc
     websocket_url = settings.get("websocket_url")
     public_host = settings.get("public_host")
     if not websocket_url and host_no_port:
-        websocket_url = f"wss://{host_no_port}:8089/ws"
+        public_port = int(app_settings.public_https_port or 443)
+        websocket_host = host_no_port if public_port == 443 else f"{host_no_port}:{public_port}"
+        websocket_url = f"wss://{websocket_host}/ws"
     if not public_host and host:
         public_port = int(app_settings.public_https_port or 443)
         public_host_value = host_no_port if public_port == 443 else f"{host_no_port}:{public_port}"

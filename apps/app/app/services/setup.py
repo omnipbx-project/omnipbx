@@ -128,6 +128,7 @@ def render_caddyfile(system_settings: dict) -> str:
         global_lines.append(f"  email {contact_email}")
 
     if ssl_mode in {"public_domain", "public_ip"} and host:
+        global_lines.append(f"  default_sni {host}")
         site_address = _https_site_address(host, settings.public_https_port)
         global_lines.append("  auto_https disable_redirects")
         return (
@@ -142,6 +143,7 @@ def render_caddyfile(system_settings: dict) -> str:
         )
 
     if ssl_mode in {"internal_local", "custom_certificate"} and host:
+        global_lines.append(f"  default_sni {host}")
         site_address = _https_site_address(host, settings.public_https_port)
         tls_block = "  tls internal\n" if ssl_mode == "internal_local" else "  tls /srv/omnipbx/certs/fullchain.pem /srv/omnipbx/certs/privkey.pem\n"
         global_lines.append("  auto_https disable_redirects")

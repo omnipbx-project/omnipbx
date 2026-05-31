@@ -94,7 +94,8 @@
       els.account.textContent = "Not ready";
       return;
     }
-    els.account.textContent = `${config.extension} · ${config.display_name || "Webphone"}`;
+    const label = config.display_name || config.extension || "Webphone";
+    els.account.textContent = config.extension && config.extension !== label ? `${label} · ${config.extension}` : label;
     state.dnd = Boolean(config.dnd_enabled);
     toggleButton(els.dnd, state.dnd);
   }
