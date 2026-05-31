@@ -274,9 +274,9 @@
     if (stream.getVideoTracks().length) els.videoBox.hidden = false;
   }
 
-  function call(withVideo) {
+  async function call(withVideo) {
     if (state.incoming) {
-      answer(withVideo);
+      await answer(withVideo);
       return;
     }
     if (!state.ua || !state.registered) {
@@ -288,24 +288,47 @@
       setStatus("Enter a number", "bad");
       return;
     }
-    state.ua.call(destination, mediaOptions(withVideo));
+    const stream = await requestMedia(withVideo);
+    if (!stream) return;
+    state.ua.call(destination, mediaOptions(withVideo, stream));
     log(`Calling ${normalizeNumber(els.number.value)}`);
   }
 
-  function answer(withVideo) {
+  async function answer(withVideo) {
     if (!state.incoming) return;
-    state.incoming.answer(mediaOptions(withVideo));
+    const stream = await requestMedia(withVideo);
+    if (!stream) return;
+    state.incoming.answer(mediaOptions(withVideo, stream));
     state.incoming = null;
     setStatus("Answering...", "warn");
     updateCallButton();
   }
 
-  function mediaOptions(withVideo) {
-    return {
+  async function requestMedia(withVideo) {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus("Microphone not available", "bad");
+      log("Microphone not available");
+      return null;
+    }
+    try {
+      return await navigator.mediaDevices.getUserMedia({audio: true, video: Boolean(withVideo)});
+    } catch (error) {
+      const denied = error && ["NotAllowedError", "SecurityError", "PermissionDeniedError"].includes(error.name);
+      const message = denied ? "Allow microphone" : "Microphone failed";
+      setStatus(message, "bad");
+      log(message);
+      return null;
+    }
+  }
+
+  function mediaOptions(withVideo, stream) {
+    const options = {
       mediaConstraints: {audio: true, video: Boolean(withVideo)},
       pcConfig: {iceServers: [{urls: "stun:stun.l.google.com:19302"}]},
       rtcOfferConstraints: {offerToReceiveAudio: true, offerToReceiveVideo: Boolean(withVideo)},
     };
+    if (stream) options.mediaStream = stream;
+    return options;
   }
 
   function hangup() {
@@ -318,6 +341,7 @@
   function resetCall(message) {
     state.session = null;
     state.incoming = null;
+    if (state.localStream) state.localStream.getTracks().forEach((track) => track.stop());
     state.remoteStream = null;
     state.localStream = null;
     state.held = false;

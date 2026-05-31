@@ -292,6 +292,8 @@ def render_pjsip_config(extensions: list[dict]) -> str:
                 "use_avpf = yes\n"
                 "media_encryption = dtls\n"
                 "dtls_auto_generate_cert = yes\n"
+                "dtls_verify = fingerprint\n"
+                "dtls_setup = actpass\n"
                 "ice_support = yes\n"
                 "rtcp_mux = yes\n"
                 "media_use_received_transport = yes\n"
