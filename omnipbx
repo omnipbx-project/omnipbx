@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEPLOY_DIR="${ROOT_DIR}/deploy"
+COMPOSE_FILE="${DEPLOY_DIR}/compose.yaml"
+DEV_COMPOSE_FILE="${DEPLOY_DIR}/compose.dev.yaml"
+OMNIPBXCTL="${ROOT_DIR}/scripts/omnipbxctl"
+
+usage() {
+  cat <<'EOF'
+OmniPBX helper
+
+Usage:
+  ./omnipbx start
+  ./omnipbx stop
+  ./omnipbx restart
+  ./omnipbx status
+  ./omnipbx logs
+  ./omnipbx unlock
+  ./omnipbx check-update
+  ./omnipbx update
+
+For most recovery work, run:
+  ./omnipbx unlock
+EOF
+}
+
+compose_files() {
+  if [[ -f "${DEV_COMPOSE_FILE}" && "${OMNIPBX_DEV:-0}" == "1" ]]; then
+    printf -- '-f\n%s\n-f\n%s\n' "${COMPOSE_FILE}" "${DEV_COMPOSE_FILE}"
+    return
+  fi
+  printf -- '-f\n%s\n' "${COMPOSE_FILE}"
+}
+
+compose() {
+  local args=()
+  while IFS= read -r item; do
+    args+=("${item}")
+  done < <(compose_files)
+  docker compose --progress plain "${args[@]}" "$@"
+}
+
+need_docker() {
+  command -v docker >/dev/null 2>&1 || {
+    echo "Docker is not installed or not in PATH." >&2
+    exit 2
+  }
+}
+
+container_running() {
+  docker inspect -f '{{.State.Running}}' omnipbx-app 2>/dev/null | grep -q true
+}
+
+detect_admin_ip() {
+  local ip=""
+  if command -v ip >/dev/null 2>&1; then
+    ip="$(ip route get 1.1.1.1 2>/dev/null | awk '/src/ {for (i = 1; i <= NF; i++) if ($i == "src") print $(i+1); exit}')"
+  fi
+  if [[ -z "${ip}" ]] && command -v hostname >/dev/null 2>&1; then
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  fi
+  printf '%s' "${ip:-127.0.0.1}"
+}
+
+run_unlock() {
+  need_docker
+  if ! container_running; then
+    echo "OmniPBX app container is not running. Start it first with ./omnipbx start." >&2
+    return 2
+  fi
+
+  while true; do
+    cat <<'EOF'
+
+OmniPBX Safe Unlock
+
+1. Unblock this server/computer
+2. Unblock an IP address
+3. Unblock an admin username
+4. Show blocked IPs/users
+5. Exit
+EOF
+    printf 'Choose: '
+    read -r choice
+    case "${choice}" in
+      1)
+        local ip
+        ip="$(detect_admin_ip)"
+        echo "Unblocking ${ip}..."
+        docker exec -it omnipbx-app python3 -m app.cli security-unblock --ip "${ip}"
+        ;;
+      2)
+        printf 'IP address: '
+        read -r ip
+        [[ -n "${ip}" ]] || { echo "IP is required."; continue; }
+        docker exec -it omnipbx-app python3 -m app.cli security-unblock --ip "${ip}"
+        ;;
+      3)
+        printf 'Admin username: '
+        read -r user
+        [[ -n "${user}" ]] || { echo "Username is required."; continue; }
+        docker exec -it omnipbx-app python3 -m app.cli security-unblock --user "${user}"
+        ;;
+      4)
+        docker exec -it omnipbx-app python3 - <<'PY'
+import psycopg
+from app.core.settings import get_settings
+from app.services.security import list_app_bans
+
+settings = get_settings()
+with psycopg.connect(settings.db_dsn, autocommit=True) as connection:
+    rows = [row for row in list_app_bans(connection) if row["enabled"] and row["active"]]
+if not rows:
+    print("No IPs or users are currently blocked.")
+else:
+    for row in rows:
+        print(f'{row["subject_type"]}: {row["subject_value"]} until {row["banned_until"]} - {row["reason"] or "Blocked"}')
+PY
+        ;;
+      5|"")
+        return 0
+        ;;
+      *)
+        echo "Choose 1, 2, 3, 4, or 5."
+        ;;
+    esac
+  done
+}
+
+run_update_check() {
+  "${OMNIPBXCTL}" update --check-only --project-root "${ROOT_DIR}"
+}
+
+run_update() {
+  "${OMNIPBXCTL}" update --project-root "${ROOT_DIR}"
+}
+
+main() {
+  local command="${1:-}"
+  shift || true
+
+  case "${command}" in
+    start)
+      need_docker
+      compose up -d postgres app caddy
+      compose ps
+      ;;
+    stop)
+      need_docker
+      compose stop "$@"
+      ;;
+    restart)
+      need_docker
+      "${OMNIPBXCTL}" restart --project-root "${ROOT_DIR}" "$@"
+      ;;
+    status)
+      need_docker
+      compose ps
+      ;;
+    logs)
+      need_docker
+      if [[ "$#" -gt 0 ]]; then
+        compose logs -f --tail=150 "$@"
+      else
+        compose logs -f --tail=150 app
+      fi
+      ;;
+    unlock)
+      run_unlock
+      ;;
+    check-update|update-check)
+      run_update_check
+      ;;
+    update)
+      run_update
+      ;;
+    help|-h|--help|"")
+      usage
+      ;;
+    *)
+      echo "Unknown command: ${command}" >&2
+      usage >&2
+      return 2
+      ;;
+  esac
+}
+
+main "$@"

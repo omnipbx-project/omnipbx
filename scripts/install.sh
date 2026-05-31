@@ -19,6 +19,7 @@ ENV_FILE="${DEPLOY_DIR}/.env"
 ENV_EXAMPLE="${REPO_ROOT}/deploy/.env.example"
 SYSTEMD_UNIT="/etc/systemd/system/${SERVICE_NAME}.service"
 CLI_LINK="/usr/local/bin/omnipbxctl"
+FRIENDLY_CLI_LINK="/usr/local/bin/omnipbx"
 SOURCE_MODE="remote"
 APP_VERSION="${OMNIPBX_APP_VERSION:-0.1.0}"
 
@@ -427,7 +428,7 @@ copy_project() {
       --exclude 'deploy/runtime' \
       "${REPO_ROOT}/" "${INSTALL_ROOT}/"
   else
-    rm -rf "${INSTALL_ROOT}/apps" "${INSTALL_ROOT}/deploy" "${INSTALL_ROOT}/docs" "${INSTALL_ROOT}/scripts" "${INSTALL_ROOT}/README.md" "${INSTALL_ROOT}/VERSION"
+    rm -rf "${INSTALL_ROOT}/apps" "${INSTALL_ROOT}/deploy" "${INSTALL_ROOT}/docs" "${INSTALL_ROOT}/scripts" "${INSTALL_ROOT}/omnipbx" "${INSTALL_ROOT}/README.md" "${INSTALL_ROOT}/VERSION"
     mkdir -p "${INSTALL_ROOT}"
     if [[ -d "${REPO_ROOT}/.git" ]]; then
       cp -a "${REPO_ROOT}/.git" "${INSTALL_ROOT}/.git"
@@ -442,6 +443,7 @@ copy_project() {
     done
     cp -a "${REPO_ROOT}/docs" "${INSTALL_ROOT}/docs"
     cp -a "${REPO_ROOT}/scripts" "${INSTALL_ROOT}/scripts"
+    cp -a "${REPO_ROOT}/omnipbx" "${INSTALL_ROOT}/omnipbx"
     cp -a "${REPO_ROOT}/README.md" "${INSTALL_ROOT}/README.md"
     cp -a "${REPO_ROOT}/VERSION" "${INSTALL_ROOT}/VERSION"
   fi
@@ -450,12 +452,14 @@ copy_project() {
 
 install_cli_helper() {
   if [[ "${DRY_RUN}" == "true" ]]; then
-    log INFO "Dry run: skipping CLI helper link at ${CLI_LINK}"
+    log INFO "Dry run: skipping CLI helper links at ${CLI_LINK} and ${FRIENDLY_CLI_LINK}"
     return 0
   fi
 
   chmod +x "${INSTALL_ROOT}/scripts/omnipbxctl"
+  chmod +x "${INSTALL_ROOT}/omnipbx"
   ln -sf "${INSTALL_ROOT}/scripts/omnipbxctl" "${CLI_LINK}"
+  ln -sf "${INSTALL_ROOT}/omnipbx" "${FRIENDLY_CLI_LINK}"
 }
 
 write_env_file() {
@@ -671,7 +675,7 @@ print_success_banner() {
   echo -e " 2. Follow the on-screen instructions to create your admin account."
   echo -e " 3. Configure your extensions and trunks."
   echo -e "\n\033[1mMaintenance:\033[0m"
-  echo -e " Use the '\033[1momnipbxctl\033[0m' command for system management and updates."
+  echo -e " Use the '\033[1momnipbx\033[0m' command for start, stop, unlock, logs, and updates."
   echo -e "\033[1;32m================================================================\033[0m\n"
 }
 

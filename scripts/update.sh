@@ -86,7 +86,8 @@ parse_args() {
 }
 
 ensure_privileges() {
-  if [[ "${CHECK_ONLY}" == "true" ]]; then
+  local runtime_dir="${OMNIPBX_RUNTIME_DIR:-${PROJECT_ROOT}/deploy/runtime}"
+  if [[ "${CHECK_ONLY}" == "true" && -w "${runtime_dir}" ]]; then
     return 0
   fi
   if [[ "${EUID}" -ne 0 ]]; then

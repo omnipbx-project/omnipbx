@@ -37,15 +37,16 @@ pulled from a published Docker image instead of being built on user servers.
 
 - Install OmniPBX with:
   `curl -fsSL https://omnipbx.techseba.com | sudo bash`
-- Run `python3 scripts/omnipbxctl update --check-only` to compare the installed branch with its tracked upstream branch.
-- Run `sudo omnipbxctl update` to do a fast-forward `git pull`, pull the configured Docker images, and restart the stack manually.
+- Run `omnipbx check-update` to compare the installed branch with its tracked upstream branch.
+- Run `sudo omnipbx update` to do a fast-forward `git pull`, pull the configured Docker images, and restart the stack manually.
+- Run `omnipbx unlock` if an admin locks themselves out after too many failed login attempts.
 - In the web GUI, the dashboard now shows when the tracked upstream branch has newer commits and exposes a manual `Check now` and `Update OmniPBX` action for writable admin roles.
 
 For local development, use `deploy/compose.dev.yaml` together with
 `deploy/compose.yaml` to build the app image from `apps/app`.
 
 Restart the active stack with:
-`./scripts/omnipbxctl restart`
+`omnipbx restart`
 
 See `docs/release.md` for Docker Hub and GitHub Actions release setup.
 
