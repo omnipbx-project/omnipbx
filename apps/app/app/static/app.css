@@ -1082,11 +1082,101 @@ button.success,
 }
 
 .login-wrap {
-  place-items: center;
+  width: min(960px, 100%);
+  grid-template-columns: minmax(320px, 460px) minmax(280px, 1fr);
+  align-items: stretch;
+  justify-content: center;
+  margin: 26px auto 0;
 }
 
 .login-card {
-  width: min(460px, 100%);
+  width: 100%;
+  padding: 28px;
+  border-color: color-mix(in srgb, var(--accent) 14%, var(--line));
+  box-shadow: var(--shadow-card);
+}
+
+.login-card-heading {
+  display: grid;
+  gap: 8px;
+}
+
+.login-card-heading h3,
+.login-info-card h3 {
+  margin: 0;
+  font-size: 1.55rem;
+  line-height: 1.18;
+}
+
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.text-link {
+  color: var(--accent-strong);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.text-link:hover {
+  color: var(--accent);
+}
+
+.login-submit {
+  width: 100%;
+  min-height: 46px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.login-submit:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.login-note {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.login-info-card {
+  display: grid;
+  align-content: center;
+  gap: 20px;
+  min-height: 100%;
+  padding: 28px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, transparent), transparent 42%),
+    color-mix(in srgb, var(--bg-panel-strong) 92%, transparent);
+}
+
+.login-info-list {
+  display: grid;
+  gap: 12px;
+}
+
+.login-info-list > div {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-panel) 82%, transparent);
+}
+
+.login-info-list strong {
+  color: var(--text);
+}
+
+.login-info-list span {
+  color: var(--text-soft);
+  line-height: 1.45;
 }
 
 table {
@@ -2067,8 +2157,13 @@ tbody tr:hover td {
   .reports-user-filter,
   .call-records-filter,
   .system-check-grid,
-  .settings-grid {
+  .settings-grid,
+  .login-wrap {
     grid-template-columns: 1fr;
+  }
+
+  .login-info-card {
+    min-height: auto;
   }
 
   .reports-rail {
