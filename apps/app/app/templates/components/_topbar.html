@@ -42,6 +42,12 @@
       </div>
     </div>
     {% endif %}
+    {% if current_user %}
+    <button type="button" class="icon-button webphone-trigger" id="webphone-trigger" aria-label="Open webphone" title="Webphone">
+      <span aria-hidden="true">☎</span>
+      <span class="webphone-trigger-dot" id="webphone-trigger-dot"></span>
+    </button>
+    {% endif %}
     <button type="button" class="icon-button" id="theme-toggle" aria-label="Toggle light and dark mode" title="Toggle theme">
       <span class="theme-toggle-sun">Light</span>
       <span class="theme-toggle-moon">Dark</span>

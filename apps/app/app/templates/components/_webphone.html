@@ -1,0 +1,62 @@
+<div class="webphone-dock" id="webphone-dock" hidden>
+  <div class="webphone-panel" id="webphone-panel" data-detached="false">
+    <div class="webphone-head">
+      <div>
+        <strong>Webphone</strong>
+        <span id="webphone-account">Not ready</span>
+      </div>
+      <div class="webphone-head-actions">
+        <button type="button" class="icon-button" id="webphone-attach" title="Attach to this tab" aria-label="Attach webphone">▣</button>
+        <button type="button" class="icon-button" id="webphone-detach" title="Open in separate window" aria-label="Detach webphone">↗</button>
+        <button type="button" class="icon-button" id="webphone-close" title="Close" aria-label="Close webphone">×</button>
+      </div>
+    </div>
+
+    <div class="webphone-status">
+      <span class="webphone-dot" id="webphone-dot"></span>
+      <span id="webphone-status">Loading...</span>
+    </div>
+
+    <div class="webphone-picker" id="webphone-picker" hidden>
+      <select id="webphone-extension" aria-label="Webphone extension"></select>
+    </div>
+
+    <div class="webphone-number-row">
+      <input id="webphone-number" inputmode="tel" autocomplete="off" placeholder="Number or extension">
+      <button type="button" class="icon-button" id="webphone-copy" title="Copy number" aria-label="Copy number">⧉</button>
+    </div>
+
+    <div class="webphone-keypad" id="webphone-keypad">
+      {% for key, letters in [("1", ""), ("2", "ABC"), ("3", "DEF"), ("4", "GHI"), ("5", "JKL"), ("6", "MNO"), ("7", "PQRS"), ("8", "TUV"), ("9", "WXYZ"), ("*", ""), ("0", "+"), ("#", "")] %}
+      <button type="button" data-key="{{ key }}"><span>{{ key }}</span><small>{{ letters }}</small></button>
+      {% endfor %}
+    </div>
+
+    <div class="webphone-call-row">
+      <button type="button" class="icon-button" id="webphone-video" title="Video call" aria-label="Video call">▣</button>
+      <button type="button" class="webphone-call" id="webphone-call">Call</button>
+      <button type="button" class="icon-button danger" id="webphone-hangup" title="Hang up" aria-label="Hang up">×</button>
+    </div>
+
+    <div class="webphone-controls">
+      <button type="button" id="webphone-mute">Mic</button>
+      <button type="button" id="webphone-speaker">Sound</button>
+      <button type="button" id="webphone-hold">Hold</button>
+      <button type="button" id="webphone-transfer">Transfer</button>
+      <button type="button" id="webphone-dnd">DND</button>
+    </div>
+
+    <div class="webphone-volume">
+      <span>Speaker</span>
+      <input id="webphone-volume" type="range" min="0" max="1" step="0.05" value="1">
+    </div>
+
+    <div class="webphone-video-box" id="webphone-video-box" hidden>
+      <video id="webphone-remote-video" autoplay playsinline></video>
+      <video id="webphone-local-video" autoplay playsinline muted></video>
+    </div>
+
+    <ol class="webphone-log" id="webphone-log"></ol>
+    <audio id="webphone-remote-audio" autoplay></audio>
+  </div>
+</div>

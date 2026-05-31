@@ -11,6 +11,7 @@ from app.services.extensions import list_extensions
 from app.services.softphone import (
     build_softphone_bootstrap,
     get_softphone_settings,
+    resolve_current_webphone,
     save_softphone_settings,
     set_softphone_dnd,
 )
@@ -32,7 +33,12 @@ def softphone_page(
     bootstrap = None
     if selected_extension:
         try:
-            bootstrap = build_softphone_bootstrap(connection, selected_extension)
+            bootstrap = build_softphone_bootstrap(
+                connection,
+                selected_extension,
+                request_host=request.headers.get("host", ""),
+                request_scheme=_request_scheme(request),
+            )
         except ValueError:
             bootstrap = None
     return render_template(
@@ -82,3 +88,37 @@ def set_softphone_dnd_from_ui(
     set_softphone_dnd(connection, extension, enabled_raw is not None)
     params = urlencode({"extension": extension})
     return RedirectResponse(url=f"/softphone?{params}", status_code=303)
+
+
+@router.get("/webphone/detached", response_class=HTMLResponse)
+def detached_webphone_page(
+    request: Request,
+    extension: str = "",
+    connection: psycopg.Connection = Depends(get_connection),
+) -> HTMLResponse:
+    current_user = getattr(request.state, "current_user", None) or {}
+    bootstrap = resolve_current_webphone(
+        connection,
+        username=str(current_user.get("username") or ""),
+        extension=extension,
+        request_host=request.headers.get("host", ""),
+        request_scheme=_request_scheme(request),
+    )
+    return render_template(
+        request,
+        "softphone/detached.html",
+        page_title="Webphone",
+        page_description="Browser phone",
+        active_nav="/softphone",
+        show_shell=False,
+        show_notifications=False,
+        show_profile_avatar=False,
+        bootstrap=bootstrap,
+        page_js=["/static/vendor/jssip.min.js", "/static/js/webphone.js"],
+        page_css=["/static/css/webphone.css"],
+    )
+
+
+def _request_scheme(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip()
+    return forwarded or request.url.scheme

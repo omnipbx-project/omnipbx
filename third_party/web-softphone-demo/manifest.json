@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "MicroSIP Style Web Softphone",
+  "version": "2.0.6",
+  "description": "A MicroSIP-style Chrome web softphone using SIP over WSS/WebRTC with one floating dialer, clickable numbers, and bundled JsSIP.",
+  "permissions": [
+    "storage",
+    "notifications",
+    "contextMenus",
+    "clipboardWrite",
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_title": "Web Softphone"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "contentScript.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "floating.html",
+        "softphone.css",
+        "softphone.js",
+        "jssip.min.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

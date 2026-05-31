@@ -3,7 +3,9 @@ from __future__ import annotations
 import psycopg
 from psycopg.rows import dict_row
 
+from app.core.settings import get_settings
 from app.models.softphone import SoftphoneSettingsPayload
+from app.services.extensions import WEBPHONE_TRANSPORT
 
 
 def get_softphone_settings(connection: psycopg.Connection) -> dict:
@@ -63,12 +65,12 @@ def get_softphone_dnd(connection: psycopg.Connection, extension: str) -> bool:
     return bool(row["dnd_enabled"]) if row else False
 
 
-def build_softphone_bootstrap(connection: psycopg.Connection, extension: str) -> dict:
+def build_softphone_bootstrap(connection: psycopg.Connection, extension: str, *, request_host: str = "", request_scheme: str = "https") -> dict:
     settings = get_softphone_settings(connection)
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             """
-            SELECT extension, display_name, secret, context, enabled
+            SELECT extension, display_name, secret, context, transport, enabled
             FROM extensions
             WHERE extension = %(extension)s
             """,
@@ -77,17 +79,83 @@ def build_softphone_bootstrap(connection: psycopg.Connection, extension: str) ->
         row = cursor.fetchone()
     if not row:
         raise ValueError(f"Extension {extension} was not found.")
+    websocket_url, sip_domain, public_host = _resolved_webphone_settings(
+        settings,
+        request_host=request_host,
+        request_scheme=request_scheme,
+    )
+    webphone_allowed = bool(row["enabled"] and row.get("transport") == WEBPHONE_TRANSPORT)
     return {
-        "enabled": bool(settings["enabled"]),
-        "webrtc_ready": bool(settings["enabled"] and settings.get("websocket_url") and settings.get("sip_domain")),
+        "enabled": bool(settings["enabled"] or webphone_allowed),
+        "webrtc_ready": bool(webphone_allowed and websocket_url and sip_domain),
+        "webphone_allowed": webphone_allowed,
         "extension": row["extension"],
         "display_name": row["display_name"],
         "secret": row["secret"],
         "context": row["context"],
-        "sip_domain": settings.get("sip_domain"),
-        "websocket_url": settings.get("websocket_url"),
-        "public_host": settings.get("public_host"),
+        "transport": row.get("transport"),
+        "sip_domain": sip_domain,
+        "websocket_url": websocket_url,
+        "public_host": public_host,
         "display_name_prefix": settings.get("display_name_prefix"),
         "note": settings.get("note"),
         "dnd_enabled": get_softphone_dnd(connection, row["extension"]),
     }
+
+
+def resolve_current_webphone(connection: psycopg.Connection, username: str = "", *, extension: str = "", request_host: str = "", request_scheme: str = "https") -> dict:
+    selected = (extension or username or "").strip()
+    webphone_extensions = list_webphone_extensions(connection)
+    if selected and not any(row["extension"] == selected for row in webphone_extensions):
+        selected = ""
+    if not selected and webphone_extensions:
+        selected = webphone_extensions[0]["extension"]
+    if not selected:
+        return {
+            "available": False,
+            "message": "No Webphone users are enabled. Set a user Phone Type to Webphone first.",
+            "extensions": [],
+            "config": None,
+        }
+    config = build_softphone_bootstrap(
+        connection,
+        selected,
+        request_host=request_host,
+        request_scheme=request_scheme,
+    )
+    return {
+        "available": bool(config["webrtc_ready"]),
+        "message": "Webphone ready." if config["webrtc_ready"] else "This user is not ready for Webphone.",
+        "extensions": [{"extension": row["extension"], "display_name": row["display_name"]} for row in webphone_extensions],
+        "config": config,
+    }
+
+
+def list_webphone_extensions(connection: psycopg.Connection) -> list[dict]:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            SELECT extension, display_name
+            FROM extensions
+            WHERE enabled = TRUE AND transport = %(transport)s
+            ORDER BY extension
+            """,
+            {"transport": WEBPHONE_TRANSPORT},
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def _resolved_webphone_settings(settings: dict, *, request_host: str, request_scheme: str) -> tuple[str, str, str]:
+    app_settings = get_settings()
+    host = (request_host or "").split(",", 1)[0].strip()
+    host_no_port = host.split(":", 1)[0] if host and not host.startswith("[") else host.strip("[]")
+    sip_domain = settings.get("sip_domain") or host_no_port
+    websocket_url = settings.get("websocket_url")
+    public_host = settings.get("public_host")
+    if not websocket_url and host_no_port:
+        websocket_url = f"wss://{host_no_port}:8089/ws"
+    if not public_host and host:
+        public_port = int(app_settings.public_https_port or 443)
+        public_host_value = host_no_port if public_port == 443 else f"{host_no_port}:{public_port}"
+        public_host = f"https://{public_host_value}"
+    return websocket_url or "", sip_domain or "", public_host or ""

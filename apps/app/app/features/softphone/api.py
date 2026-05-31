@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 import psycopg
 
 from app.core.db import get_connection
@@ -6,6 +6,7 @@ from app.models.softphone import SoftphoneDndPayload, SoftphoneSettingsPayload
 from app.services.softphone import (
     build_softphone_bootstrap,
     get_softphone_settings,
+    resolve_current_webphone,
     save_softphone_settings,
     set_softphone_dnd,
 )
@@ -32,9 +33,37 @@ def post_softphone_settings_api(
 @router.get("/bootstrap")
 def get_softphone_bootstrap_api(
     extension: str,
+    request: Request,
     connection: psycopg.Connection = Depends(get_connection),
 ) -> dict[str, object]:
-    return {"status": "ok", "config": build_softphone_bootstrap(connection, extension)}
+    return {
+        "status": "ok",
+        "config": build_softphone_bootstrap(
+            connection,
+            extension,
+            request_host=request.headers.get("host", ""),
+            request_scheme=_request_scheme(request),
+        ),
+    }
+
+
+@router.get("/bootstrap/current")
+def get_current_softphone_bootstrap_api(
+    request: Request,
+    extension: str = "",
+    connection: psycopg.Connection = Depends(get_connection),
+) -> dict[str, object]:
+    current_user = getattr(request.state, "current_user", None) or {}
+    return {
+        "status": "ok",
+        **resolve_current_webphone(
+            connection,
+            username=str(current_user.get("username") or ""),
+            extension=extension,
+            request_host=request.headers.get("host", ""),
+            request_scheme=_request_scheme(request),
+        ),
+    }
 
 
 @router.post("/dnd/{extension}")
@@ -45,3 +74,8 @@ def post_softphone_dnd_api(
 ) -> dict[str, object]:
     set_softphone_dnd(connection, extension, payload.enabled)
     return {"status": "ok", "extension": extension, "dnd": payload.enabled}
+
+
+def _request_scheme(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip()
+    return forwarded or request.url.scheme
