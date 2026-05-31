@@ -249,25 +249,33 @@
       <section class="wizard-step" id="step-6">
         <div class="step-header-compact">
           <span class="eyebrow">Step 6 of 7</span>
-          <h2>Your First Phone</h2>
-          <p>Create a test extension to try your PBX immediately.</p>
+          <h2>Admin Webphone</h2>
+          <p>OmniPBX creates a permanent admin phone so you can call from the browser immediately.</p>
         </div>
 
         <div class="panel">
           <div class="field-grid two">
             <div class="field">
               <label for="first_extension">Extension Number</label>
-              <input id="first_extension" type="text" name="first_extension" placeholder="e.g. 1001">
+              <input id="first_extension" type="text" name="first_extension" value="10000" readonly>
+              <small>Permanent admin extension. You can change phone type later, but this number stays reserved.</small>
             </div>
             <div class="field">
               <label for="first_extension_name">User Name</label>
-              <input id="first_extension_name" type="text" name="first_extension_name" placeholder="e.g. Reception">
+              <input id="first_extension_name" type="text" name="first_extension_name" value="Admin" placeholder="Admin">
             </div>
           </div>
-          <div class="field setup-spaced-sm">
-            <label for="first_extension_secret">Phone Password</label>
-            <input id="first_extension_secret" type="text" name="first_extension_secret" placeholder="Pick a strong secret">
-            <small>You'll type this into your IP phone or Softphone app.</small>
+          <div class="field-grid two setup-spaced-sm">
+            <div class="field">
+              <label for="first_extension_secret">Phone Password</label>
+              <input id="first_extension_secret" type="text" name="first_extension_secret" value="pass10000" placeholder="Pick a strong secret">
+              <small>Used by the built-in browser phone.</small>
+            </div>
+            <div class="field">
+              <label>Default Phone Type</label>
+              <input type="text" value="Webphone" readonly>
+              <small>Later you can switch this user to Desk Phone, Softphone, or Webphone from Users.</small>
+            </div>
           </div>
         </div>
 

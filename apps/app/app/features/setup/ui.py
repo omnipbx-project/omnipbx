@@ -112,9 +112,9 @@ def save_setup_page(
     rtp_start: int = Form(default=10000),
     rtp_end: int = Form(default=20000),
     local_networks: str = Form(default=""),
-    first_extension: str = Form(default=""),
-    first_extension_name: str = Form(default=""),
-    first_extension_secret: str = Form(default=""),
+    first_extension: str = Form(default="10000"),
+    first_extension_name: str = Form(default="Admin"),
+    first_extension_secret: str = Form(default="pass10000"),
     connection: psycopg.Connection = Depends(get_connection),
 ) -> RedirectResponse:
     try:

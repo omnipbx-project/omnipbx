@@ -13,6 +13,7 @@ from app.core.settings import get_settings
 from app.models.setup import SetupWizardPayload
 from app.services.auth import hash_password
 from app.services.asterisk import sync_asterisk_config
+from app.services.extensions import WEBPHONE_AUDIO_CODECS, WEBPHONE_TRANSPORT, WEBPHONE_VIDEO_CODECS
 
 
 SETTINGS_ID = 1
@@ -272,7 +273,7 @@ def _render_http_redirect_block(host: str, public_base_url: str | None, port: in
 
 
 def _create_first_extension_if_needed(cursor: psycopg.Cursor, payload: SetupWizardPayload) -> None:
-    extension = payload.first_extension
+    extension = payload.first_extension or "10000"
     if not extension:
         return
     cursor.execute("SELECT 1 FROM extensions WHERE extension = %(extension)s", {"extension": extension})
@@ -280,13 +281,16 @@ def _create_first_extension_if_needed(cursor: psycopg.Cursor, payload: SetupWiza
         return
     cursor.execute(
         """
-        INSERT INTO extensions (extension, display_name, secret, context, enabled)
-        VALUES (%(extension)s, %(display_name)s, %(secret)s, 'omnipbx-internal', TRUE)
+        INSERT INTO extensions (extension, display_name, secret, context, transport, codecs, video_codecs, enabled)
+        VALUES (%(extension)s, %(display_name)s, %(secret)s, 'omnipbx-internal', %(transport)s, %(codecs)s, %(video_codecs)s, TRUE)
         """,
         {
             "extension": extension,
-            "display_name": payload.first_extension_name or f"Extension {extension}",
+            "display_name": payload.first_extension_name or "Admin",
             "secret": payload.first_extension_secret or f"pass{extension}",
+            "transport": WEBPHONE_TRANSPORT,
+            "codecs": WEBPHONE_AUDIO_CODECS,
+            "video_codecs": WEBPHONE_VIDEO_CODECS,
         },
     )
 

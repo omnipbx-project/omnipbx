@@ -85,11 +85,11 @@ def create_extension_from_ui(
     connection: psycopg.Connection = Depends(get_connection),
 ) -> RedirectResponse:
     extension_value = extension.strip()
-    if not extension_value.isdigit() or not 1 <= int(extension_value) <= 9999:
+    if not extension_value.isdigit() or not 1 <= int(extension_value) <= 99999:
         params = urlencode(
             {
                 "result": "error",
-                "detail": "Extension must be a number from 1 to 9999.",
+                "detail": "Extension must be a number from 1 to 99999.",
             }
         )
         return RedirectResponse(
@@ -157,11 +157,11 @@ def update_extension_from_ui(
     connection: psycopg.Connection = Depends(get_connection),
 ) -> RedirectResponse:
     extension_value = new_extension.strip()
-    if not extension_value.isdigit() or not 1 <= int(extension_value) <= 9999:
+    if not extension_value.isdigit() or not 1 <= int(extension_value) <= 99999:
         params = urlencode(
             {
                 "result": "error",
-                "detail": "Extension must be a number from 1 to 9999.",
+                "detail": "Extension must be a number from 1 to 99999.",
             }
         )
         return RedirectResponse(url=f"/extensions?{params}", status_code=status.HTTP_303_SEE_OTHER)
@@ -179,6 +179,9 @@ def update_extension_from_ui(
             call_recording_raw is not None,
             secret.strip() or None,
         )
+    except ValueError as exc:
+        params = urlencode({"result": "error", "detail": str(exc)})
+        return RedirectResponse(url=f"/extensions?{params}", status_code=status.HTTP_303_SEE_OTHER)
     except psycopg.errors.UniqueViolation:
         params = urlencode(
             {
@@ -297,7 +300,11 @@ def delete_extension_from_ui(
     extension: str,
     connection: psycopg.Connection = Depends(get_connection),
 ) -> RedirectResponse:
-    deleted = delete_extension(connection, extension)
+    try:
+        deleted = delete_extension(connection, extension)
+    except ValueError as exc:
+        params = urlencode({"result": "error", "detail": str(exc)})
+        return RedirectResponse(url=f"/extensions?{params}", status_code=status.HTTP_303_SEE_OTHER)
     if deleted:
         reload_result = sync_asterisk_config(connection)
         params = urlencode(

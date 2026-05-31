@@ -15,6 +15,7 @@ SOFTPHONE_AUDIO_CODECS = "g722,ulaw,alaw"
 SOFTPHONE_VIDEO_CODECS = "h264,vp8"
 WEBPHONE_AUDIO_CODECS = "opus,g722,ulaw,alaw"
 WEBPHONE_VIDEO_CODECS = "vp8,h264"
+ADMIN_EXTENSION = "10000"
 
 LIST_EXTENSIONS_SQL = """
 SELECT id, extension, display_name, secret, context, transport, codecs, video_codecs, call_recording_enabled, enabled
@@ -87,6 +88,8 @@ def create_extension(connection: psycopg.Connection, payload: ExtensionCreate) -
 
 
 def delete_extension(connection: psycopg.Connection, extension: str) -> bool:
+    if extension == ADMIN_EXTENSION:
+        raise ValueError("Admin extension 10000 is permanent. You can change its phone type, but it cannot be deleted.")
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(DELETE_EXTENSION_SQL, {"extension": extension})
         deleted = cursor.fetchone()
@@ -102,6 +105,8 @@ def update_extension_user(
     call_recording_enabled: bool,
     secret: str | None = None,
 ) -> dict | None:
+    if extension == ADMIN_EXTENSION and new_extension != ADMIN_EXTENSION:
+        raise ValueError("Admin extension 10000 is permanent. You can change its phone type, but it cannot be renumbered.")
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             UPDATE_EXTENSION_SQL,
