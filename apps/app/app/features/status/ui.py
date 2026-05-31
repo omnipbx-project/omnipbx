@@ -11,7 +11,6 @@ from app.services.system_tools import (
     build_advanced_snapshot,
     collect_system_usage,
     delete_security_rule,
-    apply_security_rule_to_agent,
     read_logs,
     run_asterisk_cli,
     run_network_check,
@@ -19,6 +18,7 @@ from app.services.system_tools import (
     save_network_settings,
     save_security_rule,
 )
+from app.services.security import unblock_app_ban
 from app.web import render_template
 
 
@@ -89,15 +89,6 @@ def status_save_security_rule(
     return RedirectResponse(url=f"/status?{params}", status_code=303)
 
 
-@router.post("/status/security-rules/apply")
-def status_apply_security_rule(
-    rule_type: str = Form(...),
-    value: str = Form(...),
-    dry_run_raw: str | None = Form(default=None),
-) -> dict[str, object]:
-    return {"status": "ok", **apply_security_rule_to_agent(rule_type=rule_type, value=value, dry_run=dry_run_raw is not None)}
-
-
 @router.post("/status/security-rules/{rule_id}/delete")
 def status_delete_security_rule(
     rule_id: int,
@@ -107,6 +98,16 @@ def status_delete_security_rule(
     if deleted:
         sync_asterisk_config(connection)
     params = urlencode({"result": "success" if deleted else "error", "detail": "Security rule deleted." if deleted else "Security rule not found."})
+    return RedirectResponse(url=f"/status?{params}", status_code=303)
+
+
+@router.post("/status/security-bans/{ban_id}/unblock")
+def status_unblock_security_ban(
+    ban_id: int,
+    connection: psycopg.Connection = Depends(get_connection),
+) -> RedirectResponse:
+    unblocked = unblock_app_ban(connection, ban_id)
+    params = urlencode({"result": "success" if unblocked else "error", "detail": "Security ban removed." if unblocked else "Security ban not found."})
     return RedirectResponse(url=f"/status?{params}", status_code=303)
 
 

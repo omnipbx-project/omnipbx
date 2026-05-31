@@ -452,6 +452,29 @@ def initialize_schema() -> None:
         UNIQUE(rule_type, value)
     );
 
+    CREATE TABLE IF NOT EXISTS app_security_failures (
+        id BIGSERIAL PRIMARY KEY,
+        subject_type VARCHAR(20) NOT NULL,
+        subject_value VARCHAR(160) NOT NULL,
+        failed_attempts INTEGER NOT NULL DEFAULT 0,
+        first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(subject_type, subject_value)
+    );
+
+    CREATE TABLE IF NOT EXISTS app_security_bans (
+        id BIGSERIAL PRIMARY KEY,
+        subject_type VARCHAR(20) NOT NULL,
+        subject_value VARCHAR(160) NOT NULL,
+        reason TEXT,
+        failed_attempts INTEGER NOT NULL DEFAULT 0,
+        banned_until TIMESTAMPTZ NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(subject_type, subject_value)
+    );
+
     CREATE TABLE IF NOT EXISTS advanced_custom_config (
         config_key VARCHAR(40) PRIMARY KEY,
         content TEXT NOT NULL DEFAULT '',
@@ -485,6 +508,8 @@ def initialize_schema() -> None:
             cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS call_recording_enabled BOOLEAN NOT NULL DEFAULT FALSE")
             cursor.execute("ALTER TABLE advanced_security_rules ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE")
             cursor.execute("ALTER TABLE advanced_security_rules ADD COLUMN IF NOT EXISTS note TEXT")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_app_security_bans_active ON app_security_bans (subject_type, subject_value, enabled, banned_until)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_app_security_failures_subject ON app_security_failures (subject_type, subject_value)")
             cursor.execute("ALTER TABLE trunks ADD COLUMN IF NOT EXISTS main_number VARCHAR(80)")
             cursor.execute("ALTER TABLE extensions ALTER COLUMN codecs SET DEFAULT 'ulaw,alaw,g722'")
             cursor.execute("ALTER TABLE extensions ALTER COLUMN video_codecs SET DEFAULT ''")

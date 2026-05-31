@@ -23,26 +23,27 @@
       {{ stat_card("CPU", snapshot.usage.cpu ~ "%", "Realtime processor use") }}
       {{ stat_card("RAM", snapshot.usage.ram ~ "%", snapshot.usage.ram_used ~ " / " ~ snapshot.usage.ram_total) }}
       {{ stat_card("Disk", snapshot.usage.disk ~ "%", snapshot.usage.disk_free ~ " free") }}
-      {{ stat_card("Uptime", snapshot.usage.uptime, "Load " ~ snapshot.usage.load, "success") }}
+      {{ stat_card("Uptime", snapshot.usage.uptime, "System " ~ snapshot.usage.system_pressure, "success") }}
     </div>
     <div class="panel">
-      <div class="section-header"><div class="section-copy"><h3>Service status</h3><p>Quick view for firewall and fail2ban availability.</p></div></div>
-      <div class="notice notice-{{ 'success' if snapshot.host_security_agent.connected else 'warning' }}">
-        <strong>Host Security Agent</strong>
-        <span>{% if snapshot.host_security_agent.connected %}Connected. Firewall and fail2ban actions are handled through the safe host agent.{% else %}Not connected. Configure the optional host agent to manage firewall/fail2ban safely.{% endif %}</span>
+      <div class="section-header"><div class="section-copy"><h3>Protection status</h3><p>Built-in OmniPBX web protection. No outside host agent required.</p></div></div>
+      <div class="notice notice-success">
+        <strong>{{ snapshot.app_security.mode }}</strong>
+        <span>{{ snapshot.app_security.output }}</span>
       </div>
+      <pre class="code-block">Safe unlock from Docker: docker exec -it omnipbx-app python3 -m app.cli security-unblock --ip YOUR_IP</pre>
       <div class="advanced-service-grid">
         <div>
           <div class="advanced-service-title">
-            <strong>Fail2ban</strong>
-            <span class="status-pill {{ 'success' if snapshot.services.fail2ban.ok else 'warning' }}">{{ "Running" if snapshot.services.fail2ban.ok else "Not active" }}</span>
+            <strong>Auto ban</strong>
+            <span class="status-pill success">Active</span>
           </div>
-          <pre class="code-block">{{ snapshot.services.fail2ban.output }}</pre>
+          <pre class="code-block">{{ snapshot.app_security.login_failure_limit }} failed logins in {{ snapshot.app_security.login_window_minutes }} minutes blocks the IP/user for {{ snapshot.app_security.ban_minutes }} minutes.</pre>
         </div>
         <div>
           <div class="advanced-service-title">
-            <strong>Firewall</strong>
-            <span class="status-pill {{ 'success' if snapshot.services.firewall.ok else 'warning' }}">{{ "Working" if snapshot.services.firewall.ok else "Not active" }}</span>
+            <strong>App firewall</strong>
+            <span class="status-pill success">Active</span>
           </div>
           <pre class="code-block">{{ snapshot.services.firewall.output }}</pre>
         </div>
@@ -52,12 +53,12 @@
 
   <section class="advanced-panel" data-panel="logs">
     <div class="panel">
-      <div class="section-header"><div class="section-copy"><h3>Debug logs</h3><p>Read recent Asterisk, app, firewall, or fail2ban log lines.</p></div></div>
+      <div class="section-header"><div class="section-copy"><h3>Debug logs</h3><p>Read recent Asterisk, app, or security log lines.</p></div></div>
       <form class="advanced-inline-form" id="log-filter">
         <select name="source">
           <option value="asterisk">Asterisk full</option>
           <option value="asterisk_messages">Asterisk messages</option>
-          <option value="fail2ban">Fail2ban</option>
+          <option value="security">Security</option>
           <option value="app">App</option>
         </select>
         <input type="search" name="keyword" placeholder="Filter keyword">
@@ -129,14 +130,16 @@
 
   <section class="advanced-panel" data-panel="security">
     <div class="panel">
-      <div class="section-header"><div class="section-copy"><h3>Blocklist and whitelist</h3><p>Single place for number blocklist, IP whitelist, and IP blocklist.</p></div></div>
+      <div class="section-header"><div class="section-copy"><h3>Blocklist and whitelist</h3><p>Simple app-level rules for numbers, IPs, admin usernames, and MAC notes.</p></div></div>
       <form method="post" action="/status/security-rules" class="advanced-inline-form">
         <select name="rule_type">
           <option value="number_block">Block phone number</option>
           <option value="ip_whitelist">Whitelist IP</option>
           <option value="ip_blocklist">Block IP</option>
+          <option value="admin_user_block">Block admin username</option>
+          <option value="mac_block">Block MAC address note</option>
         </select>
-        <input type="text" name="value" placeholder="Number or IP">
+        <input type="text" name="value" placeholder="Number, IP, username, or MAC">
         <input type="text" name="note" placeholder="Reason">
         <label class="toggle-line"><input type="checkbox" name="enabled_raw" checked> Enabled</label>
         <button type="submit" class="button-link">Save</button>
@@ -153,9 +156,6 @@
             <td><span class="status-pill {{ 'success' if rule.enabled else 'warning' }}">{{ "Enabled" if rule.enabled else "Disabled" }}</span></td>
             <td>
               <div class="button-row">
-                {% if rule.rule_type in ["ip_whitelist", "ip_blocklist"] %}
-                <button type="button" class="secondary apply-security-rule" data-rule-type="{{ rule.rule_type }}" data-value="{{ rule.value }}">Dry Run</button>
-                {% endif %}
                 <form method="post" action="/status/security-rules/{{ rule.id }}/delete"><button type="submit" class="secondary">Delete</button></form>
               </div>
             </td>
@@ -166,7 +166,28 @@
       {% else %}
       {{ empty_state("No security rules", "Add number blocklist or IP whitelist/blocklist entries here.") }}
       {% endif %}
-      <pre class="code-block block-spaced" id="security-agent-output">Host agent output appears here.</pre>
+    </div>
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>Auto blocked</h3><p>OmniPBX temporarily blocks repeated failed admin logins.</p></div></div>
+      {% if snapshot.security_bans %}
+      <table>
+        <thead><tr><th>Type</th><th>Value</th><th>Reason</th><th>Until</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {% for ban in snapshot.security_bans %}
+          <tr>
+            <td>{{ ban.subject_type|title }}</td>
+            <td class="mono">{{ ban.subject_value }}</td>
+            <td>{{ ban.reason or "-" }}</td>
+            <td>{{ ban.banned_until }}</td>
+            <td><span class="status-pill {{ 'warning' if ban.active and ban.enabled else 'success' }}">{{ "Blocked" if ban.active and ban.enabled else "Cleared" }}</span></td>
+            <td><form method="post" action="/status/security-bans/{{ ban.id }}/unblock"><button type="submit" class="secondary">Unblock</button></form></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      {{ empty_state("No automatic blocks", "Failed-login protection is active, but nobody is blocked right now.") }}
+      {% endif %}
     </div>
   </section>
 

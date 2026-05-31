@@ -1,19 +1,17 @@
 from __future__ import annotations
 
 import os
-import json
 import shutil
 import socket
 import subprocess
 import time
 from pathlib import Path
-from urllib import request as urllib_request
-from urllib import error as urllib_error
 
 import psycopg
 from psycopg.rows import dict_row
 
 from app.core.settings import get_settings
+from app.services.security import app_security_status, list_app_bans
 
 
 ASTERISK_ALLOWED_PREFIXES = (
@@ -31,7 +29,7 @@ ASTERISK_ALLOWED_PREFIXES = (
 LOG_FILES = {
     "asterisk": Path("/var/log/asterisk/full"),
     "asterisk_messages": Path("/var/log/asterisk/messages"),
-    "fail2ban": Path("/var/log/fail2ban.log"),
+    "security": Path("/var/log/omnipbx/security.log"),
     "app": Path("/var/log/omnipbx/app.log"),
 }
 
@@ -62,7 +60,6 @@ def collect_system_usage() -> dict[str, object]:
 
 
 def build_advanced_snapshot(connection: psycopg.Connection) -> dict[str, object]:
-    agent_status = host_security_agent_action("status", dry_run=True)
     return {
         "usage": collect_system_usage(),
         "logs": read_logs(),
@@ -77,9 +74,10 @@ def build_advanced_snapshot(connection: psycopg.Connection) -> dict[str, object]
         },
         "network": collect_network_snapshot(connection),
         "security_rules": list_security_rules(connection),
+        "security_bans": list_app_bans(connection),
+        "app_security": app_security_status(connection),
         "custom_config": get_custom_config(connection),
-        "services": collect_service_snapshot(),
-        "host_security_agent": agent_status,
+        "services": collect_service_snapshot(connection),
     }
 
 
@@ -116,11 +114,8 @@ def run_asterisk_cli(command: str) -> dict[str, object]:
 def collect_network_snapshot(connection: psycopg.Connection) -> dict[str, object]:
     settings = get_settings()
     rows = get_network_settings(connection)
-    agent_status = host_security_agent_action("status", dry_run=True)
-    host_network = agent_status.get("network") if agent_status.get("connected") else None
-    host_ip = host_network.get("local_ip") if isinstance(host_network, dict) else ""
-    local_ip = str(host_ip or _local_ip())
-    ip_note = "Host LAN address" if host_ip else "Detected inside PBX container"
+    local_ip = _local_ip()
+    ip_note = "Detected from OmniPBX container"
     ports = [
         {"label": "SIP", "port": settings.sip_port, "protocol": "udp"},
         {"label": "Web", "port": settings.http_port, "protocol": "tcp"},
@@ -155,62 +150,16 @@ def run_network_check(host: str, port: int | None = None) -> dict[str, object]:
         return {"ok": False, "output": f"DNS lookup failed: {exc}"}
 
 
-def collect_service_snapshot() -> dict[str, object]:
-    agent_status = host_security_agent_action("status", dry_run=True)
-    if agent_status.get("connected"):
-        return {
-            "fail2ban": _agent_service_status(agent_status, "fail2ban"),
-            "firewall": _agent_service_status(agent_status, "firewall"),
-        }
+def collect_service_snapshot(connection: psycopg.Connection) -> dict[str, object]:
+    security = app_security_status(connection)
     return {
-        "fail2ban": _optional_command_status("fail2ban-client", ["fail2ban-client", "status"], "Fail2ban is not installed in this container/host."),
-        "firewall": _firewall_status(),
-    }
-
-
-def _agent_service_status(agent_status: dict[str, object], key: str) -> dict[str, object]:
-    service = agent_status.get(key)
-    if isinstance(service, dict):
-        return {
-            "installed": bool(service.get("installed", service.get("ok"))),
-            "ok": bool(service.get("ok")),
-            "output": str(service.get("output") or "Connected through host security agent."),
-        }
-    return {"installed": False, "ok": False, "output": "No agent status reported."}
-
-
-def host_security_agent_action(action: str, *, value: str = "", dry_run: bool = True) -> dict[str, object]:
-    settings = get_settings()
-    if not settings.host_security_agent_url or not settings.host_security_agent_token:
-        return {"connected": False, "ok": False, "output": "Host security agent is not configured."}
-    url = settings.host_security_agent_url.rstrip("/") + "/v1/action"
-    payload = json.dumps({"action": action, "value": value, "dry_run": dry_run}).encode("utf-8")
-    req = urllib_request.Request(
-        url,
-        data=payload,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "X-OmniPBX-Agent-Token": settings.host_security_agent_token,
+        "protection": security,
+        "firewall": {
+            "installed": True,
+            "ok": True,
+            "output": "Ports are controlled by Docker Compose. OmniPBX blocks web access inside the app with IP allow/block rules.",
         },
-    )
-    try:
-        with urllib_request.urlopen(req, timeout=settings.host_security_agent_timeout_seconds) as response:
-            data = json.loads(response.read().decode("utf-8") or "{}")
-            return {"connected": True, **data}
-    except (OSError, urllib_error.URLError, TimeoutError) as exc:
-        return {"connected": False, "ok": False, "output": f"Host security agent is unavailable: {exc}"}
-
-
-def apply_security_rule_to_agent(*, rule_type: str, value: str, dry_run: bool = True) -> dict[str, object]:
-    action_by_type = {
-        "ip_whitelist": "allow_ip",
-        "ip_blocklist": "block_ip",
     }
-    action = action_by_type.get(rule_type)
-    if not action:
-        return {"connected": False, "ok": False, "output": "This rule type does not apply to the host firewall."}
-    return host_security_agent_action(action, value=value, dry_run=dry_run)
 
 
 def list_security_rules(connection: psycopg.Connection) -> list[dict]:
@@ -226,7 +175,7 @@ def list_security_rules(connection: psycopg.Connection) -> list[dict]:
 
 
 def save_security_rule(connection: psycopg.Connection, *, rule_type: str, value: str, note: str = "", enabled: bool = True) -> None:
-    if rule_type not in {"number_block", "ip_whitelist", "ip_blocklist"}:
+    if rule_type not in {"number_block", "ip_whitelist", "ip_blocklist", "admin_user_block", "mac_block"}:
         raise ValueError("Unknown rule type.")
     value = value.strip()
     if not value:
@@ -466,35 +415,6 @@ def _local_ip() -> str:
         return "Unknown"
 
 
-def _command_status(command: list[str]) -> dict[str, object]:
-    try:
-        completed = subprocess.run(command, capture_output=True, text=True, check=False, timeout=6)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return {"ok": False, "output": str(exc)}
-    return {
-        "installed": True,
-        "ok": completed.returncode == 0,
-        "output": (completed.stdout.strip() or completed.stderr.strip() or "No output.")[:4000],
-    }
-
-
-def _optional_command_status(binary: str, command: list[str], missing_message: str) -> dict[str, object]:
-    if not shutil.which(binary):
-        return {"installed": False, "ok": False, "output": missing_message}
-    return _command_status(command)
-
-
-def _firewall_status() -> dict[str, object]:
-    if shutil.which("ufw"):
-        return _command_status(["ufw", "status"])
-    if shutil.which("firewall-cmd"):
-        return _command_status(["firewall-cmd", "--state"])
-    if shutil.which("iptables"):
-        result = _command_status(["iptables", "-S"])
-        if not result["ok"] and "Permission denied" in str(result["output"]):
-            result["output"] = "Firewall CLI is present, but this container does not have permission to read host firewall rules."
-        return result
-    return {"installed": False, "ok": False, "output": "No supported firewall CLI found in this container/host."}
 
 
 def _bytes_label(value: int | float) -> str:

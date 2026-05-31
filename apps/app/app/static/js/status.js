@@ -59,19 +59,6 @@ document.addEventListener("DOMContentLoaded", function () {
     document.getElementById("network-check-output").textContent = data.output || "No output.";
   });
 
-  document.querySelectorAll(".apply-security-rule").forEach((button) => {
-    button.addEventListener("click", async function () {
-      const formData = new FormData();
-      formData.set("rule_type", button.dataset.ruleType || "");
-      formData.set("value", button.dataset.value || "");
-      formData.set("dry_run_raw", "on");
-      const response = await fetch("/status/security-rules/apply", {method: "POST", body: formData});
-      const data = await response.json();
-      const output = document.getElementById("security-agent-output");
-      if (output) output.textContent = data.output || JSON.stringify(data, null, 2);
-    });
-  });
-
   refreshUsage();
   const usageTimer = window.setInterval(refreshUsage, 4000);
   window.addEventListener("pagehide", () => window.clearInterval(usageTimer));

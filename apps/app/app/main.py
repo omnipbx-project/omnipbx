@@ -47,6 +47,7 @@ from app.services.asterisk import sync_asterisk_config
 from app.services.api_push import start_api_push_worker
 from app.services.auth import AUTH_COOKIE_NAME, has_admin_users, resolve_session
 from app.services.live_events import live_event_hub
+from app.services.security import request_security_decision
 from app.services.setup import get_system_settings, is_setup_complete, render_caddyfile, write_caddyfile
 import psycopg
 
@@ -130,6 +131,10 @@ async def setup_guard(request: Request, call_next):
     with psycopg.connect(settings.db_dsn, autocommit=True) as connection:
         setup_complete = is_setup_complete(connection)
         admin_ready = has_admin_users(connection)
+        if setup_complete and admin_ready:
+            security = request_security_decision(connection, request)
+            if not security.allowed:
+                return PlainTextResponse(security.reason or "Access blocked by OmniPBX security.", status_code=403)
         current_user = resolve_session(connection, request.cookies.get(AUTH_COOKIE_NAME))
         request.state.current_user = current_user
 

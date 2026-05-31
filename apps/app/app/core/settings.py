@@ -50,9 +50,6 @@ class Settings(BaseSettings):
     ami_username: str = "omnipbx"
     ami_password: str = "change-me"
     ami_timeout_seconds: float = 3.0
-    host_security_agent_url: str = ""
-    host_security_agent_token: str = ""
-    host_security_agent_timeout_seconds: float = 3.0
 
     model_config = SettingsConfigDict(
         env_prefix="OMNIPBX_",
