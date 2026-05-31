@@ -37,6 +37,7 @@ RUN ./configure --with-pjproject-bundled --without-dahdi --without-pri \
 
 FROM debian:bookworm-slim
 
+ARG DOCKER_CLI_VERSION=29.1.3
 ARG DOCKER_COMPOSE_VERSION=2.40.3
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_BREAK_SYSTEM_PACKAGES=1
@@ -44,7 +45,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
-    docker.io \
     git \
     libcurl4 \
     libedit2 \
@@ -57,10 +57,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     odbc-postgresql \
     python3 \
     python3-pip \
+    tar \
     tini \
     unixodbc \
     && mkdir -p /usr/local/lib/docker/cli-plugins \
     && arch="$(dpkg --print-architecture)" \
+    && case "${arch}" in amd64) docker_arch="x86_64" ;; arm64) docker_arch="aarch64" ;; *) docker_arch="${arch}" ;; esac \
+    && curl -fsSL "https://download.docker.com/linux/static/stable/${docker_arch}/docker-${DOCKER_CLI_VERSION}.tgz" -o /tmp/docker.tgz \
+    && tar -xzf /tmp/docker.tgz -C /tmp \
+    && install -m 0755 /tmp/docker/docker /usr/local/bin/docker \
+    && rm -rf /tmp/docker /tmp/docker.tgz \
     && case "${arch}" in amd64) compose_arch="x86_64" ;; arm64) compose_arch="aarch64" ;; *) compose_arch="${arch}" ;; esac \
     && curl -fsSL "https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_VERSION}/docker-compose-linux-${compose_arch}" -o /usr/local/lib/docker/cli-plugins/docker-compose \
     && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose \

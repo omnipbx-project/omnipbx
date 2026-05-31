@@ -2,6 +2,8 @@ name: Docker Publish
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
   workflow_dispatch:
@@ -61,6 +63,8 @@ jobs:
         with:
           context: apps/app
           push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             ASTERISK_VERSION=${{ env.ASTERISK_VERSION }}
           tags: |
