@@ -4,6 +4,7 @@ import ipaddress
 import json
 import secrets
 import socket
+from datetime import UTC, datetime
 from pathlib import Path
 
 import psycopg
@@ -38,6 +39,73 @@ def get_system_settings(connection: psycopg.Connection) -> dict:
 
 def is_setup_complete(connection: psycopg.Connection) -> bool:
     return bool(get_system_settings(connection).get("setup_completed"))
+
+
+def save_ssl_settings(
+    connection: psycopg.Connection,
+    *,
+    access_mode: str,
+    ssl_mode: str,
+    external_host: str,
+    ssl_contact_email: str = "",
+) -> dict[str, object]:
+    access_mode = (access_mode or "").strip()
+    ssl_mode = (ssl_mode or "").strip()
+    external_host = (external_host or "").strip()
+    ssl_contact_email = (ssl_contact_email or "").strip()
+    if access_mode not in {"local_network", "public_domain", "public_ip", "private_self_hosted", "http_only"}:
+        raise ValueError("Choose a valid access type.")
+    if ssl_mode not in {"http", "public_domain", "public_ip", "internal_local", "custom_certificate"}:
+        raise ValueError("Choose a valid SSL mode.")
+    if access_mode == "http_only":
+        ssl_mode = "http"
+    if ssl_mode != "http" and not external_host:
+        raise ValueError("Enter the LAN IP address or domain users will open.")
+    if ssl_mode == "public_domain" and external_host and _is_ip_address(external_host):
+        raise ValueError("Public domain HTTPS needs a domain name, not an IP address.")
+    if ssl_mode == "public_ip" and external_host and not _is_ip_address(external_host):
+        raise ValueError("Public IP HTTPS needs an IP address.")
+    if ssl_mode in {"public_domain", "public_ip"} and ssl_contact_email and "@" not in ssl_contact_email:
+        raise ValueError("Enter a valid email address for certificate renewal notices.")
+
+    public_base_url = _build_public_base_url(ssl_mode, external_host)
+    caddy_enabled = ssl_mode in {"public_domain", "public_ip", "internal_local", "custom_certificate"}
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE system_settings
+            SET access_mode = %(access_mode)s,
+                external_host = %(external_host)s,
+                ssl_mode = %(ssl_mode)s,
+                ssl_contact_email = %(ssl_contact_email)s,
+                public_base_url = %(public_base_url)s,
+                caddy_enabled = %(caddy_enabled)s,
+                updated_at = NOW()
+            WHERE id = %(id)s
+            """,
+            {
+                "id": SETTINGS_ID,
+                "access_mode": access_mode,
+                "external_host": external_host or None,
+                "ssl_mode": ssl_mode,
+                "ssl_contact_email": ssl_contact_email or None,
+                "public_base_url": public_base_url,
+                "caddy_enabled": caddy_enabled,
+            },
+        )
+    return refresh_caddy_config(connection)
+
+
+def refresh_caddy_config(connection: psycopg.Connection) -> dict[str, object]:
+    settings_snapshot = get_system_settings(connection)
+    caddyfile = render_caddyfile(settings_snapshot)
+    write_caddyfile(caddyfile)
+    return {
+        "settings": settings_snapshot,
+        "caddyfile_path": get_settings().caddyfile_path,
+        "public_base_url": settings_snapshot.get("public_base_url"),
+        "refreshed_at": datetime.now(UTC).isoformat(timespec="seconds"),
+    }
 
 
 def save_setup_wizard(connection: psycopg.Connection, payload: SetupWizardPayload) -> dict[str, object]:
@@ -105,12 +173,10 @@ def save_setup_wizard(connection: psycopg.Connection, payload: SetupWizardPayloa
         _create_first_extension_if_needed(cursor, payload)
 
     sync_asterisk_config(connection, reload_config=True)
-    settings_snapshot = get_system_settings(connection)
-    caddyfile = render_caddyfile(settings_snapshot)
-    write_caddyfile(caddyfile)
+    refresh_result = refresh_caddy_config(connection)
     return {
-        "settings": settings_snapshot,
-        "caddyfile_path": get_settings().caddyfile_path,
+        "settings": refresh_result["settings"],
+        "caddyfile_path": refresh_result["caddyfile_path"],
     }
 
 

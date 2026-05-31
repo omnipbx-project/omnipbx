@@ -7,6 +7,7 @@ import psycopg
 from app.core.db import get_connection
 from app.features.status.service import collect_status_snapshot
 from app.services.asterisk import sync_asterisk_config
+from app.services.setup import refresh_caddy_config, save_ssl_settings
 from app.services.system_tools import (
     build_advanced_snapshot,
     collect_system_usage,
@@ -70,6 +71,36 @@ def status_asterisk_cli(command: str = Form(...)) -> dict[str, object]:
 def status_network_check(host: str = Form(...), port: str = Form(default="")) -> dict[str, object]:
     parsed_port = int(port) if port.strip().isdigit() else None
     return {"status": "ok", **run_network_check(host, parsed_port)}
+
+
+@router.post("/status/ssl-settings")
+def status_save_ssl_settings(
+    access_mode: str = Form(...),
+    ssl_mode: str = Form(...),
+    external_host: str = Form(default=""),
+    ssl_contact_email: str = Form(default=""),
+    action: str = Form(default="save"),
+    connection: psycopg.Connection = Depends(get_connection),
+) -> RedirectResponse:
+    try:
+        if action == "refresh":
+            result = refresh_caddy_config(connection)
+            url = result.get("public_base_url") or "current address"
+            detail = f"SSL config refreshed. Open OmniPBX at {url}."
+        else:
+            result = save_ssl_settings(
+                connection,
+                access_mode=access_mode,
+                ssl_mode=ssl_mode,
+                external_host=external_host,
+                ssl_contact_email=ssl_contact_email,
+            )
+            url = result.get("public_base_url") or "current address"
+            detail = f"SSL settings saved. Caddy will reload automatically. Open OmniPBX at {url}."
+        params = urlencode({"result": "success", "detail": detail})
+    except ValueError as exc:
+        params = urlencode({"result": "error", "detail": str(exc)})
+    return RedirectResponse(url=f"/status?{params}", status_code=303)
 
 
 @router.post("/status/security-rules")

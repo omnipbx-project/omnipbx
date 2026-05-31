@@ -13,6 +13,7 @@
     <button type="button" class="advanced-tab active" data-tab="monitor">System Monitor</button>
     <button type="button" class="advanced-tab" data-tab="logs">Logs</button>
     <button type="button" class="advanced-tab" data-tab="asterisk">Asterisk CLI</button>
+    <button type="button" class="advanced-tab" data-tab="ssl">SSL</button>
     <button type="button" class="advanced-tab" data-tab="network">Network</button>
     <button type="button" class="advanced-tab" data-tab="security">Security</button>
     <button type="button" class="advanced-tab" data-tab="custom">Custom Config</button>
@@ -96,6 +97,63 @@
         <button type="submit" class="button-link">Run</button>
       </form>
       <pre class="code-block" id="asterisk-cli-output">Command output appears here.</pre>
+    </div>
+  </section>
+
+  <section class="advanced-panel" data-panel="ssl">
+    {% set ssl_settings = snapshot.ssl.settings %}
+    <div class="metric-grid">
+      {{ stat_card("SSL Mode", snapshot.ssl.mode_label, snapshot.ssl.detail) }}
+      {{ stat_card("PBX Address", snapshot.ssl.external_host or "-", snapshot.ssl.public_base_url or "Not set") }}
+      {{ stat_card("Renewal", snapshot.ssl.auto_renewal, "HTTPS port " ~ snapshot.ssl.https_port) }}
+    </div>
+    <div class="reports-two-column">
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>Browser phone SSL</h3><p>Set the LAN IP or domain users open in the browser.</p></div></div>
+        <form method="post" action="/status/ssl-settings" class="stack">
+          <label>Access type
+            <select name="access_mode" id="advanced-access-mode">
+              <option value="local_network" {% if ssl_settings.access_mode == "local_network" %}selected{% endif %}>LAN IP or local domain</option>
+              <option value="public_domain" {% if ssl_settings.access_mode == "public_domain" %}selected{% endif %}>Public domain</option>
+              <option value="public_ip" {% if ssl_settings.access_mode == "public_ip" %}selected{% endif %}>Public IP</option>
+              <option value="private_self_hosted" {% if ssl_settings.access_mode == "private_self_hosted" %}selected{% endif %}>Custom certificate</option>
+              <option value="http_only" {% if ssl_settings.access_mode == "http_only" %}selected{% endif %}>HTTP only</option>
+            </select>
+          </label>
+          <label>SSL method
+            <select name="ssl_mode" id="advanced-ssl-mode">
+              <option value="internal_local" {% if ssl_settings.ssl_mode == "internal_local" %}selected{% endif %}>LAN SSL certificate</option>
+              <option value="public_domain" {% if ssl_settings.ssl_mode == "public_domain" %}selected{% endif %}>Auto public domain SSL</option>
+              <option value="public_ip" {% if ssl_settings.ssl_mode == "public_ip" %}selected{% endif %}>Auto public IP SSL</option>
+              <option value="custom_certificate" {% if ssl_settings.ssl_mode == "custom_certificate" %}selected{% endif %}>Use custom certificate files</option>
+              <option value="http" {% if ssl_settings.ssl_mode == "http" %}selected{% endif %}>No SSL</option>
+            </select>
+          </label>
+          <label>LAN IP or domain
+            <input type="text" name="external_host" value="{{ ssl_settings.external_host or '' }}" placeholder="192.168.1.10 or pbx.example.com">
+          </label>
+          <label>Certificate email
+            <input type="email" name="ssl_contact_email" value="{{ ssl_settings.ssl_contact_email or ssl_settings.admin_email or '' }}" placeholder="admin@example.com">
+          </label>
+          <div class="button-row">
+            <button type="submit" name="action" value="save">Save SSL</button>
+            <button type="submit" name="action" value="refresh" class="secondary">Redo SSL</button>
+          </div>
+        </form>
+      </div>
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>What users open</h3><p>Use this address for OmniPBX and Webphone.</p></div></div>
+        <pre class="code-block">{{ snapshot.ssl.public_base_url or "HTTPS is not set yet." }}</pre>
+        {% if snapshot.ssl.root_ca_available %}
+        <a class="button-link secondary" href="/setup/internal-ca.crt">Download LAN certificate</a>
+        {% endif %}
+        <div class="notice notice-info">
+          <strong>Auto renewal</strong>
+          <span>Public domain certificates renew automatically. LAN certificates are regenerated when the IP or domain changes and you save here.</span>
+        </div>
+        <pre class="code-block">Caddy config: {{ snapshot.ssl.caddyfile_path }}
+Status: {{ "Ready" if snapshot.ssl.caddyfile_exists else "Waiting for first save" }}</pre>
+      </div>
     </div>
   </section>
 

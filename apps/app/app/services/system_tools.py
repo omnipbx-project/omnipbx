@@ -12,6 +12,7 @@ from psycopg.rows import dict_row
 
 from app.core.settings import get_settings
 from app.services.security import app_security_status, list_app_bans
+from app.services.setup import get_internal_root_ca_path, get_system_settings
 
 
 ASTERISK_ALLOWED_PREFIXES = (
@@ -60,6 +61,7 @@ def collect_system_usage() -> dict[str, object]:
 
 
 def build_advanced_snapshot(connection: psycopg.Connection) -> dict[str, object]:
+    system_settings = get_system_settings(connection)
     return {
         "usage": collect_system_usage(),
         "logs": read_logs(),
@@ -73,11 +75,52 @@ def build_advanced_snapshot(connection: psycopg.Connection) -> dict[str, object]
             ],
         },
         "network": collect_network_snapshot(connection),
+        "ssl": collect_ssl_snapshot(connection, system_settings),
         "security_rules": list_security_rules(connection),
         "security_bans": list_app_bans(connection),
         "app_security": app_security_status(connection),
         "custom_config": get_custom_config(connection),
         "services": collect_service_snapshot(connection),
+    }
+
+
+def collect_ssl_snapshot(connection: psycopg.Connection, system_settings: dict | None = None) -> dict[str, object]:
+    settings = get_settings()
+    system_settings = system_settings or get_system_settings(connection)
+    ssl_mode = system_settings.get("ssl_mode") or "http"
+    external_host = system_settings.get("external_host") or ""
+    public_base_url = system_settings.get("public_base_url") or ""
+    caddyfile_path = Path(settings.caddyfile_path)
+    root_ca_path = get_internal_root_ca_path()
+    if ssl_mode == "http":
+        label = "HTTP only"
+        detail = "Browser phone needs HTTPS. Set LAN IP or domain SSL before using Webphone."
+        auto_renewal = "Off"
+    elif ssl_mode == "internal_local":
+        label = "LAN SSL"
+        detail = "Caddy creates a local certificate for the LAN IP/domain. Users may need to trust the local certificate once."
+        auto_renewal = "Local certificates are recreated when the PBX address changes."
+    elif ssl_mode == "custom_certificate":
+        label = "Custom certificate"
+        detail = "Caddy uses the certificate files mounted into the app."
+        auto_renewal = "Managed outside OmniPBX."
+    else:
+        label = "Public SSL"
+        detail = "Caddy manages public HTTPS certificates automatically when DNS and ports point to this PBX."
+        auto_renewal = "On"
+    return {
+        "settings": system_settings,
+        "mode_label": label,
+        "detail": detail,
+        "public_base_url": public_base_url,
+        "external_host": external_host,
+        "caddyfile_path": str(caddyfile_path),
+        "caddyfile_exists": caddyfile_path.exists(),
+        "root_ca_path": str(root_ca_path),
+        "root_ca_available": root_ca_path.exists(),
+        "auto_renewal": auto_renewal,
+        "https_port": settings.public_https_port,
+        "http_port": settings.public_http_port,
     }
 
 

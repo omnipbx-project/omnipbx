@@ -59,6 +59,19 @@ document.addEventListener("DOMContentLoaded", function () {
     document.getElementById("network-check-output").textContent = data.output || "No output.";
   });
 
+  const accessMode = document.getElementById("advanced-access-mode");
+  const sslMode = document.getElementById("advanced-ssl-mode");
+  accessMode?.addEventListener("change", function () {
+    const recommended = {
+      local_network: "internal_local",
+      public_domain: "public_domain",
+      public_ip: "public_ip",
+      private_self_hosted: "custom_certificate",
+      http_only: "http",
+    };
+    if (sslMode && recommended[accessMode.value]) sslMode.value = recommended[accessMode.value];
+  });
+
   refreshUsage();
   const usageTimer = window.setInterval(refreshUsage, 4000);
   window.addEventListener("pagehide", () => window.clearInterval(usageTimer));
