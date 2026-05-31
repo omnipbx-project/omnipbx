@@ -97,12 +97,14 @@ def detached_webphone_page(
     connection: psycopg.Connection = Depends(get_connection),
 ) -> HTMLResponse:
     current_user = getattr(request.state, "current_user", None) or {}
+    role = str(current_user.get("role") or "")
     bootstrap = resolve_current_webphone(
         connection,
-        username=str(current_user.get("username") or ""),
+        username=str(current_user.get("extension") or current_user.get("username") or ""),
         extension=extension,
         request_host=request.headers.get("host", ""),
         request_scheme=_request_scheme(request),
+        can_switch=role in {"owner", "admin"},
     )
     return render_template(
         request,

@@ -5,7 +5,7 @@
     <span class="eyebrow">Secure Access</span>
     <h3>Sign in to OmniPBX</h3>
     <p class="muted">
-      Use the admin account created during setup. Email reset, owner/admin reset, and CLI recovery are now available as fallback paths.
+      Admins use their admin username. Users can sign in with their extension number and phone password.
     </p>
 
     {% if error %}
@@ -25,8 +25,8 @@
     <form method="post" action="/login" class="stack">
       <input type="hidden" name="next_url" value="{{ next_url }}">
       <div class="field">
-        <label for="username">Username</label>
-        <input id="username" type="text" name="username" autocomplete="username" required>
+        <label for="username">Username or Extension</label>
+        <input id="username" type="text" name="username" autocomplete="username" placeholder="admin or 1001" required>
       </div>
       <div class="field">
         <label for="password">Password</label>

@@ -12,7 +12,7 @@ from app.services.admin_accounts import get_smtp_settings
 from app.services.audit import log_admin_event
 from app.services.auth import (
     AUTH_COOKIE_NAME,
-    authenticate_admin,
+    authenticate_principal,
     clear_session_cookie,
     consume_password_reset_token,
     generate_password_reset_token,
@@ -76,7 +76,7 @@ def login_submit(
         params = urlencode({"error": username_decision.reason, "next": next_url})
         return RedirectResponse(url=f"/login?{params}", status_code=303)
 
-    admin = authenticate_admin(connection, username.strip(), password)
+    admin = authenticate_principal(connection, username.strip(), password)
     if not admin:
         failure = record_login_failure(connection, request=request, username=username)
         log_admin_event(

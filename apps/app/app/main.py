@@ -154,6 +154,17 @@ async def setup_guard(request: Request, call_next):
             return await call_next(request)
 
         if current_user:
+            if current_user.get("role") == "user":
+                user_allowed_prefixes = (
+                    "/dashboard",
+                    "/softphone",
+                    "/webphone",
+                    "/api/softphone",
+                    "/live-overview",
+                    "/logout",
+                )
+                if not path.startswith(user_allowed_prefixes):
+                    return RedirectResponse(url="/dashboard", status_code=303)
             if current_user.get("role") == "read_only" and request.method not in {"GET", "HEAD", "OPTIONS"}:
                 if path not in {"/admin-accounts/change-password"}:
                     return PlainTextResponse("Read-only accounts cannot modify OmniPBX.", status_code=403)

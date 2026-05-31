@@ -103,18 +103,27 @@ def build_softphone_bootstrap(connection: psycopg.Connection, extension: str, *,
     }
 
 
-def resolve_current_webphone(connection: psycopg.Connection, username: str = "", *, extension: str = "", request_host: str = "", request_scheme: str = "https") -> dict:
-    selected = (extension or username or "").strip()
+def resolve_current_webphone(
+    connection: psycopg.Connection,
+    username: str = "",
+    *,
+    extension: str = "",
+    request_host: str = "",
+    request_scheme: str = "https",
+    can_switch: bool = False,
+) -> dict:
+    selected = (extension if can_switch else username).strip() or username.strip()
     webphone_extensions = list_webphone_extensions(connection)
     if selected and not any(row["extension"] == selected for row in webphone_extensions):
         selected = ""
-    if not selected and webphone_extensions:
+    if not selected and webphone_extensions and can_switch:
         selected = webphone_extensions[0]["extension"]
     if not selected:
         return {
             "available": False,
-            "message": "No Webphone users are enabled. Set a user Phone Type to Webphone first.",
-            "extensions": [],
+            "message": "This login does not have Webphone enabled. Ask an admin to set Phone Type to Webphone.",
+            "can_switch": can_switch,
+            "extensions": [{"extension": row["extension"], "display_name": row["display_name"]} for row in webphone_extensions] if can_switch else [],
             "config": None,
         }
     config = build_softphone_bootstrap(
@@ -126,7 +135,8 @@ def resolve_current_webphone(connection: psycopg.Connection, username: str = "",
     return {
         "available": bool(config["webrtc_ready"]),
         "message": "Webphone ready." if config["webrtc_ready"] else "This user is not ready for Webphone.",
-        "extensions": [{"extension": row["extension"], "display_name": row["display_name"]} for row in webphone_extensions],
+        "can_switch": can_switch,
+        "extensions": [{"extension": row["extension"], "display_name": row["display_name"]} for row in webphone_extensions] if can_switch else [],
         "config": config,
     }
 

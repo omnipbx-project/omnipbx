@@ -125,7 +125,7 @@
     const config = data.config || null;
     state.config = config;
     setAccount(config);
-    renderExtensionPicker(data.extensions || [], config && config.extension);
+    renderExtensionPicker(data.extensions || [], config && config.extension, Boolean(data.can_switch));
     if (!data.available || !config) {
       setStatus(data.message || "Webphone not ready", "warn");
       return;
@@ -137,8 +137,11 @@
     register();
   }
 
-  function renderExtensionPicker(extensions, selected) {
-    if (!els.picker || !els.extension || extensions.length <= 1) return;
+  function renderExtensionPicker(extensions, selected, canSwitch) {
+    if (!els.picker || !els.extension || !canSwitch || extensions.length <= 1) {
+      if (els.picker) els.picker.hidden = true;
+      return;
+    }
     els.extension.innerHTML = extensions.map((item) => (
       `<option value="${escapeHtml(item.extension)}" ${item.extension === selected ? "selected" : ""}>${escapeHtml(item.extension)} - ${escapeHtml(item.display_name || "")}</option>`
     )).join("");
