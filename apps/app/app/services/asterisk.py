@@ -328,7 +328,8 @@ def render_pjsip_base_config(network: dict | None = None) -> str:
         "[transport-wss]\n"
         "type = transport\n"
         "protocol = wss\n"
-        "bind = 0.0.0.0\n\n"
+        "bind = 0.0.0.0\n"
+        f"{external_lines}\n"
         "#include generated/pjsip.generated.conf\n"
         "#include generated/pjsip.trunks.generated.conf\n"
     )

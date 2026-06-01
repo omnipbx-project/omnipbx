@@ -222,6 +222,8 @@
   }
 
   function bindSession(session) {
+    if (session.__omniWebphoneBound) return;
+    session.__omniWebphoneBound = true;
     session.on("peerconnection", (data) => bindPeerConnection(data.peerconnection || session.connection));
     session.on("progress", () => setStatus("Ringing...", "warn"));
     session.on("accepted", () => setStatus("Connected", "ok"));
@@ -321,7 +323,12 @@
     }
     const stream = await requestMedia(withVideo);
     if (!stream) return;
-    state.ua.call(destination, mediaOptions(withVideo, stream));
+    const session = state.ua.call(destination, mediaOptions(withVideo, stream));
+    if (session) {
+      state.session = session;
+      bindSession(session);
+      updateCallButton();
+    }
     log(`Calling ${normalizeNumber(els.number.value)}`);
   }
 
@@ -355,7 +362,7 @@
   function mediaOptions(withVideo, stream) {
     const options = {
       mediaConstraints: {audio: true, video: Boolean(withVideo)},
-      pcConfig: {iceServers: [{urls: "stun:stun.l.google.com:19302"}]},
+      pcConfig: {iceServers: []},
       rtcOfferConstraints: {offerToReceiveAudio: true, offerToReceiveVideo: Boolean(withVideo)},
     };
     if (stream) options.mediaStream = stream;
