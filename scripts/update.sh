@@ -420,7 +420,7 @@ detect_app_rebuild_needed() {
 
   local changed_files
   changed_files="$(git_output diff --name-only "${START_COMMIT}..HEAD" || true)"
-  if grep -Eq '^(apps/app/|deploy/compose\.dev\.yaml|deploy/compose\.yaml)$' <<< "${changed_files}"; then
+  if grep -Eq '^(apps/app/|deploy/(compose\.dev\.yaml|compose\.yaml)$)' <<< "${changed_files}"; then
     APP_REBUILD_NEEDED="true"
   fi
 }
