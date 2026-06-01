@@ -1060,24 +1060,30 @@ def _internal_permission_expression(
     for rule in rules:
         config = _rule_config(rule)
         destination_type = config.get("destination_type")
+        destination_values = _split_csv(config.get("destination_values") or "")
+        if not destination_values:
+            destination_values = [config.get("destination_group") or config.get("destination_user") or ""]
         destination_matches = (
             destination_type == "group"
-            and config.get("destination_group") == target_group
+            and target_group in destination_values
         ) or (
             destination_type == "user"
-            and config.get("destination_user") == target_extension
+            and target_extension in destination_values
         )
         if not destination_matches:
             continue
         source_type = config.get("source_type")
-        if source_type == "group" and config.get("source_group"):
+        source_values = _split_csv(config.get("source_values") or "")
+        if not source_values:
+            source_values = [config.get("source_group") or config.get("source_user") or ""]
+        if source_type == "group":
             allowed_callers.update(
                 extension
                 for extension, group in groups_by_extension.items()
-                if group == config["source_group"]
+                if group in source_values
             )
-        elif source_type == "user" and config.get("source_user"):
-            allowed_callers.add(config["source_user"])
+        elif source_type == "user":
+            allowed_callers.update(source_values)
     if not allowed_callers:
         return "0"
     return " | ".join(f'"${{CALLERID(num)}}" = "{extension}"' for extension in sorted(allowed_callers))
@@ -1089,6 +1095,10 @@ def _internal_voicemail_rule(rules: list[dict], extension: str) -> dict | None:
         if config.get("extension") == extension:
             return rule
     return None
+
+
+def _split_csv(value: str) -> list[str]:
+    return [item.strip() for item in str(value or "").split(",") if item.strip()]
 
 
 def _internal_voicemail_fallback_lines(mailbox: str, when: str) -> list[str]:

@@ -191,12 +191,10 @@ ROUTING_FORMS = {
         {"name": "allowed", "label": "Allowed calls", "placeholder": "Local, Mobile"},
     ],
     ("internal-calls", "calling-rules"): [
-        {"name": "source_type", "label": "Who can call", "type": "select", "options": [("group", "Group"), ("user", "User")]},
-        {"name": "source_group", "label": "Source group", "type": "group_select"},
-        {"name": "source_user", "label": "Source user", "type": "extension_select"},
-        {"name": "destination_type", "label": "Can call", "type": "select", "options": [("group", "Group"), ("user", "User")]},
-        {"name": "destination_group", "label": "Destination group", "type": "group_select"},
-        {"name": "destination_user", "label": "Destination user", "type": "extension_select"},
+        {"name": "source_type", "label": "Source", "type": "select", "options": [("group", "Group"), ("user", "User")]},
+        {"name": "source_values", "label": "Source groups/users", "type": "target_multiselect"},
+        {"name": "destination_type", "label": "Destination", "type": "select", "options": [("group", "Group"), ("user", "User")]},
+        {"name": "destination_values", "label": "Destination groups/users", "type": "target_multiselect"},
     ],
     ("internal-calls", "voicemail"): [
         {"name": "extension", "label": "User", "type": "extension_select"},
@@ -310,6 +308,8 @@ async def save_call_routing_detail(
     config = {}
     for field in fields:
         if str(field.get("type", "")).endswith("_multiselect"):
+            config[field["name"]] = ", ".join(str(value) for value in form.getlist(field["name"]) if str(value).strip())
+        elif field.get("type") == "target_multiselect":
             config[field["name"]] = ", ".join(str(value) for value in form.getlist(field["name"]) if str(value).strip())
         else:
             config[field["name"]] = str(form.get(field["name"], ""))
