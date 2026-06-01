@@ -369,7 +369,7 @@ def render_pjsip_config(extensions: list[dict]) -> str:
         codecs = item.get("codecs") or DEFAULT_EXTENSION_CODECS
         video_codecs = item.get("video_codecs") or DEFAULT_EXTENSION_VIDEO_CODECS
         if transport == WEBPHONE_TRANSPORT:
-            allowed_codecs = "opus,ulaw"
+            allowed_codecs = "ulaw"
         else:
             allowed_codecs = ",".join(
                 codec_group for codec_group in [codecs, video_codecs] if codec_group
