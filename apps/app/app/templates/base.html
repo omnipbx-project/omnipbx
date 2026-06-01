@@ -57,7 +57,9 @@
     <section class="guest-header">
       <span class="eyebrow">OmniPBX</span>
       <h2>{{ page_title }}</h2>
+      {% if page_description %}
       <p>{{ page_description }}</p>
+      {% endif %}
     </section>
     {% endif %}
 

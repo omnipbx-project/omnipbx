@@ -6,7 +6,7 @@
       <span class="eyebrow">Secure Access</span>
       <h3>Sign in to OmniPBX</h3>
       <p class="muted">
-        Use your admin username or extension credentials to open your PBX workspace.
+        Use your username to open your PBX workspace.
       </p>
     </div>
 
@@ -27,8 +27,8 @@
     <form method="post" action="/login" class="stack">
       <input type="hidden" name="next_url" value="{{ next_url }}">
       <div class="field">
-        <label for="username">Username or Extension</label>
-        <input id="username" type="text" name="username" autocomplete="username" placeholder="admin or 1001" required>
+        <label for="username">Username</label>
+        <input id="username" type="text" name="username" autocomplete="username" required>
       </div>
       <div class="field">
         <div class="field-label-row">
@@ -39,29 +39,6 @@
       </div>
       <button type="submit" class="login-submit">Sign in</button>
     </form>
-
-    {% if not smtp_ready %}
-    <p class="muted login-note">Password reset email becomes available after SMTP is configured.</p>
-    {% endif %}
-  </div>
-
-  <div class="panel login-info-card">
-    <span class="eyebrow">OmniPBX Portal</span>
-    <h3>One login for admins and phone users.</h3>
-    <div class="login-info-list">
-      <div>
-        <strong>Admins</strong>
-        <span>Manage routing, users, reports, recordings, and system tools.</span>
-      </div>
-      <div>
-        <strong>Users</strong>
-        <span>Open the browser phone and work with calls from the same account.</span>
-      </div>
-      <div>
-        <strong>Protected</strong>
-        <span>Repeated failed logins are blocked automatically.</span>
-      </div>
-    </div>
   </div>
 </section>
 {% endblock %}

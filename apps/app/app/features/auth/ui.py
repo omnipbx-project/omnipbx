@@ -49,7 +49,7 @@ def login_page(
         request,
         "auth/login.html",
         page_title="Login",
-        page_description="Sign in to OmniPBX with the owner or admin account you created during setup.",
+        page_description="",
         active_nav="/login",
         show_shell=False,
         error=error,

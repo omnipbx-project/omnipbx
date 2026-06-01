@@ -478,7 +478,28 @@ textarea {
 }
 
 .login-shell {
+  position: relative;
+  width: 100%;
+  max-width: none;
   min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 96px 22px 46px;
+}
+
+.login-shell .guest-topbar {
+  position: absolute;
+  top: 24px;
+  left: 22px;
+  right: 22px;
+  margin-bottom: 0;
+}
+
+.login-shell .guest-header {
+  display: none;
 }
 
 .icon-button,
@@ -1082,18 +1103,20 @@ button.success,
 }
 
 .login-wrap {
-  width: min(960px, 100%);
-  grid-template-columns: minmax(320px, 460px) minmax(280px, 1fr);
+  width: min(460px, 100%);
+  grid-template-columns: 1fr;
   align-items: stretch;
   justify-content: center;
-  margin: 26px auto 0;
+  margin: 0 auto;
 }
 
 .login-card {
   width: 100%;
-  padding: 28px;
-  border-color: color-mix(in srgb, var(--accent) 14%, var(--line));
-  box-shadow: var(--shadow-card);
+  padding: 32px;
+  border-color: color-mix(in srgb, var(--accent) 18%, var(--line));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-panel-strong) 96%, transparent), var(--bg-panel));
+  box-shadow: 0 24px 60px rgba(2, 8, 23, 0.18);
 }
 
 .login-card-heading {
@@ -1101,8 +1124,7 @@ button.success,
   gap: 8px;
 }
 
-.login-card-heading h3,
-.login-info-card h3 {
+.login-card-heading h3 {
   margin: 0;
   font-size: 1.55rem;
   line-height: 1.18;
@@ -1137,46 +1159,6 @@ button.success,
 .login-submit:hover {
   background: var(--accent-strong);
   border-color: var(--accent-strong);
-}
-
-.login-note {
-  margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.45;
-}
-
-.login-info-card {
-  display: grid;
-  align-content: center;
-  gap: 20px;
-  min-height: 100%;
-  padding: 28px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, transparent), transparent 42%),
-    color-mix(in srgb, var(--bg-panel-strong) 92%, transparent);
-}
-
-.login-info-list {
-  display: grid;
-  gap: 12px;
-}
-
-.login-info-list > div {
-  display: grid;
-  gap: 5px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--bg-panel) 82%, transparent);
-}
-
-.login-info-list strong {
-  color: var(--text);
-}
-
-.login-info-list span {
-  color: var(--text-soft);
-  line-height: 1.45;
 }
 
 table {
@@ -2162,10 +2144,6 @@ tbody tr:hover td {
     grid-template-columns: 1fr;
   }
 
-  .login-info-card {
-    min-height: auto;
-  }
-
   .reports-rail {
     position: static;
   }
@@ -2188,6 +2166,11 @@ tbody tr:hover td {
   .guest-topbar {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .login-shell .guest-topbar {
+    flex-direction: row;
+    align-items: center;
   }
 
   .topbar-actions {
