@@ -326,7 +326,8 @@ def render_pjsip_config(extensions: list[dict]) -> str:
                 "type = aor\n"
                 "max_contacts = 1\n"
                 "remove_existing = yes\n"
-                "qualify_frequency = 60\n\n"
+                "qualify_frequency = 3\n"
+                "qualify_timeout = 2.0\n\n"
             )
         )
     return "".join(blocks)

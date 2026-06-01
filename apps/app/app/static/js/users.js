@@ -148,24 +148,42 @@ document.addEventListener("DOMContentLoaded", function () {
       searchInput.addEventListener("input", applySearch);
     }
 
-    if (window.EventSource) {
-      const source = new EventSource("/live-overview/events");
-      window.addEventListener("pagehide", function () {
-        source.close();
-      });
-      source.onmessage = function (event) {
-        const data = JSON.parse(event.data);
-        updateUserCards(data.active_users || []);
-      };
-    } else {
-      const intervalId = window.setInterval(async function () {
+    let statusPollId = null;
+
+    function startStatusPolling() {
+      if (statusPollId) return;
+      async function refreshStatuses() {
         const response = await fetch("/live-overview/data", {headers: {"Accept": "application/json"}});
         if (!response.ok) return;
         const data = await response.json();
         updateUserCards(data.active_users || []);
-      }, 5000);
+      }
+      refreshStatuses();
+      statusPollId = window.setInterval(refreshStatuses, 1000);
+    }
+
+    function stopStatusPolling() {
+      if (!statusPollId) return;
+      window.clearInterval(statusPollId);
+      statusPollId = null;
+    }
+
+    if (window.EventSource) {
+      const source = new EventSource("/live-overview/events");
       window.addEventListener("pagehide", function () {
-        window.clearInterval(intervalId);
+        source.close();
+        stopStatusPolling();
+      });
+      source.onopen = stopStatusPolling;
+      source.onmessage = function (event) {
+        const data = JSON.parse(event.data);
+        updateUserCards(data.active_users || []);
+      };
+      source.onerror = startStatusPolling;
+    } else {
+      startStatusPolling();
+      window.addEventListener("pagehide", function () {
+        stopStatusPolling();
       });
     }
   });
