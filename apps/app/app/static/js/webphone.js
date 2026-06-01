@@ -132,7 +132,7 @@
       setStatus(data.message || "Webphone not ready", "warn");
       return;
     }
-    if (!window.JsSIP || !window.JsSIP.UA) {
+    if (!window.OmniSipSimpleUser) {
       setStatus("Phone engine not loaded", "bad");
       return;
     }
@@ -150,101 +150,99 @@
     els.picker.hidden = false;
   }
 
-  function register() {
+  async function register() {
     const config = state.config;
     if (!config || !config.webrtc_ready) return;
     if (state.ua) {
-      try { state.ua.stop(); } catch (error) { console.warn(error); }
+      try { await state.ua.disconnect(); } catch (error) { console.warn(error); }
     }
-    const socket = new JsSIP.WebSocketInterface(config.websocket_url);
-    state.ua = new JsSIP.UA({
-      sockets: [socket],
-      uri: `sip:${config.extension}@${config.sip_domain}`,
-      authorization_user: config.extension,
-      password: config.secret,
-      display_name: config.display_name || config.extension,
-      session_timers: false,
-      register: true,
+    state.ua = new window.OmniSipSimpleUser(config.websocket_url, {
+      aor: `sip:${config.extension}@${config.sip_domain}`,
+      delegate: sipDelegate(),
+      media: {
+        constraints: {audio: true, video: false},
+        remote: {audio: els.audio, video: els.remoteVideo},
+        local: {video: els.localVideo},
+      },
+      reconnectionAttempts: 5,
+      reconnectionDelay: 2,
+      registererOptions: {expires: 300},
+      userAgentOptions: {
+        authorizationUsername: config.extension,
+        authorizationPassword: config.secret,
+        contactName: config.extension,
+        displayName: config.display_name || config.extension,
+        logLevel: "warn",
+        sessionDescriptionHandlerFactoryOptions: {
+          iceGatheringTimeout: 1000,
+          peerConnectionConfiguration: {iceServers: []},
+        },
+        userAgentString: "OmniPBX Webphone",
+      },
     });
-    bindUa(state.ua);
-    state.ua.start();
     setStatus("Connecting...", "warn");
-  }
-
-  function bindUa(ua) {
-    ua.on("connected", () => setStatus("Registering...", "warn"));
-    ua.on("registered", () => {
-      state.registered = true;
-      setStatus("Ready", "ok");
-      updateCallButton();
-      log("Registered");
-    });
-    ua.on("unregistered", () => {
+    try {
+      await state.ua.connect();
+      await state.ua.register();
+    } catch (error) {
       state.registered = false;
-      setStatus("Offline", "warn");
+      setStatus(error.message || "Registration failed", "bad");
       updateCallButton();
-    });
-    ua.on("disconnected", () => {
-      state.registered = false;
-      setStatus("Disconnected", "bad");
-      updateCallButton();
-    });
-    ua.on("registrationFailed", (event) => {
-      state.registered = false;
-      setStatus((event && event.cause) || "Registration failed", "bad");
-      updateCallButton();
-    });
-    ua.on("newRTCSession", handleSession);
-  }
-
-  function handleSession(data) {
-    const session = data.session;
-    if (state.session && state.session !== session) {
-      session.terminate({status_code: 486, reason_phrase: "Busy Here"});
-      return;
+      log(error.message || "Registration failed");
     }
-    state.session = session;
-    bindSession(session);
-    if (data.originator === "remote") {
-      if (state.dnd) {
-        session.terminate({status_code: 486, reason_phrase: "Do Not Disturb"});
-        return;
-      }
-      state.incoming = session;
-      const caller = session.remote_identity?.uri?.user || "caller";
-      setStatus(`Incoming ${caller}`, "warn");
-      log(`Incoming ${caller}`);
-      setOpen(true);
-    } else {
-      setStatus("Calling...", "warn");
-    }
-    updateCallButton();
   }
 
-  function bindSession(session) {
-    if (session.__omniWebphoneBound) return;
-    session.__omniWebphoneBound = true;
-    session.on("peerconnection", (data) => bindPeerConnection(data.peerconnection || session.connection));
-    session.on("progress", () => setStatus("Ringing...", "warn"));
-    session.on("accepted", () => setStatus("Connected", "ok"));
-    session.on("confirmed", () => {
-      state.incoming = null;
-      attachLocalPreview(session);
-      setStatus("In call", "ok");
-      updateCallButton();
-    });
-    session.on("ended", () => resetCall("Call ended"));
-    session.on("failed", (event) => resetCall((event && event.cause) || "Call failed"));
-    session.on("hold", () => {
-      state.held = true;
-      toggleButton(els.hold, true);
-      setStatus("On hold", "warn");
-    });
-    session.on("unhold", () => {
-      state.held = false;
-      toggleButton(els.hold, false);
-      setStatus("In call", "ok");
-    });
+  function sipDelegate() {
+    return {
+      onServerConnect: () => setStatus("Registering...", "warn"),
+      onServerDisconnect: () => {
+        state.registered = false;
+        setStatus("Disconnected", "bad");
+        updateCallButton();
+      },
+      onRegistered: () => {
+        state.registered = true;
+        setStatus("Ready", "ok");
+        updateCallButton();
+        log("Registered");
+      },
+      onUnregistered: () => {
+        state.registered = false;
+        setStatus("Offline", "warn");
+        updateCallButton();
+      },
+      onCallCreated: () => {
+        state.session = true;
+        state.incoming = null;
+        setStatus("Calling...", "warn");
+        updateCallButton();
+      },
+      onCallReceived: () => {
+        if (state.dnd) {
+          state.ua.decline().catch((error) => console.warn(error));
+          return;
+        }
+        state.session = true;
+        state.incoming = true;
+        setStatus("Incoming call", "warn");
+        log("Incoming call");
+        setOpen(true);
+        updateCallButton();
+      },
+      onCallAnswered: () => {
+        state.session = true;
+        state.incoming = null;
+        attachSipMedia();
+        setStatus("In call", "ok");
+        updateCallButton();
+      },
+      onCallHangup: () => resetCall("Call ended"),
+      onCallHold: (held) => {
+        state.held = Boolean(held);
+        toggleButton(els.hold, state.held);
+        setStatus(state.held ? "On hold" : "In call", state.held ? "warn" : "ok");
+      },
+    };
   }
 
   function bindPeerConnection(pc) {
@@ -295,22 +293,24 @@
     }
   }
 
-  function attachLocalPreview(session) {
-    const pc = session.connection;
-    if (!pc) return;
-    const stream = new MediaStream();
-    pc.getSenders().forEach((sender) => {
-      if (sender.track) stream.addTrack(sender.track);
-    });
-    state.localStream = stream;
-    els.localVideo.srcObject = stream;
-    if (stream.getVideoTracks().length) els.videoBox.hidden = false;
+  function attachSipMedia() {
+    state.localStream = state.ua?.localMediaStream || null;
+    state.remoteStream = state.ua?.remoteMediaStream || null;
+    if (state.localStream) els.localVideo.srcObject = state.localStream;
+    if (state.remoteStream) {
+      els.audio.srcObject = state.remoteStream;
+      els.remoteVideo.srcObject = state.remoteStream;
+    }
+    els.videoBox.hidden = !(state.localStream?.getVideoTracks().length || state.remoteStream?.getVideoTracks().length);
   }
 
   async function call(withVideo) {
     if (state.incoming) {
       await answer(withVideo);
       return;
+    }
+    if (withVideo) {
+      setStatus("Audio calls only", "warn");
     }
     if (!state.ua || !state.registered) {
       setStatus("Phone not ready", "bad");
@@ -321,57 +321,42 @@
       setStatus("Enter a number", "bad");
       return;
     }
-    const stream = await requestMedia(withVideo);
-    if (!stream) return;
-    const session = state.ua.call(destination, mediaOptions(withVideo, stream));
-    if (session) {
-      state.session = session;
-      bindSession(session);
+    try {
+      state.session = true;
       updateCallButton();
+      await state.ua.call(destination, mediaOptions());
+      setStatus("Calling...", "warn");
+    } catch (error) {
+      resetCall(error.message || "Call failed");
+      updateCallButton();
+      return;
     }
     log(`Calling ${normalizeNumber(els.number.value)}`);
   }
 
-  async function answer(withVideo) {
+  async function answer() {
     if (!state.incoming) return;
-    const stream = await requestMedia(withVideo);
-    if (!stream) return;
-    state.incoming.answer(mediaOptions(withVideo, stream));
-    state.incoming = null;
-    setStatus("Answering...", "warn");
-    updateCallButton();
-  }
-
-  async function requestMedia(withVideo) {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setStatus("Microphone not available", "bad");
-      log("Microphone not available");
-      return null;
-    }
     try {
-      return await navigator.mediaDevices.getUserMedia({audio: true, video: Boolean(withVideo)});
+      await state.ua.answer(mediaOptions());
+      state.incoming = null;
+      setStatus("Answering...", "warn");
+      updateCallButton();
     } catch (error) {
-      const denied = error && ["NotAllowedError", "SecurityError", "PermissionDeniedError"].includes(error.name);
-      const message = denied ? "Allow microphone" : "Microphone failed";
-      setStatus(message, "bad");
-      log(message);
-      return null;
+      resetCall(error.message || "Answer failed");
     }
   }
 
-  function mediaOptions(withVideo, stream) {
-    const options = {
-      mediaConstraints: {audio: true, video: Boolean(withVideo)},
-      pcConfig: {iceServers: []},
-      rtcOfferConstraints: {offerToReceiveAudio: true, offerToReceiveVideo: Boolean(withVideo)},
+  function mediaOptions() {
+    return {
+      sessionDescriptionHandlerOptions: {
+        constraints: {audio: true, video: false},
+      },
     };
-    if (stream) options.mediaStream = stream;
-    return options;
   }
 
-  function hangup() {
+  async function hangup() {
     if (state.session) {
-      try { state.session.terminate(); } catch (error) { console.warn(error); }
+      try { await state.ua.hangup(); } catch (error) { console.warn(error); }
     }
     resetCall("Idle");
   }
@@ -408,7 +393,7 @@
   function toggleMute() {
     if (!state.session) return;
     state.muted = !state.muted;
-    state.muted ? state.session.mute({audio: true}) : state.session.unmute({audio: true});
+    state.muted ? state.ua.mute() : state.ua.unmute();
     toggleButton(els.mute, state.muted);
   }
 
@@ -421,15 +406,17 @@
 
   function toggleHold() {
     if (!state.session) return;
-    state.held ? state.session.unhold() : state.session.hold();
+    const action = state.held ? state.ua.unhold() : state.ua.hold();
+    action.catch((error) => {
+      setStatus(error.message || "Hold failed", "bad");
+      log(error.message || "Hold failed");
+    });
   }
 
   function transfer() {
     if (!state.session) return;
-    const number = prompt("Transfer to extension or number:");
-    if (!number) return;
-    state.session.refer(targetUri(number));
-    log(`Transfer to ${number}`);
+    setStatus("Transfer unavailable", "warn");
+    log("Transfer is unavailable in stable audio mode");
   }
 
   async function toggleDnd() {
@@ -446,6 +433,7 @@
   }
 
   function bindUi() {
+    if (els.video) els.video.hidden = true;
     els.trigger?.addEventListener("click", () => setOpen(!dock.classList.contains("open")));
     els.close?.addEventListener("click", () => {
       if (detached) window.close();

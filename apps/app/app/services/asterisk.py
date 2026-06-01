@@ -328,8 +328,7 @@ def render_pjsip_base_config(network: dict | None = None) -> str:
         "[transport-wss]\n"
         "type = transport\n"
         "protocol = wss\n"
-        "bind = 0.0.0.0\n"
-        f"{external_lines}\n"
+        "bind = 0.0.0.0\n\n"
         "#include generated/pjsip.generated.conf\n"
         "#include generated/pjsip.trunks.generated.conf\n"
     )
@@ -369,9 +368,12 @@ def render_pjsip_config(extensions: list[dict]) -> str:
         pjsip_transport = WEBPHONE_TRANSPORT if transport == WEBPHONE_TRANSPORT else DEFAULT_EXTENSION_TRANSPORT
         codecs = item.get("codecs") or DEFAULT_EXTENSION_CODECS
         video_codecs = item.get("video_codecs") or DEFAULT_EXTENSION_VIDEO_CODECS
-        allowed_codecs = ",".join(
-            codec_group for codec_group in [codecs, video_codecs] if codec_group
-        )
+        if transport == WEBPHONE_TRANSPORT:
+            allowed_codecs = "opus,ulaw"
+        else:
+            allowed_codecs = ",".join(
+                codec_group for codec_group in [codecs, video_codecs] if codec_group
+            )
         webphone_options = ""
         if transport == WEBPHONE_TRANSPORT:
             webphone_options = (
