@@ -19,6 +19,7 @@
     dnd: false,
     remoteStream: null,
     localStream: null,
+    disconnectTimer: null,
   };
 
   const els = {
@@ -247,6 +248,8 @@
   function bindPeerConnection(pc) {
     if (!pc || pc.__omniWebphoneBound) return;
     pc.__omniWebphoneBound = true;
+    pc.addEventListener("connectionstatechange", () => handlePeerConnectionState(pc));
+    pc.addEventListener("iceconnectionstatechange", () => handlePeerConnectionState(pc));
     pc.addEventListener("track", (event) => {
       if (!state.remoteStream) state.remoteStream = new MediaStream();
       const incoming = event.streams && event.streams[0];
@@ -255,11 +258,39 @@
         if (!state.remoteStream.getTracks().some((existing) => existing.id === track.id)) {
           state.remoteStream.addTrack(track);
         }
+        track.addEventListener("ended", () => {
+          if (state.session && state.remoteStream && state.remoteStream.getTracks().every((item) => item.readyState === "ended")) {
+            resetCall("Call ended");
+          }
+        }, {once: true});
       });
       els.audio.srcObject = state.remoteStream;
       els.remoteVideo.srcObject = state.remoteStream;
       if (state.remoteStream.getVideoTracks().length) els.videoBox.hidden = false;
     });
+  }
+
+  function handlePeerConnectionState(pc) {
+    if (!state.session || !pc) return;
+    const connectionState = pc.connectionState || "";
+    const iceState = pc.iceConnectionState || "";
+    if (["closed", "failed"].includes(connectionState) || ["closed", "failed"].includes(iceState)) {
+      resetCall("Call ended");
+      return;
+    }
+    if (connectionState === "disconnected" || iceState === "disconnected") {
+      clearTimeout(state.disconnectTimer);
+      state.disconnectTimer = setTimeout(() => {
+        if (state.session && (pc.connectionState === "disconnected" || pc.iceConnectionState === "disconnected")) {
+          resetCall("Call ended");
+        }
+      }, 1500);
+      return;
+    }
+    if (state.disconnectTimer) {
+      clearTimeout(state.disconnectTimer);
+      state.disconnectTimer = null;
+    }
   }
 
   function attachLocalPreview(session) {
@@ -339,6 +370,10 @@
   }
 
   function resetCall(message) {
+    if (state.disconnectTimer) {
+      clearTimeout(state.disconnectTimer);
+      state.disconnectTimer = null;
+    }
     state.session = null;
     state.incoming = null;
     if (state.localStream) state.localStream.getTracks().forEach((track) => track.stop());
