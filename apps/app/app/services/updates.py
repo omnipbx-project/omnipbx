@@ -164,6 +164,7 @@ def start_detached_update(settings: Settings) -> dict[str, object]:
         },
     )
 
+    helper_project_path = _docker_host_project_path(settings) or settings.host_project_path
     compose_file = Path(settings.host_project_path) / "deploy" / "compose.yaml"
     command = [
         "docker",
@@ -176,12 +177,14 @@ def start_detached_update(settings: Settings) -> dict[str, object]:
         "--no-deps",
         "--entrypoint",
         "python3",
+        "-v",
+        f"{helper_project_path}:{helper_project_path}",
         "app",
-        f"{settings.host_project_path}/scripts/omnipbxctl",
+        f"{helper_project_path}/scripts/omnipbxctl",
         "update",
         "--non-interactive",
         "--project-root",
-        settings.host_project_path,
+        helper_project_path,
     ]
     completed = subprocess.run(command, text=True, capture_output=True)
     if completed.returncode != 0:
@@ -214,6 +217,24 @@ def start_detached_update(settings: Settings) -> dict[str, object]:
         "job_container_id": job_container_id,
         "target_version": target_version,
     }
+
+
+def _docker_host_project_path(settings: Settings) -> str:
+    completed = subprocess.run(
+        [
+            "docker",
+            "inspect",
+            "omnipbx-app",
+            "--format",
+            '{{range .Mounts}}{{if eq .Destination "' + settings.host_project_path + '"}}{{.Source}}{{end}}{{end}}',
+        ],
+        text=True,
+        capture_output=True,
+        timeout=10,
+    )
+    if completed.returncode != 0:
+        return ""
+    return completed.stdout.strip()
 
 
 def _refresh_update_check(settings: Settings) -> dict[str, object]:
