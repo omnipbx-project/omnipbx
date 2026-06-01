@@ -15,6 +15,7 @@
     <button type="button" class="advanced-tab" data-tab="asterisk">Asterisk CLI</button>
     <button type="button" class="advanced-tab" data-tab="ssl">SSL</button>
     <button type="button" class="advanced-tab" data-tab="network">Network</button>
+    <button type="button" class="advanced-tab" data-tab="updates">Updates</button>
     <button type="button" class="advanced-tab" data-tab="security">Security</button>
     <button type="button" class="advanced-tab" data-tab="custom">Custom Config</button>
   </div>
@@ -195,6 +196,10 @@ Status: {{ "Ready" if snapshot.ssl.caddyfile_exists else "Waiting for first save
         </form>
       </div>
     </div>
+  </section>
+
+  <section class="advanced-panel" data-panel="updates">
+    {% include "components/_updates_panel.html" %}
   </section>
 
   <section class="advanced-panel" data-panel="security">

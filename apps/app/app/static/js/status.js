@@ -2,13 +2,25 @@ document.addEventListener("DOMContentLoaded", function () {
   const tabs = document.querySelectorAll(".advanced-tab");
   const panels = document.querySelectorAll(".advanced-panel");
 
+  function activateTab(target) {
+    tabs.forEach((item) => item.classList.toggle("active", item.dataset.tab === target));
+    panels.forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === target));
+  }
+
   tabs.forEach((tab) => {
     tab.addEventListener("click", function () {
       const target = tab.dataset.tab;
-      tabs.forEach((item) => item.classList.toggle("active", item === tab));
-      panels.forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === target));
+      activateTab(target);
+      if (target) window.history.replaceState(null, "", `#${target}`);
     });
   });
+
+  if (window.location.hash) {
+    const target = window.location.hash.slice(1);
+    if (document.querySelector(`.advanced-tab[data-tab="${target}"]`)) {
+      activateTab(target);
+    }
+  }
 
   async function refreshUsage() {
     const response = await fetch("/status/usage", {cache: "no-store"});

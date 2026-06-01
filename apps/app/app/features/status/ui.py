@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 import psycopg
 
 from app.core.db import get_connection
+from app.core.settings import get_settings
 from app.features.status.service import collect_status_snapshot
 from app.services.asterisk import sync_asterisk_config
 from app.services.setup import custom_certificate_ready, refresh_caddy_config, save_custom_certificate_files, save_ssl_settings
@@ -20,6 +21,7 @@ from app.services.system_tools import (
     save_security_rule,
 )
 from app.services.security import unblock_app_ban
+from app.services.updates import get_update_overview
 from app.web import render_template
 
 
@@ -38,10 +40,11 @@ def status_page(
         page_description="Technical maintenance tools for system monitor, logs, Asterisk, network, security, and custom config.",
         active_nav="/status",
         snapshot=build_advanced_snapshot(connection),
+        update_overview=get_update_overview(get_settings()),
         result=request.query_params.get("result", ""),
         detail=request.query_params.get("detail", ""),
         page_css=["/static/css/status.css"],
-        page_js=["/static/js/status.js"],
+        page_js=["/static/js/status.js", "/static/js/updates.js"],
     )
 
 

@@ -57,14 +57,14 @@ def get_update_banner(settings: Settings) -> dict[str, str] | None:
             "tone": "info",
             "title": "Update in progress",
             "detail": str(status.get("message") or "OmniPBX is applying the requested update."),
-            "href": "/dashboard#updates",
+            "href": "/settings#updates",
         }
     if state == "error":
         return {
             "tone": "error",
             "title": "Update failed",
             "detail": str(status.get("message") or "The last manual update did not finish successfully."),
-            "href": "/dashboard#updates",
+            "href": "/settings#updates",
         }
 
     check = _refresh_update_check(settings) if _check_cache_stale(settings) else load_update_check(settings)
@@ -79,7 +79,7 @@ def get_update_banner(settings: Settings) -> dict[str, str] | None:
             "tone": "warn",
             "title": "Update available",
             "detail": detail,
-            "href": "/dashboard#updates",
+            "href": "/settings#updates",
         }
     return None
 

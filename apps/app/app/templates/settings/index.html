@@ -10,6 +10,10 @@
   </div>
 
   <div class="settings-grid">
+    <a class="settings-tile panel" href="#updates">
+      <strong>Updates</strong>
+      <span>Check for new git changes and run manual updates.</span>
+    </a>
     <a class="settings-tile panel" href="/setup">
       <strong>Company & Network</strong>
       <span>Company name, timezone, URL, SIP and RTP basics.</span>
@@ -35,5 +39,7 @@
       <span>Storage, CDR/CEL, voicemail, backups, and health.</span>
     </a>
   </div>
+
+  {% include "components/_updates_panel.html" %}
 </section>
 {% endblock %}
