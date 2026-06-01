@@ -306,6 +306,7 @@ def render_pjsip_config(extensions: list[dict]) -> str:
                 "rtcp_mux = yes\n"
                 "media_use_received_transport = yes\n"
             )
+        qualify_frequency = "0" if transport == WEBPHONE_TRANSPORT else "3"
         blocks.append(
             (
                 f"[{extension}]\n"
@@ -334,7 +335,7 @@ def render_pjsip_config(extensions: list[dict]) -> str:
                 "type = aor\n"
                 "max_contacts = 1\n"
                 "remove_existing = yes\n"
-                "qualify_frequency = 3\n"
+                f"qualify_frequency = {qualify_frequency}\n"
                 "qualify_timeout = 2.0\n\n"
             )
         )
