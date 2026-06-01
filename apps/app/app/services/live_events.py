@@ -235,6 +235,8 @@ def _contact_status(value: str | None) -> str:
     normalized = (value or "").strip().lower()
     if normalized in {"created", "reachable", "registered", "online", "lagged"}:
         return "Online"
+    if normalized in {"nonqual", "nonqualified"}:
+        return "Online"
     if normalized in {"removed", "unreachable", "unregistered", "rejected", "offline"}:
         return "Offline"
     return "Unknown" if normalized else ""

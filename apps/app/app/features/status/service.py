@@ -37,11 +37,20 @@ def normalize_state(value: str | None) -> str | None:
     return normalized or None
 
 
-def derive_status(endpoint_state: str | None, contact_status: str | None) -> str:
+def derive_status(
+    endpoint_state: str | None,
+    contact_status: str | None,
+    *,
+    transport: str | None = None,
+    contact_uri: str | None = None,
+) -> str:
     endpoint_normalized = normalize_state(endpoint_state)
     contact_normalized = normalize_state(contact_status)
+    transport_normalized = normalize_state(transport)
 
     if contact_normalized in ONLINE_STATES or endpoint_normalized in ONLINE_STATES:
+        return "Online"
+    if contact_normalized == "nonqual" and transport_normalized == "transport-wss" and contact_uri:
         return "Online"
     if contact_normalized in OFFLINE_STATES or endpoint_normalized in OFFLINE_STATES:
         return "Offline"
@@ -119,6 +128,8 @@ def collect_status_snapshot(connection: psycopg.Connection) -> dict[str, object]
         status = derive_status(
             endpoint_data.get("endpoint_state"),
             endpoint_data.get("contact_status"),
+            transport=endpoint_data.get("transport"),
+            contact_uri=endpoint_data.get("contact_uri"),
         )
         if status == "Online":
             online += 1
