@@ -516,7 +516,7 @@ def initialize_schema() -> None:
             cursor.execute("UPDATE extensions SET transport = 'transport-udp' WHERE transport IS NULL OR transport = ''")
             cursor.execute("UPDATE extensions SET codecs = 'ulaw,alaw,g722' WHERE transport = 'transport-udp' AND (codecs IS NULL OR codecs = '' OR codecs = 'ulaw,alaw')")
             cursor.execute("UPDATE extensions SET codecs = 'g722,ulaw,alaw' WHERE transport = 'transport-udp-softphone' AND (codecs IS NULL OR codecs = '' OR codecs = 'ulaw,alaw' OR codecs = 'ulaw,alaw,g722')")
-            cursor.execute("UPDATE extensions SET codecs = 'opus,g722,ulaw,alaw' WHERE transport = 'transport-wss' AND (codecs IS NULL OR codecs = '' OR codecs = 'ulaw,alaw' OR codecs = 'ulaw,alaw,g722')")
+            cursor.execute("UPDATE extensions SET codecs = 'g722,ulaw,alaw' WHERE transport = 'transport-wss' AND (codecs IS NULL OR codecs = '' OR codecs = 'ulaw,alaw' OR codecs = 'ulaw,alaw,g722' OR codecs = 'opus,g722,ulaw,alaw')")
             cursor.execute("UPDATE extensions SET video_codecs = '' WHERE video_codecs IS NULL")
             cursor.execute("UPDATE extensions SET video_codecs = 'h264,vp8' WHERE transport = 'transport-udp-softphone' AND video_codecs = ''")
             cursor.execute("UPDATE extensions SET video_codecs = 'vp8,h264' WHERE transport = 'transport-wss' AND video_codecs = ''")
