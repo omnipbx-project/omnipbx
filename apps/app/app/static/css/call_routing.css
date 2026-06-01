@@ -222,6 +222,11 @@
   box-shadow: var(--shadow-soft);
 }
 
+.routing-target-menu[hidden],
+.routing-target-options[hidden] {
+  display: none !important;
+}
+
 .routing-target-options {
   display: grid;
   gap: 8px;
