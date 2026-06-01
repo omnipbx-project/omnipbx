@@ -83,6 +83,14 @@ class LiveEventHub:
             self._last_event = event_name
             self._condition.notify_all()
 
+    def notify_ami_event(self, event_name: str, message: dict[str, str]) -> None:
+        changed = self._apply_presence_event(event_name, message)
+        self.refresh_snapshot_async(event_name)
+        with self._condition:
+            self._version += 1
+            self._last_event = f"{event_name}:fast" if changed else event_name
+            self._condition.notify_all()
+
     def wait_for_change(self, version: int, timeout: float = 25.0) -> tuple[int, str]:
         with self._condition:
             if self._version == version:
@@ -124,7 +132,7 @@ class LiveEventHub:
                     raise RuntimeError("AMI event stream closed.")
                 event_name = message.get("Event", "")
                 if event_name in INTERESTING_EVENTS:
-                    self.notify(event_name)
+                    self.notify_ami_event(event_name, message)
 
     def _refresh_snapshot(self, loader: Callable[[], dict[str, object]], event_name: str) -> None:
         try:
@@ -140,6 +148,44 @@ class LiveEventHub:
             self._version += 1
             self._last_event = event_name
             self._condition.notify_all()
+
+    def _apply_presence_event(self, event_name: str, message: dict[str, str]) -> bool:
+        extension = _extension_from_event(message)
+        if not extension:
+            return False
+        status = _status_from_event(event_name, message)
+        if not status:
+            return False
+
+        with self._condition:
+            if not self._snapshot:
+                return False
+            users = self._snapshot.get("active_users")
+            if not isinstance(users, list):
+                return False
+            changed = False
+            for user in users:
+                if not isinstance(user, dict) or str(user.get("extension")) != extension:
+                    continue
+                if user.get("status") == "On Call" and status == "Online":
+                    return False
+                if user.get("status") == status:
+                    return False
+                user["status"] = status
+                user["status_class"] = _status_class(status)
+                changed = True
+                break
+            if changed:
+                summary = self._snapshot.get("summary")
+                if isinstance(summary, dict):
+                    summary["active_users"] = len(
+                        [
+                            user
+                            for user in users
+                            if isinstance(user, dict) and user.get("status") in {"Online", "On Call"}
+                        ]
+                    )
+            return changed
 
 
 def _send_message(stream, fields: dict[str, str]) -> None:
@@ -160,6 +206,58 @@ def _read_message(stream) -> dict[str, str]:
         if separator:
             message[key] = value.strip()
     return message
+
+
+def _extension_from_event(message: dict[str, str]) -> str:
+    for key in ("EndpointName", "AOR", "Peer", "Device"):
+        value = (message.get(key) or "").strip()
+        if not value:
+            continue
+        if "/" in value:
+            value = value.split("/", 1)[1]
+        value = value.split(";", 1)[0].split("@", 1)[0].split("-", 1)[0].strip()
+        if value.isdigit():
+            return value
+    return ""
+
+
+def _status_from_event(event_name: str, message: dict[str, str]) -> str:
+    if event_name == "ContactStatus":
+        return _contact_status(message.get("ContactStatus"))
+    if event_name == "PeerStatus":
+        return _contact_status(message.get("PeerStatus"))
+    if event_name == "DeviceStateChange":
+        return _device_status(message.get("State"))
+    return ""
+
+
+def _contact_status(value: str | None) -> str:
+    normalized = (value or "").strip().lower()
+    if normalized in {"created", "reachable", "registered", "online", "lagged"}:
+        return "Online"
+    if normalized in {"removed", "unreachable", "unregistered", "rejected", "offline"}:
+        return "Offline"
+    return "Unknown" if normalized else ""
+
+
+def _device_status(value: str | None) -> str:
+    normalized = (value or "").strip().lower()
+    if normalized in {"inuse", "busy", "ringing", "ringinuse", "onhold"}:
+        return "On Call"
+    if normalized in {"not_inuse", "available"}:
+        return "Online"
+    if normalized in {"unavailable", "invalid", "offline"}:
+        return "Offline"
+    return "Unknown" if normalized else ""
+
+
+def _status_class(status: str) -> str:
+    return {
+        "Online": "online",
+        "On Call": "on-call",
+        "Offline": "offline",
+        "Unknown": "unknown",
+    }.get(status, "unknown")
 
 
 live_event_hub = LiveEventHub()
