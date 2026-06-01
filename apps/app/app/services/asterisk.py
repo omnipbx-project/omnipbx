@@ -2,6 +2,7 @@ from pathlib import Path
 import re
 import subprocess
 from datetime import date
+from urllib.parse import urlparse
 
 import psycopg
 from psycopg.rows import dict_row
@@ -119,6 +120,16 @@ FROM advanced_custom_config
 WHERE enabled = TRUE;
 """
 
+FETCH_PJSIP_NETWORK_SQL = """
+SELECT
+    softphone.sip_domain,
+    softphone.public_host,
+    system.public_base_url
+FROM softphone_settings softphone
+CROSS JOIN system_settings system
+WHERE softphone.id = 1 AND system.id = 1;
+"""
+
 DAY_CODE_MAP = {
     "monday": "mon",
     "tuesday": "tue",
@@ -178,11 +189,14 @@ def sync_asterisk_config(connection: psycopg.Connection, reload_config: bool = T
         advanced_security_rules = list(cursor.fetchall())
         cursor.execute(FETCH_ADVANCED_CUSTOM_CONFIG_SQL)
         advanced_custom_config = list(cursor.fetchall())
+        cursor.execute(FETCH_PJSIP_NETWORK_SQL)
+        pjsip_network = dict(cursor.fetchone() or {})
 
     ring_groups = _attach_group_members(ring_groups, ring_group_members, "id", "ring_group_id")
     queues = _attach_group_members(queues, queue_members, "id", "queue_id", member_key="member_order")
     ivrs = _attach_ivr_options(ivrs, ivr_options)
 
+    pjsip_base_text = render_pjsip_base_config(pjsip_network)
     pjsip_text = render_pjsip_config(extensions) + _custom_config_text(advanced_custom_config, "pjsip")
     dialplan_text = render_extensions_config(extensions, call_routing_rules, user_profiles) + _custom_config_text(advanced_custom_config, "dialplan")
     pjsip_trunks_text = render_trunk_pjsip_config(trunks)
@@ -206,6 +220,7 @@ def sync_asterisk_config(connection: psycopg.Connection, reload_config: bool = T
     )
 
     Path(settings.generated_config_dir).mkdir(parents=True, exist_ok=True)
+    Path(settings.pjsip_base_file).write_text(pjsip_base_text, encoding="utf-8")
     Path(settings.pjsip_generated_file).write_text(pjsip_text, encoding="utf-8")
     Path(settings.extensions_generated_file).write_text(dialplan_text, encoding="utf-8")
     Path(settings.pjsip_trunks_generated_file).write_text(pjsip_trunks_text, encoding="utf-8")
@@ -277,6 +292,69 @@ def _attach_ivr_options(ivrs: list[dict], options: list[dict]) -> list[dict]:
     for ivr in ivrs:
         ivr["options"] = options_by_ivr.get(ivr["id"], [])
     return ivrs
+
+
+def render_pjsip_base_config(network: dict | None = None) -> str:
+    advertised_host = _pjsip_advertised_host(network or {})
+    external_lines = ""
+    if advertised_host:
+        external_lines = (
+            f"external_signaling_address = {advertised_host}\n"
+            f"external_media_address = {advertised_host}\n"
+            "local_net = 127.0.0.0/8\n"
+            "local_net = 172.16.0.0/12\n"
+        )
+    return (
+        "[global]\n"
+        "type = global\n"
+        "user_agent = OmniPBX\n\n"
+        "[transport-udp]\n"
+        "type = transport\n"
+        "protocol = udp\n"
+        "bind = 0.0.0.0:5060\n"
+        f"{external_lines}\n"
+        "[transport-tcp]\n"
+        "type = transport\n"
+        "protocol = tcp\n"
+        "bind = 0.0.0.0:5060\n"
+        f"{external_lines}\n"
+        "[transport-tls]\n"
+        "type = transport\n"
+        "protocol = tls\n"
+        "bind = 0.0.0.0:5061\n"
+        "cert_file = /var/lib/omnipbx/asterisk/asterisk.pem\n"
+        "priv_key_file = /var/lib/omnipbx/asterisk/asterisk.pem\n"
+        f"{external_lines}\n"
+        "[transport-wss]\n"
+        "type = transport\n"
+        "protocol = wss\n"
+        "bind = 0.0.0.0\n\n"
+        "#include generated/pjsip.generated.conf\n"
+        "#include generated/pjsip.trunks.generated.conf\n"
+    )
+
+
+def _pjsip_advertised_host(network: dict) -> str:
+    for key in ("sip_domain", "public_host", "public_base_url"):
+        value = str(network.get(key) or "").strip()
+        if not value:
+            continue
+        host = _host_from_setting(value)
+        if host:
+            return host
+    return ""
+
+
+def _host_from_setting(value: str) -> str:
+    candidate = value.strip()
+    if "://" in candidate:
+        parsed = urlparse(candidate)
+        candidate = parsed.hostname or ""
+    else:
+        candidate = candidate.split("/", 1)[0].split(":", 1)[0]
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", candidate):
+        return ""
+    return candidate
 
 
 def render_pjsip_config(extensions: list[dict]) -> str:

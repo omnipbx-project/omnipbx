@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     rtp_end: int = 10100
     internal_context: str = "omnipbx-internal"
     generated_config_dir: str = "/etc/asterisk/generated"
+    pjsip_base_file: str = "/etc/asterisk/pjsip.conf"
     pjsip_generated_file: str = "/etc/asterisk/generated/pjsip.generated.conf"
     pjsip_trunks_generated_file: str = "/etc/asterisk/generated/pjsip.trunks.generated.conf"
     extensions_generated_file: str = "/etc/asterisk/generated/extensions.generated.conf"

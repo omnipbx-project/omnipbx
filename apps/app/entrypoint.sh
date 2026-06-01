@@ -99,8 +99,13 @@ EOF
 
   python3 - <<'PY'
 from app.core.db import initialize_schema
+from app.core.settings import get_settings
+from app.services.asterisk import sync_asterisk_config
+import psycopg
 
 initialize_schema()
+with psycopg.connect(get_settings().db_dsn) as connection:
+    sync_asterisk_config(connection, reload_config=False)
 PY
 
   if [[ "${OMNIPBX_START_ASTERISK:-1}" = "1" ]]; then
