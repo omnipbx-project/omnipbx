@@ -184,15 +184,46 @@
 }
 
 .routing-target-picker {
-  padding: 8px;
+  position: relative;
+}
+
+.routing-target-trigger {
+  justify-content: space-between;
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 14px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: color-mix(in srgb, var(--bg-panel-strong) 94%, transparent);
+  color: var(--text);
+  box-shadow: none;
+}
+
+.routing-target-trigger span {
+  overflow: hidden;
+  min-width: 0;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.routing-target-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 30;
+  display: grid;
+  gap: 10px;
+  width: min(420px, 90vw);
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg-panel-strong);
+  box-shadow: var(--shadow-soft);
 }
 
 .routing-target-options {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
   max-height: 220px;
   overflow: auto;
@@ -226,6 +257,13 @@
 .routing-target-option small {
   color: var(--text-muted);
   font-family: var(--font-mono);
+}
+
+.routing-target-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
 }
 
 .routing-rule-list {

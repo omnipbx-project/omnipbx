@@ -62,25 +62,35 @@
           </select>
           {% elif field.type == "target_multiselect" %}
           <div class="routing-target-picker" data-routing-target-select="{{ field.name }}">
-            <div class="routing-target-options" data-target-kind="group">
-              {% for group in groups %}
-              <label class="routing-target-option">
-                <input type="checkbox" name="{{ field.name }}" value="{{ group.name }}">
-                <span>{{ group.name }}</span>
-              </label>
-              {% else %}
-              <span class="muted">No groups created yet.</span>
-              {% endfor %}
-            </div>
-            <div class="routing-target-options" data-target-kind="user" hidden>
-              {% for extension in extensions %}
-              <label class="routing-target-option">
-                <input type="checkbox" name="{{ field.name }}" value="{{ extension.extension }}">
-                <span>{{ extension.display_name }} <small>{{ extension.extension }}</small></span>
-              </label>
-              {% else %}
-              <span class="muted">No users created yet.</span>
-              {% endfor %}
+            <button type="button" class="routing-target-trigger" data-routing-target-trigger aria-expanded="false">
+              <span data-routing-target-label>Select {{ field.label|lower }}</span>
+              <strong>⌄</strong>
+            </button>
+            <div class="routing-target-menu" data-routing-target-menu hidden>
+              <div class="routing-target-options" data-target-kind="group">
+                {% for group in groups %}
+                <label class="routing-target-option">
+                  <input type="checkbox" name="{{ field.name }}" value="{{ group.name }}">
+                  <span>{{ group.name }}</span>
+                </label>
+                {% else %}
+                <span class="muted">No groups created yet.</span>
+                {% endfor %}
+              </div>
+              <div class="routing-target-options" data-target-kind="user" hidden>
+                {% for extension in extensions %}
+                <label class="routing-target-option">
+                  <input type="checkbox" name="{{ field.name }}" value="{{ extension.extension }}" data-label="{{ extension.display_name }} ({{ extension.extension }})">
+                  <span>{{ extension.display_name }} <small>{{ extension.extension }}</small></span>
+                </label>
+                {% else %}
+                <span class="muted">No users created yet.</span>
+                {% endfor %}
+              </div>
+              <div class="routing-target-actions">
+                <button type="button" class="secondary" data-routing-target-clear>Clear</button>
+                <button type="button" data-routing-target-ok>OK</button>
+              </div>
             </div>
           </div>
           {% else %}
