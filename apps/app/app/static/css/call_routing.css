@@ -183,6 +183,51 @@
   min-height: 138px;
 }
 
+.routing-target-picker {
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-panel-strong) 94%, transparent);
+}
+
+.routing-target-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.routing-target-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-panel);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.routing-target-option.selected {
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+  background: var(--bg-accent-soft);
+  color: var(--accent-strong);
+}
+
+.routing-target-option span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.routing-target-option small {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
 .routing-rule-list {
   display: grid;
   gap: 12px;

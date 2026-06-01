@@ -2,21 +2,29 @@ document.addEventListener("DOMContentLoaded", function () {
   const searchInput = document.querySelector(".topbar-search input");
   document.querySelectorAll('select[name="source_type"], select[name="destination_type"]').forEach((typeSelect) => {
     const targetName = typeSelect.name === "source_type" ? "source_values" : "destination_values";
-    const targetSelect = document.querySelector(`[data-routing-target-select="${targetName}"]`);
-    if (!targetSelect) return;
+    const targetPicker = document.querySelector(`[data-routing-target-select="${targetName}"]`);
+    if (!targetPicker) return;
 
     function syncTargetOptions() {
       const selectedKind = typeSelect.value;
-      targetSelect.querySelectorAll("optgroup").forEach((group) => {
-        const hidden = group.dataset.targetKind !== selectedKind;
-        group.hidden = hidden;
-        if (hidden) {
-          group.querySelectorAll("option").forEach((option) => {
-            option.selected = false;
+      targetPicker.querySelectorAll(".routing-target-options").forEach((group) => {
+        const active = group.dataset.targetKind === selectedKind;
+        group.hidden = !active;
+        group.classList.toggle("active", active);
+        if (!active) {
+          group.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+            input.checked = false;
+            input.closest(".routing-target-option")?.classList.remove("selected");
           });
         }
       });
     }
+
+    targetPicker.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+      input.addEventListener("change", function () {
+        input.closest(".routing-target-option")?.classList.toggle("selected", input.checked);
+      });
+    });
 
     typeSelect.addEventListener("change", syncTargetOptions);
     syncTargetOptions();
