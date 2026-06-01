@@ -49,6 +49,7 @@ from app.services.auth import AUTH_COOKIE_NAME, has_admin_users, resolve_session
 from app.services.live_events import live_event_hub
 from app.services.security import request_security_decision
 from app.services.setup import get_system_settings, is_setup_complete, render_caddyfile, write_caddyfile
+from app.services.user_management import PHOTO_DIR
 import psycopg
 
 
@@ -81,6 +82,7 @@ def _collect_live_snapshot() -> dict[str, object]:
         return collect_live_overview(connection)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/user-photos", StaticFiles(directory=str(PHOTO_DIR), check_dir=False), name="user_photos")
 
 app.include_router(setup_ui_router)
 app.include_router(settings_ui_router)
@@ -161,6 +163,7 @@ async def setup_guard(request: Request, call_next):
                     "/webphone",
                     "/api/softphone",
                     "/live-overview",
+                    "/user-photos",
                     "/logout",
                 )
                 if not path.startswith(user_allowed_prefixes):

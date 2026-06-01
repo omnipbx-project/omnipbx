@@ -198,6 +198,7 @@
       {% set profile = profiles_by_extension.get(extension.extension, {}) %}
       {% set group_name = profile.group_name or (groups[0].name if groups else "Sales") %}
       {% set email = profile.email or "" %}
+      {% set photo_url = profile.photo_url or "" %}
       <article class="management-card user-management-card" data-extension="{{ extension.extension }}">
         <details class="card-menu">
           <summary aria-label="User actions">⋯</summary>
@@ -217,7 +218,11 @@
           </div>
         </details>
         <div class="user-card-avatar-wrap">
+          {% if photo_url %}
+          <img class="user-card-avatar user-card-photo" src="{{ photo_url }}" alt="{{ extension.display_name }} photo">
+          {% else %}
           <div class="user-card-avatar">{{ (extension.display_name or extension.extension)[:1]|upper }}</div>
+          {% endif %}
           <span class="user-status-dot {{ status_class }}"></span>
         </div>
         <div class="user-card-copy">

@@ -227,6 +227,12 @@
     box-shadow: 0 12px 22px color-mix(in srgb, var(--accent) 20%, transparent);
   }
 
+  .user-card-photo {
+    display: block;
+    object-fit: cover;
+    background: var(--bg-subtle);
+  }
+
   .user-status-dot {
     position: absolute;
     top: 4px;

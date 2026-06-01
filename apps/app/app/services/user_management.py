@@ -8,6 +8,7 @@ from psycopg.rows import dict_row
 
 
 PHOTO_DIR = Path("/var/lib/omnipbx/user-photos")
+PHOTO_URL_PREFIX = "/user-photos"
 
 
 def list_permissions(connection: psycopg.Connection) -> list[dict]:
@@ -55,7 +56,10 @@ def profiles_by_extension(connection: psycopg.Connection) -> dict[str, dict]:
             LEFT JOIN user_permissions group_permission ON group_permission.id = group_row.permission_id
             """
         )
-        return {row["extension"]: row for row in cursor.fetchall()}
+        rows = list(cursor.fetchall())
+    for row in rows:
+        row["photo_url"] = photo_url_from_path(row.get("photo_path"))
+    return {row["extension"]: row for row in rows}
 
 
 def ensure_profile(
@@ -147,7 +151,17 @@ def save_user_photo(extension: str, upload_file) -> str:
     file_obj.seek(0)
     with destination.open("wb") as output:
         shutil.copyfileobj(file_obj, output)
-    return str(destination)
+    return photo_url_from_path(destination.name)
+
+
+def photo_url_from_path(photo_path: str | None) -> str:
+    value = (photo_path or "").strip()
+    if not value:
+        return ""
+    if value.startswith(f"{PHOTO_URL_PREFIX}/"):
+        return value
+    filename = Path(value).name
+    return f"{PHOTO_URL_PREFIX}/{filename}" if filename else ""
 
 
 def _lookup_id(cursor: psycopg.Cursor, table: str, name: str) -> int | None:
