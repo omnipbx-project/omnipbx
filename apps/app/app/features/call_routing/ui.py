@@ -291,6 +291,7 @@ def call_routing_detail_page(
         detail=request.query_params.get("detail", ""),
         topbar_search=None,
         page_css=["/static/css/call_routing.css"],
+        page_js=["/static/js/call_routing.js"],
     )
 
 
