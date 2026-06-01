@@ -179,6 +179,10 @@
   gap: 18px;
 }
 
+.routing-rule-form select[multiple] {
+  min-height: 138px;
+}
+
 .routing-rule-list {
   display: grid;
   gap: 12px;

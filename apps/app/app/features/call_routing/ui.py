@@ -6,6 +6,7 @@ import psycopg
 from starlette import status
 
 from app.core.db import get_connection
+from app.services.ami import AmiError, ami_originate_application
 from app.services.asterisk import sync_asterisk_config
 from app.services.call_routing import (
     delete_call_routing_rule,
@@ -14,6 +15,8 @@ from app.services.call_routing import (
     rules_by_item,
     save_call_routing_rule,
 )
+from app.services.extensions import list_extensions
+from app.services.user_management import list_groups, profiles_by_extension
 from app.web import render_template
 
 
@@ -132,30 +135,22 @@ CALL_ROUTING_SECTIONS = [
         "summary": "Manage calls between users and shared internal destinations.",
         "items": [
             {
-                "slug": "extension-calls",
-                "title": "Extension Calls",
-                "description": "Let users call each other by extension.",
-                "href": "/extensions",
-                "status": "Ready",
-            },
-            {
-                "slug": "ring-groups",
-                "title": "Ring Groups",
-                "description": "Create shared team extensions such as Sales or Support.",
-                "href": "/ring-groups",
+                "slug": "calling-rules",
+                "title": "Calling Rules",
+                "description": "Allow groups or individual users to call another group or user. Same-group calls are allowed automatically.",
                 "status": "Ready",
             },
             {
                 "slug": "voicemail",
                 "title": "Voicemail",
-                "description": "Manage internal voicemail behavior for missed calls.",
-                "status": "Planned",
+                "description": "Send missed, busy, or offline internal calls to the user's mailbox after a timeout.",
+                "status": "Ready",
             },
             {
-                "slug": "conference-rooms",
-                "title": "Conference Rooms",
-                "description": "Create meeting rooms that users can dial into.",
-                "status": "Planned",
+                "slug": "conferences",
+                "title": "Conference",
+                "description": "Create dial-in conference rooms and save selected users or groups for the meeting.",
+                "status": "Ready",
             },
         ],
     },
@@ -195,13 +190,33 @@ ROUTING_FORMS = {
         {"name": "group", "label": "User group", "placeholder": "Sales"},
         {"name": "allowed", "label": "Allowed calls", "placeholder": "Local, Mobile"},
     ],
-    ("internal-calls", "voicemail"): [
-        {"name": "extension", "label": "Extension", "placeholder": "1001"},
-        {"name": "mailbox", "label": "Mailbox", "placeholder": "1001"},
+    ("internal-calls", "calling-rules"): [
+        {"name": "source_type", "label": "Who can call", "type": "select", "options": [("group", "Group"), ("user", "User")]},
+        {"name": "source_group", "label": "Source group", "type": "group_select"},
+        {"name": "source_user", "label": "Source user", "type": "extension_select"},
+        {"name": "destination_type", "label": "Can call", "type": "select", "options": [("group", "Group"), ("user", "User")]},
+        {"name": "destination_group", "label": "Destination group", "type": "group_select"},
+        {"name": "destination_user", "label": "Destination user", "type": "extension_select"},
     ],
-    ("internal-calls", "conference-rooms"): [
-        {"name": "room", "label": "Room extension", "placeholder": "7001"},
-        {"name": "pin", "label": "PIN", "placeholder": "1234"},
+    ("internal-calls", "voicemail"): [
+        {"name": "extension", "label": "User", "type": "extension_select"},
+        {"name": "mailbox", "label": "Mailbox", "placeholder": "Same as extension when empty"},
+        {"name": "timeout", "label": "Ring seconds", "placeholder": "20"},
+        {
+            "name": "when",
+            "label": "Send to voicemail when",
+            "type": "select",
+            "options": [("no_answer_busy_offline", "No answer, busy, or offline"), ("no_answer", "No answer only"), ("busy_offline", "Busy or offline only")],
+        },
+    ],
+    ("internal-calls", "conferences"): [
+        {"name": "room", "label": "Conference extension", "placeholder": "7001"},
+        {"name": "pin", "label": "PIN", "placeholder": "Optional"},
+        {"name": "mode", "label": "Start mode", "type": "select", "options": [("dial_in", "Dial-in room"), ("immediate", "Immediate call list"), ("scheduled", "Scheduled call list")]},
+        {"name": "participant_groups", "label": "Groups", "type": "group_multiselect"},
+        {"name": "participant_users", "label": "Users", "type": "extension_multiselect"},
+        {"name": "starts_at", "label": "Scheduled time", "placeholder": "2026-06-01 14:30"},
+        {"name": "recording", "label": "Recording", "type": "select", "options": [("off", "Off"), ("on", "On")]},
     ],
 }
 
@@ -272,6 +287,8 @@ def call_routing_detail_page(
         item=item,
         fields=ROUTING_FORMS.get((section_slug, item_slug), []),
         rules=list_call_routing_item_rules(connection, section_slug, item_slug),
+        groups=list_groups(connection),
+        extensions=list_extensions(connection),
         result=request.query_params.get("result", ""),
         detail=request.query_params.get("detail", ""),
         topbar_search=None,
@@ -290,7 +307,12 @@ async def save_call_routing_detail(
 ) -> RedirectResponse:
     fields = ROUTING_FORMS.get((section_slug, item_slug), [])
     form = await request.form()
-    config = {field["name"]: str(form.get(field["name"], "")) for field in fields}
+    config = {}
+    for field in fields:
+        if str(field.get("type", "")).endswith("_multiselect"):
+            config[field["name"]] = ", ".join(str(value) for value in form.getlist(field["name"]) if str(value).strip())
+        else:
+            config[field["name"]] = str(form.get(field["name"], ""))
     try:
         save_call_routing_rule(
             connection,
@@ -338,6 +360,48 @@ def delete_call_routing_detail(
         url=f"/call-routing/{section_slug}/{item_slug}?{params}",
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
+
+@router.post("/call-routing/internal-calls/conferences/{rule_id}/start")
+def start_conference_now(
+    rule_id: int,
+    connection: psycopg.Connection = Depends(get_connection),
+) -> RedirectResponse:
+    rule = next(
+        (
+            item
+            for item in list_call_routing_item_rules(connection, "internal-calls", "conferences")
+            if int(item["id"]) == rule_id
+        ),
+        None,
+    )
+    if not rule:
+        params = urlencode({"result": "error", "detail": "Conference rule was not found."})
+        return RedirectResponse(url=f"/call-routing/internal-calls/conferences?{params}", status_code=status.HTTP_303_SEE_OTHER)
+
+    config = rule["config"]
+    room = str(config.get("room") or "").strip()
+    participants = _conference_participants(connection, config)
+    if not room or not participants:
+        params = urlencode({"result": "error", "detail": "Choose a room and at least one user or group before starting the conference."})
+        return RedirectResponse(url=f"/call-routing/internal-calls/conferences?{params}", status_code=status.HTTP_303_SEE_OTHER)
+
+    called = 0
+    errors: list[str] = []
+    for extension in participants:
+        try:
+            ami_originate_application(f"PJSIP/{extension}", "ConfBridge", room)
+            called += 1
+        except (AmiError, OSError, TimeoutError) as exc:
+            errors.append(f"{extension}: {exc}")
+    if called:
+        detail = f"Started conference {room} and called {called} participant{'s' if called != 1 else ''}."
+        result = "success"
+    else:
+        detail = "; ".join(errors[:2]) or "Unable to start conference calls."
+        result = "error"
+    params = urlencode({"result": result, "detail": detail})
+    return RedirectResponse(url=f"/call-routing/internal-calls/conferences?{params}", status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _sections_with_counts(grouped_rules: dict[tuple[str, str], list[dict]]) -> list[dict[str, object]]:
@@ -392,3 +456,25 @@ def _find_section(
         if section["slug"] == section_slug:
             return section
     return _sections_with_counts(grouped_rules)[0]
+
+
+def _conference_participants(connection: psycopg.Connection, config: dict) -> list[str]:
+    selected_users = {
+        value.strip()
+        for value in str(config.get("participant_users") or "").split(",")
+        if value.strip()
+    }
+    selected_groups = {
+        value.strip()
+        for value in str(config.get("participant_groups") or "").split(",")
+        if value.strip()
+    }
+    profiles = profiles_by_extension(connection)
+    if selected_groups:
+        selected_users.update(
+            extension
+            for extension, profile in profiles.items()
+            if str(profile.get("group_name") or "").strip() in selected_groups
+        )
+    existing_extensions = {str(row["extension"]) for row in list_extensions(connection)}
+    return sorted(extension for extension in selected_users if extension in existing_extensions)

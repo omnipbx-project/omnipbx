@@ -28,7 +28,41 @@
         {% for field in fields %}
         <div class="field">
           <label for="{{ field.name }}">{{ field.label }}</label>
+          {% if field.type == "select" %}
+          <select id="{{ field.name }}" name="{{ field.name }}">
+            {% for value, label in field.options %}
+            <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+          {% elif field.type == "group_select" %}
+          <select id="{{ field.name }}" name="{{ field.name }}">
+            <option value="">Choose group</option>
+            {% for group in groups %}
+            <option value="{{ group.name }}">{{ group.name }}</option>
+            {% endfor %}
+          </select>
+          {% elif field.type == "extension_select" %}
+          <select id="{{ field.name }}" name="{{ field.name }}">
+            <option value="">Choose user</option>
+            {% for extension in extensions %}
+            <option value="{{ extension.extension }}">{{ extension.display_name }} ({{ extension.extension }})</option>
+            {% endfor %}
+          </select>
+          {% elif field.type == "group_multiselect" %}
+          <select id="{{ field.name }}" name="{{ field.name }}" multiple size="5">
+            {% for group in groups %}
+            <option value="{{ group.name }}">{{ group.name }}</option>
+            {% endfor %}
+          </select>
+          {% elif field.type == "extension_multiselect" %}
+          <select id="{{ field.name }}" name="{{ field.name }}" multiple size="5">
+            {% for extension in extensions %}
+            <option value="{{ extension.extension }}">{{ extension.display_name }} ({{ extension.extension }})</option>
+            {% endfor %}
+          </select>
+          {% else %}
           <input id="{{ field.name }}" type="text" name="{{ field.name }}" placeholder="{{ field.placeholder }}">
+          {% endif %}
         </div>
         {% endfor %}
       </div>
@@ -69,6 +103,11 @@
             {% endfor %}
           </small>
         </div>
+        {% if section.slug == "internal-calls" and item.slug == "conferences" %}
+        <form method="post" action="/call-routing/internal-calls/conferences/{{ rule.id }}/start">
+          <button type="submit" class="secondary">Start Now</button>
+        </form>
+        {% endif %}
         <form method="post" action="/call-routing/{{ section.slug }}/{{ item.slug }}/{{ rule.id }}/delete">
           <button type="submit" class="danger">Delete</button>
         </form>
