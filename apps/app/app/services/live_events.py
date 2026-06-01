@@ -223,7 +223,7 @@ def _extension_from_event(message: dict[str, str]) -> str:
 
 def _status_from_event(event_name: str, message: dict[str, str]) -> str:
     if event_name == "ContactStatus":
-        return _contact_status(message.get("ContactStatus"))
+        return _contact_status(message.get("ContactStatus"), webphone=_is_webphone_contact_event(message))
     if event_name == "PeerStatus":
         return _contact_status(message.get("PeerStatus"))
     if event_name == "DeviceStateChange":
@@ -231,11 +231,20 @@ def _status_from_event(event_name: str, message: dict[str, str]) -> str:
     return ""
 
 
-def _contact_status(value: str | None) -> str:
+def _is_webphone_contact_event(message: dict[str, str]) -> bool:
+    haystack = " ".join(
+        str(message.get(key) or "") for key in ("URI", "Contact", "ContactURI", "ContactStatusDetail")
+    ).lower()
+    return "transport=ws" in haystack or "transport=wss" in haystack
+
+
+def _contact_status(value: str | None, *, webphone: bool = False) -> str:
     normalized = (value or "").strip().lower()
     if normalized in {"created", "reachable", "registered", "online", "lagged"}:
         return "Online"
     if normalized in {"nonqual", "nonqualified"}:
+        return "Online"
+    if webphone and normalized in {"unavail", "unavailable"}:
         return "Online"
     if normalized in {"removed", "unreachable", "unregistered", "rejected", "offline"}:
         return "Offline"

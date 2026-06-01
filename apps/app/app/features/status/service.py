@@ -50,7 +50,7 @@ def derive_status(
 
     if contact_normalized in ONLINE_STATES or endpoint_normalized in ONLINE_STATES:
         return "Online"
-    if contact_normalized == "nonqual" and transport_normalized == "transport-wss" and contact_uri:
+    if transport_normalized == "transport-wss" and contact_uri:
         return "Online"
     if contact_normalized in OFFLINE_STATES or endpoint_normalized in OFFLINE_STATES:
         return "Offline"
