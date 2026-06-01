@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     libsqlite3-dev \
     libssl-dev \
+    libsrtp2-dev \
     libxml2-dev \
     pkg-config \
     tar \
@@ -53,6 +54,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     libsqlite3-0 \
     libssl3 \
+    libsrtp2-1 \
     libxml2 \
     odbc-postgresql \
     python3 \
