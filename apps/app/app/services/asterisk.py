@@ -595,14 +595,18 @@ def _render_destination_same_lines(
     queues_by_extension: dict[str, dict],
     *,
     direct_extension: bool = False,
+    recording_extensions: set[str] | None = None,
     hangup: bool = True,
 ) -> list[str]:
     if destination_type == "extension":
         if direct_extension:
             lines = [
                 f" same => n,Set(CDR(callee_extension)={destination_value})",
-                f" same => n,Dial(PJSIP/{destination_value},20)",
             ]
+            recording_lines = _render_recording_lines(recording_extensions or set(), target=destination_value, target_variable="CALLERID(num)")
+            if recording_lines:
+                lines.extend(line for line in recording_lines.rstrip().splitlines())
+            lines.append(f" same => n,Dial(PJSIP/{destination_value},20)")
             if hangup:
                 lines.append(" same => n,Hangup()")
             return lines
@@ -1102,6 +1106,7 @@ def render_inbound_routes_config(
                 route["destination_value"],
                 queues_by_extension,
                 direct_extension=True,
+                recording_extensions=recording_extensions,
             )
         )
         blocks.extend(_render_route_special_extensions(route["name"], holiday_rules, blocked_rules))
