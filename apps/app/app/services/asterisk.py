@@ -389,6 +389,9 @@ def render_pjsip_config(extensions: list[dict]) -> str:
                 "media_use_received_transport = yes\n"
             )
         qualify_frequency = "0" if transport == WEBPHONE_TRANSPORT else "3"
+        webphone_aor_options = ""
+        if transport == WEBPHONE_TRANSPORT:
+            webphone_aor_options = "default_expiration = 120\nmaximum_expiration = 180\n"
         blocks.append(
             (
                 f"[{extension}]\n"
@@ -417,6 +420,7 @@ def render_pjsip_config(extensions: list[dict]) -> str:
                 "type = aor\n"
                 "max_contacts = 1\n"
                 "remove_existing = yes\n"
+                f"{webphone_aor_options}"
                 f"qualify_frequency = {qualify_frequency}\n"
                 "qualify_timeout = 2.0\n\n"
             )

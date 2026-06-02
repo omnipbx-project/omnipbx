@@ -164,9 +164,12 @@
         remote: {audio: els.audio, video: els.remoteVideo},
         local: {video: els.localVideo},
       },
+      optionsPingInterval: 20,
+      registrationRetry: true,
+      registrationRetryInterval: 2,
       reconnectionAttempts: 5,
       reconnectionDelay: 2,
-      registererOptions: {expires: 300},
+      registererOptions: {expires: 120},
       userAgentOptions: {
         authorizationUsername: config.extension,
         authorizationPassword: config.secret,
