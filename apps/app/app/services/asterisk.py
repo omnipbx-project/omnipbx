@@ -737,11 +737,13 @@ def render_trunk_dialplan(
     rules = call_routing_rules or []
     recording_extensions = _recording_extensions(extensions or [])
     groups_by_extension = _groups_by_extension(extensions or [], user_profiles or [])
+    trunks_by_name = {str(trunk["name"]): trunk for trunk in trunks}
     for rule in _rules_for(rules, "outgoing-calls", "routes"):
         config = _rule_config(rule)
         pattern = _outbound_dial_pattern(config.get("dial_pattern", ""))
         trunk_name = config.get("trunk")
-        if not pattern or not trunk_name:
+        trunk = trunks_by_name.get(str(trunk_name))
+        if not pattern or not trunk:
             continue
         strip_digits = _safe_int(config.get("strip_digits") or config.get("remove_digits"), 0, minimum=0, maximum=30)
         add_prefix = re.sub(r"[^0-9+*#]", "", config.get("add_prefix", ""))
@@ -760,7 +762,7 @@ def render_trunk_dialplan(
                 f" same => n,Set(CDR(trunk_name)={trunk_name})\n"
                 f" same => n,Set(OUTNUM={send_prefix}${{EXTEN:{strip_digits}}})\n"
                 f"{_render_recording_lines(recording_extensions, target_variable='OUTNUM')}"
-                f" same => n,Dial(PJSIP/${{OUTNUM}}@{trunk_name},60)\n"
+                f" same => n,Dial({_outbound_trunk_dial_target(str(trunk_name), trunk)},60)\n"
                 " same => n,Hangup()\n\n"
             )
         )
@@ -1247,6 +1249,12 @@ def _outbound_source_expression(config: dict[str, str], groups_by_extension: dic
     if not allowed_callers:
         return "0"
     return " | ".join(f'"${{CALLERID(num)}}" = "{extension}"' for extension in sorted(allowed_callers))
+
+
+def _outbound_trunk_dial_target(trunk_name: str, trunk: dict) -> str:
+    server_uri = _default_server_uri(trunk)
+    host = server_uri.replace("sip:", "", 1)
+    return f"PJSIP/{trunk_name}/sip:${{OUTNUM}}@{host}"
 
 
 def _render_blocked_number_checks(rules: list[dict]) -> list[str]:

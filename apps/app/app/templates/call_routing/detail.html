@@ -22,49 +22,50 @@
     <form class="routing-rule-form" method="post" action="/call-routing/{{ section.slug }}/{{ item.slug }}/save">
       <div class="field">
         <label for="rule-name">Name</label>
-        <input id="rule-name" type="text" name="name" placeholder="{{ item.title }} rule" required>
+        <input id="rule-name" type="text" name="name" value="{{ edit_rule.name if edit_rule else '' }}" placeholder="{{ item.title }} rule" required>
       </div>
       <div class="field-grid two">
         {% for field in fields %}
+        {% set field_value = edit_rule.config.get(field.name, '') if edit_rule else '' %}
         <div class="field">
           <label for="{{ field.name }}">{{ field.label }}</label>
           {% if field.type == "select" %}
           <select id="{{ field.name }}" name="{{ field.name }}">
             {% for value, label in field.options %}
-            <option value="{{ value }}">{{ label }}</option>
+            <option value="{{ value }}" {% if field_value == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
           {% elif field.type == "group_select" %}
           <select id="{{ field.name }}" name="{{ field.name }}">
             <option value="">Choose group</option>
             {% for group in groups %}
-            <option value="{{ group.name }}">{{ group.name }}</option>
+            <option value="{{ group.name }}" {% if field_value == group.name %}selected{% endif %}>{{ group.name }}</option>
             {% endfor %}
           </select>
           {% elif field.type == "extension_select" %}
           <select id="{{ field.name }}" name="{{ field.name }}">
             <option value="">Choose user</option>
             {% for extension in extensions %}
-            <option value="{{ extension.extension }}">{{ extension.display_name }} ({{ extension.extension }})</option>
+            <option value="{{ extension.extension }}" {% if field_value == extension.extension %}selected{% endif %}>{{ extension.display_name }} ({{ extension.extension }})</option>
             {% endfor %}
           </select>
           {% elif field.type == "trunk_select" %}
           <select id="{{ field.name }}" name="{{ field.name }}" required>
             <option value="">Choose trunk</option>
             {% for trunk in trunks %}
-            <option value="{{ trunk.name }}">{{ trunk.name }}{% if trunk.provider_name %} - {{ trunk.provider_name }}{% endif %}</option>
+            <option value="{{ trunk.name }}" {% if field_value == trunk.name %}selected{% endif %}>{{ trunk.name }}{% if trunk.provider_name %} - {{ trunk.provider_name }}{% endif %}</option>
             {% endfor %}
           </select>
           {% elif field.type == "group_multiselect" %}
           <select id="{{ field.name }}" name="{{ field.name }}" multiple size="5">
             {% for group in groups %}
-            <option value="{{ group.name }}">{{ group.name }}</option>
+            <option value="{{ group.name }}" {% if group.name in edit_config_lists.get(field.name, []) %}selected{% endif %}>{{ group.name }}</option>
             {% endfor %}
           </select>
           {% elif field.type == "extension_multiselect" %}
           <select id="{{ field.name }}" name="{{ field.name }}" multiple size="5">
             {% for extension in extensions %}
-            <option value="{{ extension.extension }}">{{ extension.display_name }} ({{ extension.extension }})</option>
+            <option value="{{ extension.extension }}" {% if extension.extension in edit_config_lists.get(field.name, []) %}selected{% endif %}>{{ extension.display_name }} ({{ extension.extension }})</option>
             {% endfor %}
           </select>
           {% elif field.type == "target_multiselect" %}
@@ -77,7 +78,7 @@
               <div class="routing-target-options" data-target-kind="group">
                 {% for group in groups %}
                 <label class="routing-target-option">
-                  <input type="checkbox" name="{{ field.name }}" value="{{ group.name }}">
+                  <input type="checkbox" name="{{ field.name }}" value="{{ group.name }}" {% if group.name in edit_config_lists.get(field.name, []) %}checked{% endif %}>
                   <span>{{ group.name }}</span>
                 </label>
                 {% else %}
@@ -87,7 +88,7 @@
               <div class="routing-target-options" data-target-kind="user" hidden>
                 {% for extension in extensions %}
                 <label class="routing-target-option">
-                  <input type="checkbox" name="{{ field.name }}" value="{{ extension.extension }}" data-label="{{ extension.display_name }} ({{ extension.extension }})">
+                  <input type="checkbox" name="{{ field.name }}" value="{{ extension.extension }}" data-label="{{ extension.display_name }} ({{ extension.extension }})" {% if extension.extension in edit_config_lists.get(field.name, []) %}checked{% endif %}>
                   <span>{{ extension.display_name }} <small>{{ extension.extension }}</small></span>
                 </label>
                 {% else %}
@@ -101,17 +102,20 @@
             </div>
           </div>
           {% else %}
-          <input id="{{ field.name }}" type="text" name="{{ field.name }}" placeholder="{{ field.placeholder }}">
+          <input id="{{ field.name }}" type="text" name="{{ field.name }}" value="{{ field_value }}" placeholder="{{ field.placeholder }}">
           {% endif %}
         </div>
         {% endfor %}
       </div>
       <label class="checkbox-row">
-        <input type="checkbox" name="enabled_raw" checked>
+        <input type="checkbox" name="enabled_raw" {% if not edit_rule or edit_rule.enabled %}checked{% endif %}>
         Enabled
       </label>
       <div class="button-row">
-        <button type="submit">Save Rule</button>
+        <button type="submit">{{ "Update Rule" if edit_rule else "Save Rule" }}</button>
+        {% if edit_rule %}
+        <a class="button-link secondary" href="/call-routing/{{ section.slug }}/{{ item.slug }}">Cancel Edit</a>
+        {% endif %}
       </div>
     </form>
     {% else %}
@@ -148,6 +152,7 @@
           <button type="submit" class="secondary">Start Now</button>
         </form>
         {% endif %}
+        <a class="button-link secondary" href="/call-routing/{{ section.slug }}/{{ item.slug }}?edit_id={{ rule.id }}">Edit</a>
         <form method="post" action="/call-routing/{{ section.slug }}/{{ item.slug }}/{{ rule.id }}/delete">
           <button type="submit" class="danger">Delete</button>
         </form>

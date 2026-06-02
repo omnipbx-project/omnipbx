@@ -252,6 +252,13 @@ def call_routing_detail_page(
 ) -> HTMLResponse:
     grouped_rules = rules_by_item(list_call_routing_rules(connection))
     section, item = _find_item(section_slug, item_slug, grouped_rules)
+    rules = list_call_routing_item_rules(connection, section_slug, item_slug)
+    edit_id = request.query_params.get("edit_id", "")
+    edit_rule = next((rule for rule in rules if str(rule["id"]) == edit_id), None)
+    edit_config_lists = {
+        key: [part.strip() for part in str(value).split(",") if part.strip()]
+        for key, value in (edit_rule.get("config") if edit_rule else {}).items()
+    }
     return render_template(
         request,
         "call_routing/detail.html",
@@ -261,7 +268,9 @@ def call_routing_detail_page(
         section=section,
         item=item,
         fields=ROUTING_FORMS.get((section_slug, item_slug), []),
-        rules=list_call_routing_item_rules(connection, section_slug, item_slug),
+        rules=rules,
+        edit_rule=edit_rule,
+        edit_config_lists=edit_config_lists,
         trunks=list_trunks(connection),
         groups=list_groups(connection),
         extensions=list_extensions(connection),
