@@ -161,7 +161,7 @@
         {% endif %}
         <div class="notice notice-info">
           <strong>Auto renewal</strong>
-          <span>Public domain certificates renew automatically. LAN certificates are regenerated when the IP or domain changes and you save here.</span>
+          <span>Public domain certificates renew automatically. LAN certificates are short-lived and renewed automatically by Caddy.</span>
         </div>
         <pre class="code-block">Caddy config: {{ snapshot.ssl.caddyfile_path }}
 Status: {{ "Ready" if snapshot.ssl.caddyfile_exists else "Waiting for first save" }}</pre>

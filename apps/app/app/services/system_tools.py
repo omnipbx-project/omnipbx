@@ -99,7 +99,7 @@ def collect_ssl_snapshot(connection: psycopg.Connection, system_settings: dict |
     elif ssl_mode == "internal_local":
         label = "LAN SSL"
         detail = "Caddy creates a local certificate for the LAN IP/domain. Users may need to trust the local certificate once."
-        auto_renewal = "Local certificates are recreated when the PBX address changes."
+        auto_renewal = "Local certificates are short-lived and renewed automatically."
     elif ssl_mode == "custom_certificate":
         label = "Custom certificate"
         detail = "Caddy uses the certificate files mounted into the app."
