@@ -603,7 +603,9 @@ def _render_destination_same_lines(
             lines = [
                 f" same => n,Set(CDR(callee_extension)={destination_value})",
             ]
-            recording_lines = _render_recording_lines(recording_extensions or set(), target=destination_value, target_variable="CALLERID(num)")
+            if destination_value in (recording_extensions or set()):
+                lines.append(f" same => n,Set(OMNI_RECORDING_TARGET={destination_value})")
+            recording_lines = _render_recording_lines(recording_extensions or set(), target=destination_value, target_variable="OMNI_RECORDING_TARGET")
             if recording_lines:
                 lines.extend(line for line in recording_lines.rstrip().splitlines())
             lines.append(f" same => n,Dial(PJSIP/{destination_value},20)")
