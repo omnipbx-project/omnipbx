@@ -705,6 +705,7 @@ def render_trunk_pjsip_config(trunks: list[dict]) -> str:
                     f"client_uri = {_default_client_uri(trunk)}\n"
                     f"contact_user = {username}\n"
                     f"endpoint = {name}\n"
+                    "line = yes\n"
                     "retry_interval = 60\n"
                     "forbidden_retry_interval = 600\n"
                     "expiration = 3600\n\n"
