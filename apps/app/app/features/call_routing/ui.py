@@ -16,6 +16,7 @@ from app.services.call_routing import (
     save_call_routing_rule,
 )
 from app.services.extensions import list_extensions
+from app.services.trunks import list_trunks
 from app.services.user_management import list_groups, profiles_by_extension
 from app.web import render_template
 
@@ -104,28 +105,9 @@ CALL_ROUTING_SECTIONS = [
         "items": [
             {
                 "slug": "routes",
-                "title": "Routes",
-                "description": "Choose which outside line is used for outgoing calls.",
-                "status": "Planned",
-            },
-            {
-                "slug": "dial-rules",
-                "title": "Dial Rules",
-                "description": "Make dialing simple with rules for local, mobile, and international numbers.",
-                "status": "Planned",
-            },
-            {
-                "slug": "trunk-priority",
-                "title": "Trunk Priority",
-                "description": "Pick the first, second, and backup provider for outgoing calls.",
-                "href": "/trunks",
-                "status": "Basic setup",
-            },
-            {
-                "slug": "calling-permissions",
-                "title": "Calling Permissions",
-                "description": "Limit who can call local, mobile, national, or international numbers.",
-                "status": "Planned",
+                "title": "Outbound Rules",
+                "description": "Choose who can call out, which trunk they use, and how the dialed number is sent.",
+                "status": "Ready",
             },
         ],
     },
@@ -177,18 +159,13 @@ ROUTING_FORMS = {
         {"name": "backup", "label": "Backup destination", "placeholder": "1001"},
     ],
     ("outgoing-calls", "routes"): [
-        {"name": "dial_pattern", "label": "Numbers starting with", "placeholder": "9"},
-        {"name": "trunk", "label": "Use trunk", "placeholder": "provider-main"},
-        {"name": "remove_digits", "label": "Remove first digits", "placeholder": "1"},
-    ],
-    ("outgoing-calls", "dial-rules"): [
-        {"name": "dial_pattern", "label": "User dials", "placeholder": "0"},
-        {"name": "replace_with", "label": "Send as", "placeholder": "+880"},
-        {"name": "note", "label": "Simple note", "placeholder": "Local mobile numbers"},
-    ],
-    ("outgoing-calls", "calling-permissions"): [
-        {"name": "group", "label": "User group", "placeholder": "Sales"},
-        {"name": "allowed", "label": "Allowed calls", "placeholder": "Local, Mobile"},
+        {"name": "trunk", "label": "Trunk", "type": "trunk_select"},
+        {"name": "source_type", "label": "Allowed source", "type": "select", "options": [("group", "Group"), ("user", "User")]},
+        {"name": "source_values", "label": "Allowed groups/users", "type": "target_multiselect"},
+        {"name": "dial_pattern", "label": "Dial pattern", "placeholder": "_X."},
+        {"name": "country_code", "label": "Country code to add", "placeholder": "Optional, for example 880"},
+        {"name": "strip_digits", "label": "Remove first digits", "placeholder": "0"},
+        {"name": "add_prefix", "label": "Add prefix before sending", "placeholder": "Optional, for example 9 or 0"},
     ],
     ("internal-calls", "calling-rules"): [
         {"name": "source_type", "label": "Source", "type": "select", "options": [("group", "Group"), ("user", "User")]},
@@ -285,6 +262,7 @@ def call_routing_detail_page(
         item=item,
         fields=ROUTING_FORMS.get((section_slug, item_slug), []),
         rules=list_call_routing_item_rules(connection, section_slug, item_slug),
+        trunks=list_trunks(connection),
         groups=list_groups(connection),
         extensions=list_extensions(connection),
         result=request.query_params.get("result", ""),
@@ -315,6 +293,13 @@ async def save_call_routing_detail(
         else:
             config[field["name"]] = str(form.get(field["name"], ""))
     try:
+        if section_slug == "outgoing-calls" and item_slug == "routes":
+            config["dial_pattern"] = config.get("dial_pattern", "").strip() or "_X."
+            config["strip_digits"] = config.get("strip_digits", "").strip() or "0"
+            if not config.get("trunk", "").strip():
+                raise ValueError("Choose a trunk for this outbound rule.")
+            if not config.get("source_values", "").strip():
+                raise ValueError("Choose at least one allowed user or group.")
         save_call_routing_rule(
             connection,
             section_slug=section_slug,

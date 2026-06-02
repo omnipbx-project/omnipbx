@@ -48,6 +48,13 @@
             <option value="{{ extension.extension }}">{{ extension.display_name }} ({{ extension.extension }})</option>
             {% endfor %}
           </select>
+          {% elif field.type == "trunk_select" %}
+          <select id="{{ field.name }}" name="{{ field.name }}" required>
+            <option value="">Choose trunk</option>
+            {% for trunk in trunks %}
+            <option value="{{ trunk.name }}">{{ trunk.name }}{% if trunk.provider_name %} - {{ trunk.provider_name }}{% endif %}</option>
+            {% endfor %}
+          </select>
           {% elif field.type == "group_multiselect" %}
           <select id="{{ field.name }}" name="{{ field.name }}" multiple size="5">
             {% for group in groups %}
