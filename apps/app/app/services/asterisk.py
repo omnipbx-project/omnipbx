@@ -594,9 +594,18 @@ def _render_destination_same_lines(
     destination_value: str,
     queues_by_extension: dict[str, dict],
     *,
+    direct_extension: bool = False,
     hangup: bool = True,
 ) -> list[str]:
     if destination_type == "extension":
+        if direct_extension:
+            lines = [
+                f" same => n,Set(CDR(callee_extension)={destination_value})",
+                f" same => n,Dial(PJSIP/{destination_value},20)",
+            ]
+            if hangup:
+                lines.append(" same => n,Hangup()")
+            return lines
         return [
             f" same => n,Set(CDR(callee_extension)={destination_value})",
             f" same => n,Goto(omnipbx-internal,{destination_value},1)",
@@ -1101,6 +1110,7 @@ def render_inbound_routes_config(
                 route["destination_type"],
                 route["destination_value"],
                 queues_by_extension,
+                direct_extension=True,
             )
         )
         blocks.extend(_render_route_special_extensions(route["name"], holiday_rules, blocked_rules))
