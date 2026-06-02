@@ -118,6 +118,7 @@ document.addEventListener("DOMContentLoaded", function () {
     function statusClass(status) {
       if (status === "Online") return "online";
       if (status === "On Call") return "on-call";
+      if (status === "Ringing") return "ringing";
       if (status === "Offline") return "offline";
       return "unknown";
     }

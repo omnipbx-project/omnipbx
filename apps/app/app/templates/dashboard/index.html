@@ -13,7 +13,7 @@
     <div class="user-row" id="user-carousel">
       {% for ext in extensions %}
       {% set status = extension_statuses.get(ext.extension, 'Unknown') %}
-      {% set status_class = 'online' if status == 'Online' else 'offline' if status == 'Offline' else 'unknown' %}
+      {% set status_class = 'online' if status == 'Online' else 'offline' if status == 'Offline' else 'on-call' if status == 'On Call' else 'ringing' if status == 'Ringing' else 'unknown' %}
       <div class="user-card" data-extension="{{ ext.extension }}">
         <div class="avatar-wrap">
           <div class="dashboard-avatar">{{ (ext.display_name or ext.extension)[:1]|upper }}</div>

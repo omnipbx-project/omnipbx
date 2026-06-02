@@ -80,6 +80,7 @@
   .status-dot.online { background: var(--success); }
   .status-dot.offline { background: var(--danger); }
   .status-dot.on-call { background: var(--warning); }
+  .status-dot.ringing { background: var(--warning); box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 18%, transparent); }
   .status-dot.unknown { background: var(--text-muted); }
 
   .user-info {

@@ -140,6 +140,7 @@
 
   .live-status-dot.online { background: var(--success); }
   .live-status-dot.on-call { background: var(--warning); }
+  .live-status-dot.ringing { background: var(--warning); box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 18%, transparent); }
   .live-status-dot.offline { background: var(--danger); }
   .live-status-dot.unknown { background: var(--text-muted); }
 

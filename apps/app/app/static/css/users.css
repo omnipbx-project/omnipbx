@@ -246,6 +246,7 @@
   .user-status-dot.online { background: var(--success); }
   .user-status-dot.offline { background: var(--danger); }
   .user-status-dot.on-call { background: var(--warning); }
+  .user-status-dot.ringing { background: var(--warning); box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 18%, transparent); }
   .user-status-dot.unknown { background: var(--text-muted); }
 
   .user-card-copy,

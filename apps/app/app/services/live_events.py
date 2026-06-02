@@ -167,7 +167,7 @@ class LiveEventHub:
             for user in users:
                 if not isinstance(user, dict) or str(user.get("extension")) != extension:
                     continue
-                if user.get("status") == "On Call" and status == "Online":
+                if user.get("status") == "On Call" and status == "Online" and event_name not in {"Hangup", "BridgeLeave"}:
                     return False
                 if user.get("status") == status:
                     return False
@@ -182,7 +182,7 @@ class LiveEventHub:
                         [
                             user
                             for user in users
-                            if isinstance(user, dict) and user.get("status") in {"Online", "On Call"}
+                            if isinstance(user, dict) and user.get("status") in {"Online", "On Call", "Ringing"}
                         ]
                     )
             return changed
@@ -209,7 +209,7 @@ def _read_message(stream) -> dict[str, str]:
 
 
 def _extension_from_event(message: dict[str, str]) -> str:
-    for key in ("EndpointName", "AOR", "Peer", "Device"):
+    for key in ("EndpointName", "AOR", "Peer", "Device", "Channel", "DestChannel", "ConnectedLineNum", "CallerIDNum"):
         value = (message.get(key) or "").strip()
         if not value:
             continue
@@ -222,6 +222,10 @@ def _extension_from_event(message: dict[str, str]) -> str:
 
 
 def _status_from_event(event_name: str, message: dict[str, str]) -> str:
+    if event_name in {"Newchannel", "Newstate"}:
+        return _channel_status(message.get("ChannelStateDesc") or message.get("State"))
+    if event_name in {"Hangup", "BridgeLeave"}:
+        return "Online"
     if event_name == "ContactStatus":
         return _contact_status(message.get("ContactStatus"), webphone=_is_webphone_contact_event(message))
     if event_name == "PeerStatus":
@@ -253,7 +257,9 @@ def _contact_status(value: str | None, *, webphone: bool = False) -> str:
 
 def _device_status(value: str | None) -> str:
     normalized = (value or "").strip().lower()
-    if normalized in {"inuse", "busy", "ringing", "ringinuse", "onhold"}:
+    if normalized in {"ringing"}:
+        return "Ringing"
+    if normalized in {"inuse", "busy", "ringinuse", "onhold"}:
         return "On Call"
     if normalized in {"not_inuse", "available"}:
         return "Online"
@@ -262,10 +268,22 @@ def _device_status(value: str | None) -> str:
     return "Unknown" if normalized else ""
 
 
+def _channel_status(value: str | None) -> str:
+    normalized = (value or "").strip().lower()
+    if normalized in {"ring", "ringing"}:
+        return "Ringing"
+    if normalized in {"up", "busy"}:
+        return "On Call"
+    if normalized in {"down", "rsrvd", "reserved", "offhook", "dialing", "pre-ring", "prering"}:
+        return "Online"
+    return ""
+
+
 def _status_class(status: str) -> str:
     return {
         "Online": "online",
         "On Call": "on-call",
+        "Ringing": "ringing",
         "Offline": "offline",
         "Unknown": "unknown",
     }.get(status, "unknown")

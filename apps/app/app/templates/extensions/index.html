@@ -194,7 +194,7 @@
     <div class="user-card-grid">
       {% for extension in extensions %}
       {% set runtime_state = status_by_extension.get(extension.extension, "Unknown") %}
-      {% set status_class = "online" if runtime_state == "Online" else "offline" if runtime_state == "Offline" else "on-call" if runtime_state == "On Call" else "unknown" %}
+      {% set status_class = "online" if runtime_state == "Online" else "offline" if runtime_state == "Offline" else "on-call" if runtime_state == "On Call" else "ringing" if runtime_state == "Ringing" else "unknown" %}
       {% set profile = profiles_by_extension.get(extension.extension, {}) %}
       {% set group_name = profile.group_name or (groups[0].name if groups else "Sales") %}
       {% set email = profile.email or "" %}
