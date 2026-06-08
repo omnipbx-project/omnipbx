@@ -11,10 +11,12 @@ from psycopg.rows import dict_row
 from app.core.settings import get_settings
 from app.services.audit import list_admin_audit_entries
 from app.services.backup import list_backup_files
-from app.services.call_logs import (
+from app.services.call_classification import (
     MISSED_DISPOSITIONS,
     abandoned_call_condition,
     customer_missed_call_condition,
+)
+from app.services.call_logs import (
     list_callback_worklist,
     sync_cdr_from_asterisk,
 )

@@ -9,10 +9,15 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.core.settings import get_settings
+from app.services.call_classification import (
+    MISSED_DISPOSITIONS,
+    abandoned_call_condition,
+    callback_candidate_condition,
+    customer_missed_call_condition,
+)
 from app.services.date_ranges import parse_date_bound
 
 
-MISSED_DISPOSITIONS = {"NO ANSWER", "CANCEL", "BUSY", "FAILED", "CONGESTION"}
 CALL_LOG_CATEGORIES = {
     "all": "All Calls",
     "missed": "Missed Calls",
@@ -240,50 +245,6 @@ def list_call_logs(
             for key, label in CALL_LOG_CATEGORIES.items()
         ],
     }
-
-
-def _sql_column(column: str, alias: str = "") -> str:
-    return f"{alias}.{column}" if alias else column
-
-
-def abandoned_call_condition(alias: str = "") -> str:
-    direction = _sql_column("direction", alias)
-    queue_name = _sql_column("queue_name", alias)
-    ivr_name = _sql_column("ivr_name", alias)
-    callee_extension = _sql_column("callee_extension", alias)
-    disposition = _sql_column("disposition", alias)
-    return """
-    COALESCE({direction}, 'unknown') = 'inbound'
-    AND (
-        COALESCE(NULLIF({queue_name}, ''), NULLIF({ivr_name}, ''), '') <> ''
-        OR COALESCE(NULLIF({callee_extension}, ''), '') = ''
-    )
-    AND {disposition} <> 'ANSWERED'
-    """.format(
-        direction=direction,
-        queue_name=queue_name,
-        ivr_name=ivr_name,
-        callee_extension=callee_extension,
-        disposition=disposition,
-    )
-
-
-def customer_missed_call_condition(alias: str = "") -> str:
-    direction = _sql_column("direction", alias)
-    disposition = _sql_column("disposition", alias)
-    return f"""
-    COALESCE({direction}, 'unknown') = 'inbound'
-    AND {disposition} = ANY(%(missed)s)
-    AND NOT ({abandoned_call_condition(alias)})
-    """
-
-
-def callback_candidate_condition(alias: str = "") -> str:
-    return f"(({customer_missed_call_condition(alias)}) OR ({abandoned_call_condition(alias)}))"
-
-
-def _abandoned_condition(alias: str = "") -> str:
-    return abandoned_call_condition(alias)
 
 
 def _call_log_category_condition(category: str) -> str | None:
