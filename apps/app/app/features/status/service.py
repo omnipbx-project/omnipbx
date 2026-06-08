@@ -15,7 +15,7 @@ OFFLINE_STATES = {"unavail", "unavailable", "nonqual", "unknown", "unregistered"
 def run_asterisk_command(command: str) -> str:
     try:
         return ami_command(command)
-    except (AmiError, OSError, TimeoutError) as ami_exc:
+    except (AmiError, EOFError, OSError, TimeoutError) as ami_exc:
         ami_error = f"AMI unavailable for {command}: {ami_exc}"
 
     completed = subprocess.run(

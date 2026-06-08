@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "MicroSIP Style Web Softphone",
-  "version": "2.0.6",
-  "description": "A MicroSIP-style Chrome web softphone using SIP over WSS/WebRTC with one floating dialer, clickable numbers, and bundled JsSIP.",
+  "name": "OmniPBX Webphone",
+  "version": "2.1.0",
+  "description": "OmniPBX browser webphone with a persistent floating dialer, click-to-call, and SIP over WSS/WebRTC.",
   "permissions": [
     "storage",
     "notifications",

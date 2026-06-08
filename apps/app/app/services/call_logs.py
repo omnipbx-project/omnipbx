@@ -9,6 +9,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.core.settings import get_settings
+from app.services.date_ranges import parse_date_bound
 
 
 MISSED_DISPOSITIONS = {"NO ANSWER", "CANCEL", "BUSY", "FAILED", "CONGESTION"}
@@ -124,6 +125,7 @@ def list_call_logs(
     category: str = "all",
     date_from: str | None = None,
     date_to: str | None = None,
+    timezone_name: str = "UTC",
     limit: int = 250,
 ) -> dict[str, object]:
     sync_cdr_from_asterisk(connection)
@@ -147,10 +149,10 @@ def list_call_logs(
         params["direction"] = direction
         where.append("COALESCE(direction, 'unknown') = %(direction)s")
     if date_from:
-        params["date_from"] = f"{date_from} 00:00:00"
+        params["date_from"] = _date_bound(date_from, end_of_day=False, timezone_name=timezone_name)
         where.append("calldate >= %(date_from)s::timestamptz")
     if date_to:
-        params["date_to"] = f"{date_to} 23:59:59"
+        params["date_to"] = _date_bound(date_to, end_of_day=True, timezone_name=timezone_name)
         where.append("calldate <= %(date_to)s::timestamptz")
 
     category = category if category in CALL_LOG_CATEGORIES else "all"
@@ -165,8 +167,8 @@ def list_call_logs(
             f"""
             SELECT
                 COUNT(*) AS all_calls,
-                COALESCE(SUM(CASE WHEN disposition = ANY(%(missed)s) THEN 1 ELSE 0 END), 0) AS missed,
-                COALESCE(SUM(CASE WHEN {_abandoned_condition()} THEN 1 ELSE 0 END), 0) AS abandoned,
+                COALESCE(SUM(CASE WHEN {customer_missed_call_condition()} THEN 1 ELSE 0 END), 0) AS missed,
+                COALESCE(SUM(CASE WHEN {abandoned_call_condition()} THEN 1 ELSE 0 END), 0) AS abandoned,
                 COALESCE(SUM(CASE WHEN COALESCE(direction, 'unknown') = 'inbound' THEN 1 ELSE 0 END), 0) AS incoming,
                 COALESCE(SUM(CASE WHEN COALESCE(direction, 'unknown') = 'outbound' THEN 1 ELSE 0 END), 0) AS outgoing
             FROM cdr_raw
@@ -194,8 +196,8 @@ def list_call_logs(
                 billsec,
                 disposition,
                 CASE
-                    WHEN {_abandoned_condition()} THEN 'Abandoned'
-                    WHEN disposition = ANY(%(missed)s) THEN 'Missed'
+                    WHEN {abandoned_call_condition()} THEN 'Abandoned'
+                    WHEN {customer_missed_call_condition()} THEN 'Missed'
                     WHEN COALESCE(direction, 'unknown') = 'inbound' THEN 'Incoming'
                     WHEN COALESCE(direction, 'unknown') = 'outbound' THEN 'Outgoing'
                     ELSE INITCAP(COALESCE(direction, 'unknown'))
@@ -219,7 +221,7 @@ def list_call_logs(
                 COALESCE(SUM(CASE WHEN COALESCE(direction, 'unknown') = 'outbound' THEN 1 ELSE 0 END), 0) AS total_outbound,
                 COALESCE(SUM(CASE WHEN COALESCE(direction, 'unknown') = 'internal' THEN 1 ELSE 0 END), 0) AS total_internal,
                 COALESCE(SUM(CASE WHEN disposition = 'ANSWERED' THEN 1 ELSE 0 END), 0) AS total_answered,
-                COALESCE(SUM(CASE WHEN disposition <> 'ANSWERED' THEN 1 ELSE 0 END), 0) AS total_missed,
+                COALESCE(SUM(CASE WHEN {customer_missed_call_condition()} THEN 1 ELSE 0 END), 0) AS total_missed,
                 COALESCE(SUM(duration), 0) AS total_duration,
                 COALESCE(SUM(billsec), 0) AS total_billsec
             FROM cdr_raw
@@ -240,22 +242,55 @@ def list_call_logs(
     }
 
 
-def _abandoned_condition() -> str:
+def _sql_column(column: str, alias: str = "") -> str:
+    return f"{alias}.{column}" if alias else column
+
+
+def abandoned_call_condition(alias: str = "") -> str:
+    direction = _sql_column("direction", alias)
+    queue_name = _sql_column("queue_name", alias)
+    ivr_name = _sql_column("ivr_name", alias)
+    callee_extension = _sql_column("callee_extension", alias)
+    disposition = _sql_column("disposition", alias)
     return """
-    COALESCE(direction, 'unknown') = 'inbound'
+    COALESCE({direction}, 'unknown') = 'inbound'
     AND (
-        COALESCE(NULLIF(queue_name, ''), NULLIF(ivr_name, ''), '') <> ''
-        OR COALESCE(NULLIF(callee_extension, ''), '') = ''
+        COALESCE(NULLIF({queue_name}, ''), NULLIF({ivr_name}, ''), '') <> ''
+        OR COALESCE(NULLIF({callee_extension}, ''), '') = ''
     )
-    AND disposition <> 'ANSWERED'
+    AND {disposition} <> 'ANSWERED'
+    """.format(
+        direction=direction,
+        queue_name=queue_name,
+        ivr_name=ivr_name,
+        callee_extension=callee_extension,
+        disposition=disposition,
+    )
+
+
+def customer_missed_call_condition(alias: str = "") -> str:
+    direction = _sql_column("direction", alias)
+    disposition = _sql_column("disposition", alias)
+    return f"""
+    COALESCE({direction}, 'unknown') = 'inbound'
+    AND {disposition} = ANY(%(missed)s)
+    AND NOT ({abandoned_call_condition(alias)})
     """
+
+
+def callback_candidate_condition(alias: str = "") -> str:
+    return f"(({customer_missed_call_condition(alias)}) OR ({abandoned_call_condition(alias)}))"
+
+
+def _abandoned_condition(alias: str = "") -> str:
+    return abandoned_call_condition(alias)
 
 
 def _call_log_category_condition(category: str) -> str | None:
     if category == "missed":
-        return "disposition = ANY(%(missed)s)"
+        return customer_missed_call_condition()
     if category == "abandoned":
-        return _abandoned_condition()
+        return abandoned_call_condition()
     if category == "incoming":
         return "COALESCE(direction, 'unknown') = 'inbound'"
     if category == "outgoing":
@@ -268,19 +303,27 @@ def list_callback_worklist(
     *,
     search: str = "",
     open_only: bool = True,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    timezone_name: str = "UTC",
     limit: int = 500,
 ) -> dict[str, object]:
     sync_cdr_from_asterisk(connection)
     base_where = [
-        "COALESCE(direction, 'unknown') = 'inbound'",
-        "(disposition = ANY(%(missed)s) OR (disposition = 'ANSWERED' AND COALESCE(NULLIF(callee_extension, ''), '') = ''))",
-        "COALESCE(NULLIF(src, ''), NULLIF(clid, ''), '') <> ''",
+        callback_candidate_condition("c"),
+        "COALESCE(NULLIF(c.src, ''), NULLIF(c.clid, ''), '') <> ''",
     ]
     params: dict[str, object] = {"missed": list(MISSED_DISPOSITIONS), "limit": limit}
     search = search.strip()
     if search:
         params["search"] = f"%{search}%"
-        base_where.append("COALESCE(NULLIF(src, ''), NULLIF(clid, ''), '') ILIKE %(search)s")
+        base_where.append("COALESCE(NULLIF(c.src, ''), NULLIF(c.clid, ''), '') ILIKE %(search)s")
+    if date_from:
+        params["date_from"] = _date_bound(date_from, end_of_day=False, timezone_name=timezone_name)
+        base_where.append("c.calldate >= %(date_from)s::timestamptz")
+    if date_to:
+        params["date_to"] = _date_bound(date_to, end_of_day=True, timezone_name=timezone_name)
+        base_where.append("c.calldate <= %(date_to)s::timestamptz")
     row_where = list(base_where)
     if open_only:
         row_where.append("COALESCE(cf.completed, FALSE) = FALSE")
@@ -306,8 +349,8 @@ def list_callback_worklist(
                     ELSE 'Missed Inbound'
                 END AS callback_reason,
                 CASE
-                    WHEN EXISTS ({_later_answered_inbound_sql()}) THEN 'answered_later'
                     WHEN COALESCE(cf.completed, FALSE) THEN 'done'
+                    WHEN EXISTS ({_later_answered_inbound_sql()}) THEN 'answered_later'
                     WHEN COALESCE(NULLIF(cf.assigned_to, ''), '') <> '' THEN 'in_progress'
                     ELSE 'needs_callback'
                 END AS followup_status,
@@ -351,7 +394,7 @@ def list_callback_worklist(
                 COALESCE(SUM(CASE WHEN completed = FALSE AND auto_resolved = FALSE THEN 1 ELSE 0 END), 0) AS open_callbacks,
                 COALESCE(SUM(CASE WHEN completed = FALSE AND auto_resolved = FALSE AND assigned_to <> '' THEN 1 ELSE 0 END), 0) AS in_progress,
                 COALESCE(SUM(CASE WHEN completed = TRUE AND completed_at::date = CURRENT_DATE THEN 1 ELSE 0 END), 0) AS done_today,
-                COALESCE(SUM(CASE WHEN auto_resolved = TRUE THEN 1 ELSE 0 END), 0) AS answered_later
+                COALESCE(SUM(CASE WHEN completed = FALSE AND auto_resolved = TRUE THEN 1 ELSE 0 END), 0) AS answered_later
             FROM callback_base
             """,
             {k: v for k, v in params.items() if k != "limit"},
@@ -515,6 +558,10 @@ def _parse_datetime(value: str | None) -> datetime | None:
         except ValueError:
             continue
     return None
+
+
+def _date_bound(value: str, *, end_of_day: bool, timezone_name: str = "UTC") -> datetime | None:
+    return parse_date_bound(value, end_of_day=end_of_day, timezone_name=timezone_name)
 
 
 def _parse_int(value: str | None) -> int | None:

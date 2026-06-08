@@ -81,9 +81,13 @@ document.addEventListener("DOMContentLoaded", function () {
       button.addEventListener("click", function () {
         const extension = button.dataset.extension;
         if (editUserForm) {
+          const extensionInput = document.getElementById("edit_extension");
+          const isAdminExtension = extension === "10000";
           editUserForm.action = `/extensions/${extension}/update`;
           document.getElementById("edit_display_name").value = button.dataset.name || "";
-          document.getElementById("edit_extension").value = extension || "";
+          extensionInput.value = extension || "";
+          extensionInput.readOnly = isAdminExtension;
+          extensionInput.title = isAdminExtension ? "Admin extension 10000 cannot be changed." : "";
           document.getElementById("edit_email").value = button.dataset.email || "";
           document.getElementById("edit_secret").value = "";
           document.getElementById("edit_photo").value = "";

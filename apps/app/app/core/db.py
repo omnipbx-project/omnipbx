@@ -511,6 +511,7 @@ def initialize_schema() -> None:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_app_security_bans_active ON app_security_bans (subject_type, subject_value, enabled, banned_until)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_app_security_failures_subject ON app_security_failures (subject_type, subject_value)")
             cursor.execute("ALTER TABLE trunks ADD COLUMN IF NOT EXISTS main_number VARCHAR(80)")
+            cursor.execute("ALTER TABLE inbound_routes ALTER COLUMN destination_value TYPE VARCHAR(255)")
             cursor.execute("ALTER TABLE extensions ALTER COLUMN codecs SET DEFAULT 'ulaw,alaw,g722'")
             cursor.execute("ALTER TABLE extensions ALTER COLUMN video_codecs SET DEFAULT ''")
             cursor.execute("UPDATE extensions SET transport = 'transport-udp' WHERE transport IS NULL OR transport = ''")

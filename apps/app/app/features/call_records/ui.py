@@ -6,6 +6,8 @@ import psycopg
 
 from app.core.db import get_connection
 from app.services.call_records import list_call_records
+from app.services.date_ranges import date_range_context, resolve_date_range
+from app.services.setup import get_system_settings
 from app.web import render_template
 
 
@@ -18,18 +20,22 @@ def call_records_page(
     search: str = "",
     direction: str = "all",
     user: str = "all",
+    range: str = "7d",
     date_from: str = "",
     date_to: str = "",
     limit: int = 200,
     connection: psycopg.Connection = Depends(get_connection),
 ) -> HTMLResponse:
+    timezone_name = str(get_system_settings(connection).get("timezone") or "UTC")
+    resolved_range = resolve_date_range(range, date_from=date_from, date_to=date_to, default="7d", timezone_name=timezone_name)
     report = list_call_records(
         connection,
         search=search,
         direction=direction,
         user=user,
-        date_from=date_from or None,
-        date_to=date_to or None,
+        date_from=resolved_range.date_from or None,
+        date_to=resolved_range.date_to or None,
+        timezone_name=timezone_name,
         limit=limit,
     )
     return render_template(
@@ -44,7 +50,15 @@ def call_records_page(
         search=search,
         direction=direction,
         user=user,
-        date_from=date_from,
-        date_to=date_to,
+        range=resolved_range.key,
+        date_from=resolved_range.date_from,
+        date_to=resolved_range.date_to,
+        date_range=date_range_context(
+            resolved_range.key,
+            date_from=resolved_range.date_from,
+            date_to=resolved_range.date_to,
+            default="7d",
+            timezone_name=timezone_name,
+        ),
         limit=limit,
     )

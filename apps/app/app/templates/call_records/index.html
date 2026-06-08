@@ -1,4 +1,4 @@
-{% from "_ui_macros.html" import empty_state, stat_card %}
+{% from "_ui_macros.html" import empty_state, stat_card, date_range_filter %}
 {% extends "base.html" %}
 {% block content %}
 <section class="call-records-page">
@@ -33,14 +33,7 @@
           {% endfor %}
         </select>
       </label>
-      <label>
-        From
-        <input type="date" name="date_from" value="{{ date_from }}">
-      </label>
-      <label>
-        To
-        <input type="date" name="date_to" value="{{ date_to }}">
-      </label>
+      {{ date_range_filter(date_range.options, date_range.active, date_range.date_from, date_range.date_to) }}
       <label>
         Rows
         <input type="number" name="limit" value="{{ limit }}" min="25" max="1000" step="25">

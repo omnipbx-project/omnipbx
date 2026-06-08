@@ -9,6 +9,10 @@
 {% endif %}
 
 <section class="trunks-page">
+  <div class="trunks-toolbar">
+    <button type="button" class="primary" id="open-trunk-modal">+ Add Trunk</button>
+  </div>
+
   {% if trunks %}
   <div class="trunk-card-grid" id="trunk-card-grid">
     {% for trunk in trunks %}

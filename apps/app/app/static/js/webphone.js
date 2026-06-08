@@ -28,12 +28,15 @@
     close: $("webphone-close"),
     detach: $("webphone-detach"),
     attach: $("webphone-attach"),
+    settings: $("webphone-settings"),
     account: $("webphone-account"),
     status: $("webphone-status"),
     dot: $("webphone-dot"),
     picker: $("webphone-picker"),
     extension: $("webphone-extension"),
     number: $("webphone-number"),
+    backspace: $("webphone-backspace"),
+    clear: $("webphone-clear"),
     copy: $("webphone-copy"),
     keypad: $("webphone-keypad"),
     call: $("webphone-call"),
@@ -44,6 +47,7 @@
     hold: $("webphone-hold"),
     transfer: $("webphone-transfer"),
     dnd: $("webphone-dnd"),
+    autoAnswer: $("webphone-auto-answer"),
     volume: $("webphone-volume"),
     log: $("webphone-log"),
     audio: $("webphone-remote-audio"),
@@ -422,6 +426,11 @@
     log("Transfer is unavailable in stable audio mode");
   }
 
+  function confirmNavigationDuringCall() {
+    if (!state.session) return true;
+    return window.confirm("A browser page change will end this in-page webphone call. Open the detached webphone before browsing while on a call.");
+  }
+
   async function toggleDnd() {
     state.dnd = !state.dnd;
     toggleButton(els.dnd, state.dnd);
@@ -438,6 +447,9 @@
   function bindUi() {
     if (els.video) els.video.hidden = true;
     els.trigger?.addEventListener("click", () => setOpen(!dock.classList.contains("open")));
+    els.settings?.addEventListener("click", () => {
+      window.open("/webphone/detached", "omnipbx-webphone", "width=360,height=720,resizable=yes,scrollbars=no");
+    });
     els.close?.addEventListener("click", () => {
       if (detached) window.close();
       else setOpen(false);
@@ -455,6 +467,14 @@
       const key = event.target.closest("button")?.dataset.key;
       if (!key) return;
       els.number.value += key;
+      els.number.focus();
+    });
+    els.backspace?.addEventListener("click", () => {
+      els.number.value = els.number.value.slice(0, -1);
+      els.number.focus();
+    });
+    els.clear?.addEventListener("click", () => {
+      els.number.value = "";
       els.number.focus();
     });
     els.number?.addEventListener("keydown", (event) => {
@@ -475,6 +495,10 @@
     els.hold?.addEventListener("click", toggleHold);
     els.transfer?.addEventListener("click", transfer);
     els.dnd?.addEventListener("click", toggleDnd);
+    els.autoAnswer?.addEventListener("click", () => {
+      toggleButton(els.autoAnswer, els.autoAnswer.dataset.active !== "true");
+      setStatus("Auto answer is not enabled", "warn");
+    });
     els.volume?.addEventListener("input", () => {
       const value = Number(els.volume.value || 1);
       els.audio.volume = value;
@@ -487,6 +511,21 @@
       els.number.value = normalizeNumber(number);
       setOpen(true);
       event.preventDefault();
+    });
+    document.addEventListener("click", (event) => {
+      const link = event.target.closest && event.target.closest("a[href]");
+      if (!link || link.matches("a[href^='tel:']") || link.target || link.hasAttribute("download")) return;
+      const href = link.getAttribute("href") || "";
+      if (!href || href.startsWith("#") || href.startsWith("javascript:")) return;
+      if (!confirmNavigationDuringCall()) {
+        setOpen(true);
+        event.preventDefault();
+      }
+    }, true);
+    window.addEventListener("beforeunload", (event) => {
+      if (!state.session) return;
+      event.preventDefault();
+      event.returnValue = "";
     });
   }
 

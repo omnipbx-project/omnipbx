@@ -110,7 +110,6 @@ class LiveEventHub:
         with socket.create_connection((settings.ami_host, settings.ami_port), timeout=settings.ami_timeout_seconds) as sock:
             sock.settimeout(settings.ami_timeout_seconds)
             stream = sock.makefile("rwb", buffering=0)
-            _read_message(stream)
             _send_message(
                 stream,
                 {
@@ -120,7 +119,7 @@ class LiveEventHub:
                     "Events": "on",
                 },
             )
-            response = _read_message(stream)
+            response = _read_next_message(stream)
             if response.get("Response") != "Success":
                 raise RuntimeError(response.get("Message", "AMI event login failed."))
             sock.settimeout(None)
@@ -198,6 +197,8 @@ def _read_message(stream) -> dict[str, str]:
     while True:
         raw_line = stream.readline()
         if not raw_line:
+            if not message:
+                raise EOFError("AMI event connection closed.")
             break
         line = raw_line.decode("utf-8", errors="replace").rstrip("\r\n")
         if not line:
@@ -206,6 +207,13 @@ def _read_message(stream) -> dict[str, str]:
         if separator:
             message[key] = value.strip()
     return message
+
+
+def _read_next_message(stream) -> dict[str, str]:
+    while True:
+        message = _read_message(stream)
+        if message:
+            return message
 
 
 def _extension_from_event(message: dict[str, str]) -> str:

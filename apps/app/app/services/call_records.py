@@ -4,6 +4,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.services.call_logs import resolve_recording_path, sync_cdr_from_asterisk
+from app.services.date_ranges import parse_date_bound
 from app.services.extensions import list_extensions
 
 
@@ -15,6 +16,7 @@ def list_call_records(
     user: str = "all",
     date_from: str | None = None,
     date_to: str | None = None,
+    timezone_name: str = "UTC",
     limit: int = 200,
 ) -> dict[str, object]:
     sync_cdr_from_asterisk(connection)
@@ -50,10 +52,10 @@ def list_call_records(
             """
         )
     if date_from:
-        params["date_from"] = f"{date_from} 00:00:00"
+        params["date_from"] = _date_bound(date_from, end_of_day=False, timezone_name=timezone_name)
         where.append("calldate >= %(date_from)s::timestamptz")
     if date_to:
-        params["date_to"] = f"{date_to} 23:59:59"
+        params["date_to"] = _date_bound(date_to, end_of_day=True, timezone_name=timezone_name)
         where.append("calldate <= %(date_to)s::timestamptz")
 
     where_sql = " AND ".join(where)
@@ -124,3 +126,7 @@ def _duration_label(value: object) -> str:
     if minutes:
         return f"{minutes}m {remaining}s"
     return f"{remaining}s"
+
+
+def _date_bound(value: str, *, end_of_day: bool, timezone_name: str = "UTC"):
+    return parse_date_bound(value, end_of_day=end_of_day, timezone_name=timezone_name)

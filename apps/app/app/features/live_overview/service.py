@@ -86,7 +86,7 @@ def start_supervisor_action(
     app_data = f"{channel_id},{action_config['options']}"
     try:
         ami_originate_application(f"PJSIP/{supervisor_extension}", "ChanSpy", app_data)
-    except (AmiError, OSError, TimeoutError) as exc:
+    except (AmiError, EOFError, OSError, TimeoutError) as exc:
         command = f"channel originate PJSIP/{supervisor_extension} application ChanSpy {app_data}"
         errors: list[str] = []
         _run_asterisk_command(command, errors)
@@ -102,7 +102,7 @@ def start_supervisor_action(
 def _run_asterisk_command(command: str, errors: list[str]) -> str:
     try:
         return ami_command(command)
-    except (AmiError, OSError, TimeoutError) as exc:
+    except (AmiError, EOFError, OSError, TimeoutError) as exc:
         ami_error = f"AMI unavailable for {command}: {exc}"
 
     try:
@@ -149,6 +149,8 @@ def _parse_active_calls(output: str, trunks: list[dict]) -> list[dict[str, str]]
         seen_channels.add(channel)
         if bridged_to:
             seen_channels.add(bridged_to)
+        if _is_internal_dialed_leg(context, channel, to_number, caller_id, state, bridged_to):
+            continue
         trunk = _infer_trunk(channel, bridged_to, dial_data, trunk_names)
 
         calls.append(
@@ -170,6 +172,25 @@ def _parse_active_calls(output: str, trunks: list[dict]) -> list[dict[str, str]]
 def _number_from_channel(channel: str) -> str:
     match = re.search(r"PJSIP/([^-/]+)", channel)
     return match.group(1) if match else ""
+
+
+def _is_internal_dialed_leg(
+    context: str,
+    channel: str,
+    to_number: str,
+    caller_id: str,
+    state: str,
+    bridged_to: str,
+) -> bool:
+    endpoint = _number_from_channel(channel)
+    return (
+        context == "omnipbx-internal"
+        and not bridged_to
+        and state.strip().lower() in {"ring", "ringing"}
+        and endpoint
+        and endpoint == to_number
+        and caller_id == to_number
+    )
 
 
 def _infer_trunk(channel: str, bridged_to: str, dial_data: str, trunk_names: list[str]) -> str:

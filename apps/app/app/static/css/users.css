@@ -44,6 +44,14 @@
     white-space: nowrap;
   }
 
+  .users-page-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
   .action-panel {
     display: grid;
     gap: 16px;
@@ -335,6 +343,10 @@
   }
 
   @media (max-width: 760px) {
+    .users-page-toolbar {
+      align-items: stretch;
+      flex-direction: column;
+    }
 
     .users-tabs,
     .users-filters {
@@ -344,6 +356,10 @@
 
     .users-tab {
       min-width: 108px;
+    }
+
+    .users-primary-action {
+      width: 100%;
     }
 
     .users-filters {

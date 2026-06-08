@@ -446,7 +446,7 @@ def render_extensions_config(
     for item in extensions:
         extension = item["extension"]
         voicemail = _internal_voicemail_rule(voicemail_rules, extension)
-        timeout = _safe_int(_rule_config(voicemail).get("timeout") if voicemail else "", 20, minimum=5, maximum=120)
+        timeout = _safe_int(_rule_config(voicemail).get("timeout") if voicemail else "", 60, minimum=5, maximum=120)
         blocks.append(f"exten => {extension},1,NoOp(OmniPBX call to {extension})\n")
         blocks.append(" same => n,Set(CDR(omni_linkedid)=${CHANNEL(linkedid)})\n")
         blocks.append(" same => n,Set(CDR(direction)=internal)\n")
@@ -598,6 +598,17 @@ def _render_destination_same_lines(
     recording_extensions: set[str] | None = None,
     hangup: bool = True,
 ) -> list[str]:
+    destination_values = _split_csv(destination_value)
+    if len(destination_values) > 1:
+        return _render_multi_destination_same_lines(
+            destination_type,
+            destination_values,
+            queues_by_extension,
+            direct_extension=direct_extension,
+            recording_extensions=recording_extensions,
+            hangup=hangup,
+        )
+
     if destination_type == "extension":
         if direct_extension:
             lines = [
@@ -617,11 +628,13 @@ def _render_destination_same_lines(
             f" same => n,Goto(omnipbx-internal,{destination_value},1)",
         ]
     if destination_type == "trunk":
-        return [
+        lines = [
             " same => n,Set(CDR(direction)=outbound)",
             f" same => n,Dial(PJSIP/${{EXTEN}}@{destination_value},60)",
-            " same => n,Hangup()",
         ]
+        if hangup:
+            lines.append(" same => n,Hangup()")
+        return lines
     if destination_type == "ring_group":
         return [
             f" same => n,Set(CDR(callee_extension)={destination_value})",
@@ -643,6 +656,55 @@ def _render_destination_same_lines(
             lines.append(" same => n,Hangup()")
         return lines
     return [" same => n,Playback(ss-noservice)", " same => n,Hangup()"]
+
+
+def _render_multi_destination_same_lines(
+    destination_type: str,
+    destination_values: list[str],
+    queues_by_extension: dict[str, dict],
+    *,
+    direct_extension: bool = False,
+    recording_extensions: set[str] | None = None,
+    hangup: bool = True,
+) -> list[str]:
+    destination_label = ",".join(destination_values)
+    if destination_type == "extension":
+        dial_targets = "&".join(f"PJSIP/{value}" for value in destination_values)
+        lines = [f" same => n,Set(CDR(callee_extension)={destination_label})"]
+        recording_lines = _render_recording_lines(recording_extensions or set(), target_variable="CALLERID(num)")
+        if direct_extension and recording_lines:
+            lines.extend(line for line in recording_lines.rstrip().splitlines())
+        lines.append(f" same => n,Dial({dial_targets},20)")
+        if hangup:
+            lines.append(" same => n,Hangup()")
+        return lines
+    if destination_type == "ring_group":
+        dial_targets = "&".join(f"Local/s@{_ring_group_context(value)}" for value in destination_values)
+        lines = [
+            f" same => n,Set(CDR(callee_extension)={destination_label})",
+            f" same => n,Dial({dial_targets},20)",
+        ]
+        if hangup:
+            lines.append(" same => n,Hangup()")
+        return lines
+    lines: list[str] = []
+    for index, value in enumerate(destination_values):
+        is_last = index == len(destination_values) - 1
+        lines.extend(
+            _render_destination_same_lines(
+                destination_type,
+                value,
+                queues_by_extension,
+                direct_extension=direct_extension,
+                recording_extensions=recording_extensions,
+                hangup=hangup and is_last,
+            )
+        )
+        if not is_last and destination_type in {"queue", "trunk"}:
+            lines.append(' same => n,GotoIf($["${DIALSTATUS}" = "ANSWER"]?done)')
+    if hangup and destination_type in {"queue", "trunk"}:
+        lines.append(" same => n(done),Hangup()")
+    return lines
 
 
 def render_trunk_pjsip_config(trunks: list[dict]) -> str:
@@ -1058,9 +1120,12 @@ def render_inbound_routes_config(
         if route_voicemail:
             mailbox = _rule_config(route_voicemail).get("mailbox")
             if route["destination_type"] == "extension":
-                blocks.append(f" same => n,Set(CDR(callee_extension)={route['destination_value']})\n")
-                blocks.append(_render_recording_lines(recording_extensions, target=route["destination_value"], target_variable="CALLERID(num)"))
-                blocks.append(f" same => n,Dial(PJSIP/{route['destination_value']},20)\n")
+                destination_values = _split_csv(route["destination_value"])
+                dial_target = _extension_dial_target(destination_values)
+                blocks.append(f" same => n,Set(CDR(callee_extension)={','.join(destination_values)})\n")
+                recording_target = destination_values[0] if len(destination_values) == 1 else None
+                blocks.append(_render_recording_lines(recording_extensions, target=recording_target, target_variable="CALLERID(num)"))
+                blocks.append(f" same => n,Dial({dial_target},20)\n")
                 blocks.append(" same => n,GotoIf($[\"${DIALSTATUS}\" = \"ANSWER\"]?done)\n")
                 blocks.append(f" same => n,VoiceMail({mailbox}@default,u)\n")
                 blocks.append(" same => n(done),Hangup()\n\n")
@@ -1086,8 +1151,10 @@ def render_inbound_routes_config(
         route_failover = _route_failover_rule(failover_rules, route["name"])
         if route_failover and route["destination_type"] == "extension":
             failover_config = _rule_config(route_failover)
-            blocks.append(_render_recording_lines(recording_extensions, target=route["destination_value"], target_variable="CALLERID(num)"))
-            blocks.append(f" same => n,Dial(PJSIP/{route['destination_value']},20)\n")
+            destination_values = _split_csv(route["destination_value"])
+            recording_target = destination_values[0] if len(destination_values) == 1 else None
+            blocks.append(_render_recording_lines(recording_extensions, target=recording_target, target_variable="CALLERID(num)"))
+            blocks.append(f" same => n,Dial({_extension_dial_target(destination_values)},20)\n")
             blocks.append(" same => n,GotoIf($[\"${DIALSTATUS}\" = \"ANSWER\"]?done)\n")
             blocks.extend(
                 f"{line}\n"
@@ -1195,6 +1262,10 @@ def _internal_voicemail_rule(rules: list[dict], extension: str) -> dict | None:
 
 def _split_csv(value: str) -> list[str]:
     return [item.strip() for item in str(value or "").split(",") if item.strip()]
+
+
+def _extension_dial_target(destination_values: list[str]) -> str:
+    return "&".join(f"PJSIP/{value}" for value in destination_values) or "PJSIP/invalid"
 
 
 def _internal_voicemail_fallback_lines(mailbox: str, when: str) -> list[str]:

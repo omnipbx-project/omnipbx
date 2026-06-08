@@ -11,7 +11,7 @@ class InboundRouteCreate(BaseModel):
     trunk_name: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
     did_pattern: str | None = Field(default=None, max_length=80)
     destination_type: str
-    destination_value: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_#*.+-]+$")
+    destination_value: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z0-9_#*.+,\s-]+$")
     enabled: bool = True
 
     @model_validator(mode="after")
@@ -20,7 +20,7 @@ class InboundRouteCreate(BaseModel):
         self.trunk_name = self.trunk_name.strip().lower()
         self.did_pattern = self.did_pattern.strip() if self.did_pattern else None
         self.destination_type = self.destination_type.strip().lower()
-        self.destination_value = self.destination_value.strip()
+        self.destination_value = ", ".join(item.strip() for item in self.destination_value.split(",") if item.strip())
         if self.destination_type not in ALLOWED_DESTINATION_TYPES:
             raise ValueError("Unsupported inbound route destination type.")
         if self.did_pattern and not re.fullmatch(r"[A-Za-z0-9_.*#+-]+", self.did_pattern):

@@ -93,10 +93,20 @@ def render_template(
             "label": "Search status",
         },
     }
-    topbar_search = context.pop("topbar_search", search_by_nav.get(active_nav))
-    topbar_navs = {item["href"] for section in NAV_SECTIONS for item in section["items"]}
-    show_notifications = context.pop("show_notifications", active_nav in topbar_navs)
-    show_profile_avatar = context.pop("show_profile_avatar", active_nav in topbar_navs)
+    topbar_search = context.pop(
+        "topbar_search",
+        search_by_nav.get(
+            active_nav,
+            {
+                "placeholder": "Search this page...",
+                "label": "Search this page",
+            },
+        ),
+    )
+    show_shell = context.pop("show_shell", True)
+    show_header_controls = bool(show_shell and current_user)
+    show_notifications = context.pop("show_notifications", show_header_controls)
+    show_profile_avatar = context.pop("show_profile_avatar", show_header_controls)
     topbar_action = context.pop("topbar_action", None)
     base_context = {
         "request": request,
@@ -106,7 +116,7 @@ def render_template(
         "page_description": page_description,
         "active_nav": active_nav,
         "nav_sections": NAV_SECTIONS,
-        "show_shell": context.pop("show_shell", True),
+        "show_shell": show_shell,
         "current_user": current_user,
         "update_banner": get_update_banner(settings),
         "topbar_search": topbar_search,

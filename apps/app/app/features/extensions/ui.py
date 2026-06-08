@@ -65,7 +65,6 @@ def extensions_page(
         },
         result=result,
         detail=detail,
-        topbar_action={"id": "users-primary-action", "label": "+ Add User"},
         page_css=["/static/css/users.css"],
         page_js=["/static/js/users.js"],
     )

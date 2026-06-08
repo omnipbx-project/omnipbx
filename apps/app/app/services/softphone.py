@@ -5,7 +5,7 @@ from psycopg.rows import dict_row
 
 from app.core.settings import get_settings
 from app.models.softphone import SoftphoneSettingsPayload
-from app.services.extensions import WEBPHONE_TRANSPORT
+from app.services.extensions import ADMIN_EXTENSION, WEBPHONE_TRANSPORT
 
 
 def get_softphone_settings(connection: psycopg.Connection) -> dict:
@@ -114,6 +114,8 @@ def resolve_current_webphone(
 ) -> dict:
     selected = (extension if can_switch else username).strip() or username.strip()
     webphone_extensions = list_webphone_extensions(connection)
+    if can_switch and not selected.isdigit() and any(row["extension"] == ADMIN_EXTENSION for row in webphone_extensions):
+        selected = ADMIN_EXTENSION
     if selected and not any(row["extension"] == selected for row in webphone_extensions):
         selected = ""
     if not selected and webphone_extensions and can_switch:

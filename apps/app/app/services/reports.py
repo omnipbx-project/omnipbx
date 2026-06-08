@@ -11,10 +11,18 @@ from psycopg.rows import dict_row
 from app.core.settings import get_settings
 from app.services.audit import list_admin_audit_entries
 from app.services.backup import list_backup_files
-from app.services.call_logs import MISSED_DISPOSITIONS, list_callback_worklist, sync_cdr_from_asterisk
+from app.services.call_logs import (
+    MISSED_DISPOSITIONS,
+    abandoned_call_condition,
+    customer_missed_call_condition,
+    list_callback_worklist,
+    sync_cdr_from_asterisk,
+)
+from app.services.date_ranges import DATE_RANGE_OPTIONS, parse_date_bound, resolve_date_range
 from app.services.extensions import list_extensions
 from app.services.live_events import live_event_hub
 from app.services.queues import list_queues
+from app.services.setup import get_system_settings
 from app.services.trunks import list_trunks
 
 
@@ -25,14 +33,12 @@ REPORT_SECTIONS = [
     {"key": "follow-up", "label": "Follow Up"},
     {"key": "users", "label": "Users"},
     {"key": "queues", "label": "Queues"},
+    {"key": "trunks", "label": "Trunks"},
     {"key": "system", "label": "System"},
 ]
 
 REPORT_RANGES = [
-    {"key": "today", "label": "Today"},
-    {"key": "7d", "label": "7 Days"},
-    {"key": "30d", "label": "30 Days"},
-    {"key": "all", "label": "All Time"},
+    item for item in DATE_RANGE_OPTIONS if item["key"] != "custom"
 ]
 
 
@@ -47,18 +53,27 @@ def build_reports(
 ) -> dict[str, object]:
     sync_cdr_from_asterisk(connection)
     section = section if section in {item["key"] for item in REPORT_SECTIONS} else "overview"
-    range_key = range_key if range_key in {item["key"] for item in REPORT_RANGES} else "today"
-    where_sql, params = _range_filter(range_key, date_from=date_from, date_to=date_to)
+    range_key = range_key if range_key in {item["key"] for item in DATE_RANGE_OPTIONS} else "today"
+    timezone_name = str(get_system_settings(connection).get("timezone") or "UTC")
+    resolved_range = resolve_date_range(range_key, date_from=date_from, date_to=date_to, default="today", timezone_name=timezone_name)
+    range_key = resolved_range.key
+    date_from = resolved_range.date_from
+    date_to = resolved_range.date_to
+    where_sql, params = _range_filter(range_key, date_from=date_from, date_to=date_to, timezone_name=timezone_name)
     params["missed"] = list(MISSED_DISPOSITIONS)
 
     calls = _call_summary(connection, where_sql, params)
-    follow_up = _follow_up_summary(connection)
+    follow_up = _follow_up_summary(connection, date_from=date_from, date_to=date_to, timezone_name=timezone_name)
     users = _user_summary(connection, where_sql, params)
     user_detail = _user_detail_report(connection, where_sql, params, extension=extension)
     queues = _queue_summary(connection, where_sql, params)
+    trunks = _trunk_summary(connection, where_sql, params)
     system = _system_summary(connection)
     recent_calls = _recent_calls(connection, where_sql, params, limit=20)
     hourly = _hourly_rows(connection, where_sql, params)
+    daily = _daily_rows(connection, where_sql, params)
+    dispositions = _disposition_rows(connection, where_sql, params)
+    longest_calls = _longest_calls(connection, where_sql, params)
     audit_entries = list_admin_audit_entries(connection, limit=25)
 
     return {
@@ -66,26 +81,43 @@ def build_reports(
         "active_range": range_key,
         "date_from": date_from,
         "date_to": date_to,
-        "sections": _sections_with_counts(section, calls, follow_up, users, queues, system),
-        "ranges": REPORT_RANGES,
+        "sections": _sections_with_counts(section, calls, follow_up, users, queues, trunks, system),
+        "ranges": DATE_RANGE_OPTIONS,
+        "range_is_custom": resolved_range.is_custom,
         "calls": calls,
         "follow_up": follow_up,
         "users": users,
         "user_detail": user_detail,
         "queues": queues,
+        "trunks": trunks,
         "system": system,
         "recent_calls": recent_calls,
         "hourly": hourly,
+        "daily": daily,
+        "dispositions": dispositions,
+        "longest_calls": longest_calls,
         "audit_entries": audit_entries,
     }
 
 
-def _range_filter(range_key: str, *, date_from: str = "", date_to: str = "") -> tuple[str, dict[str, object]]:
-    if date_from or date_to:
+def _range_filter(range_key: str, *, date_from: str = "", date_to: str = "", timezone_name: str = "UTC") -> tuple[str, dict[str, object]]:
+    if range_key == "custom" and (date_from or date_to):
         where = []
         params: dict[str, object] = {}
-        start = _parse_report_date(date_from, end_of_day=False)
-        end = _parse_report_date(date_to, end_of_day=True)
+        start = _parse_report_date(date_from, end_of_day=False, timezone_name=timezone_name)
+        end = _parse_report_date(date_to, end_of_day=True, timezone_name=timezone_name)
+        if start:
+            where.append("calldate >= %(date_from)s")
+            params["date_from"] = start
+        if end:
+            where.append("calldate <= %(date_to)s")
+            params["date_to"] = end
+        return (" AND ".join(where) if where else "1=1"), params
+    if date_from or date_to:
+        where = []
+        params = {}
+        start = _parse_report_date(date_from, end_of_day=False, timezone_name=timezone_name)
+        end = _parse_report_date(date_to, end_of_day=True, timezone_name=timezone_name)
         if start:
             where.append("calldate >= %(date_from)s")
             params["date_from"] = start
@@ -105,17 +137,8 @@ def _range_filter(range_key: str, *, date_from: str = "", date_to: str = "") -> 
     return "calldate >= %(date_from)s", {"date_from": start}
 
 
-def _parse_report_date(value: str, *, end_of_day: bool) -> datetime | None:
-    cleaned = (value or "").strip()
-    if not cleaned:
-        return None
-    try:
-        parsed = datetime.strptime(cleaned, "%Y-%m-%d").replace(tzinfo=UTC)
-    except ValueError:
-        return None
-    if end_of_day:
-        return parsed.replace(hour=23, minute=59, second=59)
-    return parsed
+def _parse_report_date(value: str, *, end_of_day: bool, timezone_name: str = "UTC") -> datetime | None:
+    return parse_date_bound(value, end_of_day=end_of_day, timezone_name=timezone_name)
 
 
 def _call_summary(connection: psycopg.Connection, where_sql: str, params: dict[str, object]) -> dict[str, object]:
@@ -126,9 +149,11 @@ def _call_summary(connection: psycopg.Connection, where_sql: str, params: dict[s
                 COUNT(*) AS total,
                 COALESCE(SUM(CASE WHEN COALESCE(direction, 'unknown') = 'inbound' THEN 1 ELSE 0 END), 0) AS inbound,
                 COALESCE(SUM(CASE WHEN COALESCE(direction, 'unknown') = 'outbound' THEN 1 ELSE 0 END), 0) AS outbound,
+                COALESCE(SUM(CASE WHEN COALESCE(direction, 'unknown') = 'internal' THEN 1 ELSE 0 END), 0) AS internal,
                 COALESCE(SUM(CASE WHEN disposition = 'ANSWERED' THEN 1 ELSE 0 END), 0) AS answered,
-                COALESCE(SUM(CASE WHEN disposition = ANY(%(missed)s) THEN 1 ELSE 0 END), 0) AS missed,
-                COALESCE(SUM(CASE WHEN {_abandoned_condition()} THEN 1 ELSE 0 END), 0) AS abandoned,
+                COALESCE(SUM(CASE WHEN {customer_missed_call_condition()} THEN 1 ELSE 0 END), 0) AS missed,
+                COALESCE(SUM(CASE WHEN {abandoned_call_condition()} THEN 1 ELSE 0 END), 0) AS abandoned,
+                COALESCE(SUM(CASE WHEN COALESCE(NULLIF(recordingfile, ''), '') <> '' THEN 1 ELSE 0 END), 0) AS recorded,
                 COALESCE(SUM(duration), 0) AS total_duration,
                 COALESCE(SUM(billsec), 0) AS total_talk_time,
                 COALESCE(ROUND(AVG(NULLIF(billsec, 0))), 0) AS avg_talk_time,
@@ -141,20 +166,35 @@ def _call_summary(connection: psycopg.Connection, where_sql: str, params: dict[s
         summary = dict(cursor.fetchone())
 
     total = int(summary["total"] or 0)
+    inbound = int(summary["inbound"] or 0)
     answered = int(summary["answered"] or 0)
     missed = int(summary["missed"] or 0)
     abandoned = int(summary["abandoned"] or 0)
     summary["answer_rate"] = _percent(answered, total)
-    summary["missed_rate"] = _percent(missed, total)
-    summary["abandoned_rate"] = _percent(abandoned, total)
+    summary["missed_rate"] = _percent(missed, inbound)
+    summary["abandoned_rate"] = _percent(abandoned, inbound)
+    summary["recorded_rate"] = _percent(summary.get("recorded"), total)
     summary["avg_talk_time_label"] = _duration_label(summary["avg_talk_time"])
     summary["total_talk_time_label"] = _duration_label(summary["total_talk_time"])
     summary["last_call_label"] = _time_label(summary.get("last_call_at"))
     return summary
 
 
-def _follow_up_summary(connection: psycopg.Connection) -> dict[str, object]:
-    report = list_callback_worklist(connection, open_only=False, limit=25)
+def _follow_up_summary(
+    connection: psycopg.Connection,
+    *,
+    date_from: str = "",
+    date_to: str = "",
+    timezone_name: str = "UTC",
+) -> dict[str, object]:
+    report = list_callback_worklist(
+        connection,
+        open_only=False,
+        date_from=date_from,
+        date_to=date_to,
+        timezone_name=timezone_name,
+        limit=25,
+    )
     summary = dict(report["summary"])
     summary["rows"] = report["rows"][:10]
     summary["completion_rate"] = _percent(summary.get("done_today", 0), summary.get("open_callbacks", 0) + summary.get("done_today", 0))
@@ -234,7 +274,7 @@ def _user_detail_report(
                 COALESCE(SUM(CASE WHEN {_user_incoming_filter()} THEN 1 ELSE 0 END), 0) AS incoming,
                 COALESCE(SUM(CASE WHEN {_user_outgoing_filter()} THEN 1 ELSE 0 END), 0) AS outgoing,
                 COALESCE(SUM(CASE WHEN disposition = 'ANSWERED' THEN 1 ELSE 0 END), 0) AS answered,
-                COALESCE(SUM(CASE WHEN disposition = ANY(%(missed)s) THEN 1 ELSE 0 END), 0) AS missed,
+                COALESCE(SUM(CASE WHEN {_user_missed_filter()} THEN 1 ELSE 0 END), 0) AS missed,
                 COALESCE(SUM(billsec), 0) AS talk_time,
                 COALESCE(ROUND(AVG(NULLIF(billsec, 0))), 0) AS avg_talk_time
             FROM cdr_raw
@@ -252,7 +292,7 @@ def _user_detail_report(
                 COALESCE(SUM(CASE WHEN {_user_incoming_filter()} THEN 1 ELSE 0 END), 0) AS incoming,
                 COALESCE(SUM(CASE WHEN {_user_outgoing_filter()} THEN 1 ELSE 0 END), 0) AS outgoing,
                 COALESCE(SUM(CASE WHEN disposition = 'ANSWERED' THEN 1 ELSE 0 END), 0) AS answered,
-                COALESCE(SUM(CASE WHEN disposition = ANY(%(missed)s) THEN 1 ELSE 0 END), 0) AS missed,
+                COALESCE(SUM(CASE WHEN {_user_missed_filter()} THEN 1 ELSE 0 END), 0) AS missed,
                 COALESCE(SUM(billsec), 0) AS talk_time,
                 COALESCE(ROUND(AVG(NULLIF(billsec, 0))), 0) AS avg_talk_time
             FROM cdr_raw
@@ -286,10 +326,11 @@ def _user_detail_report(
         recent = [dict(row) for row in cursor.fetchall()]
 
     total = int(summary.get("total_calls") or 0)
+    incoming = int(summary.get("incoming") or 0)
     answered = int(summary.get("answered") or 0)
     missed = int(summary.get("missed") or 0)
     summary["answer_rate"] = _percent(answered, total)
-    summary["missed_rate"] = _percent(missed, total)
+    summary["missed_rate"] = _percent(missed, incoming)
     summary["talk_time_label"] = _duration_label(summary.get("talk_time"))
     summary["avg_talk_time_label"] = _duration_label(summary.get("avg_talk_time"))
     for row in daily:
@@ -332,6 +373,13 @@ def _user_outgoing_filter() -> str:
     """
 
 
+def _user_missed_filter() -> str:
+    return f"""
+    {_user_incoming_filter()}
+    AND disposition = ANY(%(missed)s)
+    """
+
+
 def _queue_summary(connection: psycopg.Connection, where_sql: str, params: dict[str, object]) -> dict[str, object]:
     queues = list_queues(connection)
     with connection.cursor(row_factory=dict_row) as cursor:
@@ -342,6 +390,8 @@ def _queue_summary(connection: psycopg.Connection, where_sql: str, params: dict[
                 COUNT(*) AS total_calls,
                 COALESCE(SUM(CASE WHEN disposition = 'ANSWERED' THEN 1 ELSE 0 END), 0) AS answered,
                 COALESCE(SUM(CASE WHEN disposition = ANY(%(missed)s) THEN 1 ELSE 0 END), 0) AS missed,
+                COALESCE(SUM(CASE WHEN {abandoned_call_condition()} THEN 1 ELSE 0 END), 0) AS abandoned,
+                COALESCE(SUM(CASE WHEN disposition = 'ANSWERED' AND GREATEST(duration - billsec, 0) <= 30 THEN 1 ELSE 0 END), 0) AS sla_answered,
                 COALESCE(ROUND(AVG(NULLIF(duration - billsec, 0))), 0) AS avg_wait
             FROM cdr_raw
             WHERE {where_sql}
@@ -356,10 +406,50 @@ def _queue_summary(connection: psycopg.Connection, where_sql: str, params: dict[
 
     for row in rows:
         row["answer_rate"] = _percent(row["answered"], row["total_calls"])
+        row["abandoned_rate"] = _percent(row["abandoned"], row["total_calls"])
+        row["sla_rate"] = _percent(row["sla_answered"], row["total_calls"])
         row["avg_wait_label"] = _duration_label(row["avg_wait"])
     return {
         "configured": len(queues),
         "enabled": len([queue for queue in queues if queue.get("enabled")]),
+        "rows": rows,
+    }
+
+
+def _trunk_summary(connection: psycopg.Connection, where_sql: str, params: dict[str, object]) -> dict[str, object]:
+    configured = list_trunks(connection)
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            f"""
+            SELECT
+                COALESCE(NULLIF(trunk_name, ''), 'No trunk') AS trunk_name,
+                COUNT(*) AS total_calls,
+                COALESCE(SUM(CASE WHEN COALESCE(direction, 'unknown') = 'inbound' THEN 1 ELSE 0 END), 0) AS inbound,
+                COALESCE(SUM(CASE WHEN COALESCE(direction, 'unknown') = 'outbound' THEN 1 ELSE 0 END), 0) AS outbound,
+                COALESCE(SUM(CASE WHEN disposition = 'ANSWERED' THEN 1 ELSE 0 END), 0) AS answered,
+                COALESCE(SUM(CASE WHEN disposition <> 'ANSWERED' THEN 1 ELSE 0 END), 0) AS failed,
+                COALESCE(SUM(billsec), 0) AS talk_time,
+                COALESCE(ROUND(AVG(NULLIF(billsec, 0))), 0) AS avg_talk_time,
+                MAX(calldate) AS last_call_at
+            FROM cdr_raw
+            WHERE {where_sql}
+              AND COALESCE(NULLIF(trunk_name, ''), '') <> ''
+            GROUP BY COALESCE(NULLIF(trunk_name, ''), 'No trunk')
+            ORDER BY total_calls DESC, trunk_name
+            LIMIT 20
+            """,
+            params,
+        )
+        rows = [dict(row) for row in cursor.fetchall()]
+    for row in rows:
+        row["answer_rate"] = _percent(row["answered"], row["total_calls"])
+        row["failure_rate"] = _percent(row["failed"], row["total_calls"])
+        row["talk_time_label"] = _duration_label(row.get("talk_time"))
+        row["avg_talk_time_label"] = _duration_label(row.get("avg_talk_time"))
+        row["last_call_label"] = _time_label(row.get("last_call_at"))
+    return {
+        "configured": len(configured),
+        "enabled": len([trunk for trunk in configured if trunk.get("enabled")]),
         "rows": rows,
     }
 
@@ -612,8 +702,8 @@ def _recent_calls(connection: psycopg.Connection, where_sql: str, params: dict[s
                 disposition,
                 billsec,
                 CASE
-                    WHEN {_abandoned_condition()} THEN 'Abandoned'
-                    WHEN disposition = ANY(%(missed)s) THEN 'Missed'
+                    WHEN {abandoned_call_condition()} THEN 'Abandoned'
+                    WHEN {customer_missed_call_condition()} THEN 'Missed'
                     WHEN disposition = 'ANSWERED' THEN 'Answered'
                     ELSE COALESCE(disposition, 'Unknown')
                 END AS simple_status
@@ -623,6 +713,83 @@ def _recent_calls(connection: psycopg.Connection, where_sql: str, params: dict[s
             LIMIT %(limit)s
             """,
             {**params, "limit": limit},
+        )
+        rows = [dict(row) for row in cursor.fetchall()]
+    for row in rows:
+        row["talk_time_label"] = _duration_label(row["billsec"])
+    return rows
+
+
+def _daily_rows(connection: psycopg.Connection, where_sql: str, params: dict[str, object]) -> list[dict]:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            f"""
+            SELECT
+                TO_CHAR(calldate::date, 'YYYY-MM-DD') AS day,
+                COUNT(*) AS total_calls,
+                COALESCE(SUM(CASE WHEN COALESCE(direction, 'unknown') = 'inbound' THEN 1 ELSE 0 END), 0) AS inbound,
+                COALESCE(SUM(CASE WHEN COALESCE(direction, 'unknown') = 'outbound' THEN 1 ELSE 0 END), 0) AS outbound,
+                COALESCE(SUM(CASE WHEN disposition = 'ANSWERED' THEN 1 ELSE 0 END), 0) AS answered,
+                COALESCE(SUM(CASE WHEN {customer_missed_call_condition()} THEN 1 ELSE 0 END), 0) AS missed,
+                COALESCE(SUM(billsec), 0) AS talk_time
+            FROM cdr_raw
+            WHERE {where_sql}
+              AND calldate IS NOT NULL
+            GROUP BY calldate::date
+            ORDER BY calldate::date DESC
+            LIMIT 31
+            """,
+            params,
+        )
+        rows = [dict(row) for row in cursor.fetchall()]
+    for row in rows:
+        row["answer_rate"] = _percent(row["answered"], row["total_calls"])
+        row["talk_time_label"] = _duration_label(row["talk_time"])
+    return rows
+
+
+def _disposition_rows(connection: psycopg.Connection, where_sql: str, params: dict[str, object]) -> list[dict]:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            f"""
+            SELECT
+                COALESCE(NULLIF(disposition, ''), 'UNKNOWN') AS disposition,
+                COUNT(*) AS total_calls,
+                COALESCE(SUM(billsec), 0) AS talk_time
+            FROM cdr_raw
+            WHERE {where_sql}
+            GROUP BY COALESCE(NULLIF(disposition, ''), 'UNKNOWN')
+            ORDER BY total_calls DESC, disposition
+            LIMIT 12
+            """,
+            params,
+        )
+        rows = [dict(row) for row in cursor.fetchall()]
+    total = sum(int(row.get("total_calls") or 0) for row in rows)
+    for row in rows:
+        row["share"] = _percent(row["total_calls"], total)
+        row["talk_time_label"] = _duration_label(row["talk_time"])
+    return rows
+
+
+def _longest_calls(connection: psycopg.Connection, where_sql: str, params: dict[str, object]) -> list[dict]:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            f"""
+            SELECT
+                TO_CHAR(calldate, 'YYYY-MM-DD HH24:MI:SS') AS call_time,
+                COALESCE(NULLIF(caller_extension, ''), NULLIF(src, ''), NULLIF(clid, ''), 'unknown') AS caller,
+                COALESCE(NULLIF(callee_extension, ''), NULLIF(queue_name, ''), NULLIF(ivr_name, ''), NULLIF(dst, ''), 'unknown') AS callee,
+                COALESCE(direction, 'unknown') AS direction,
+                COALESCE(NULLIF(trunk_name, ''), NULLIF(route_name, ''), '-') AS path,
+                billsec
+            FROM cdr_raw
+            WHERE {where_sql}
+              AND disposition = 'ANSWERED'
+            ORDER BY billsec DESC NULLS LAST, calldate DESC NULLS LAST
+            LIMIT 10
+            """,
+            params,
         )
         rows = [dict(row) for row in cursor.fetchall()]
     for row in rows:
@@ -656,6 +823,7 @@ def _sections_with_counts(
     follow_up: dict[str, object],
     users: dict[str, object],
     queues: dict[str, object],
+    trunks: dict[str, object],
     system: dict[str, object],
 ) -> list[dict[str, object]]:
     counts = {
@@ -665,6 +833,7 @@ def _sections_with_counts(
         "follow-up": follow_up.get("open_callbacks", 0),
         "users": users.get("enabled", 0),
         "queues": queues.get("enabled", 0),
+        "trunks": trunks.get("enabled", 0),
         "system": system.get("status", "Check"),
     }
     return [{**item, "active": item["key"] == active, "count": counts.get(item["key"], "")} for item in REPORT_SECTIONS]
@@ -688,17 +857,6 @@ def _live_status_summary(total_extensions: int) -> dict[str, object]:
             "error": "",
         }
     return {"online": 0, "offline": 0, "unknown": total_extensions, "error": "Live snapshot is not ready yet."}
-
-
-def _abandoned_condition() -> str:
-    return """
-    COALESCE(direction, 'unknown') = 'inbound'
-    AND (
-        COALESCE(NULLIF(queue_name, ''), NULLIF(ivr_name, ''), '') <> ''
-        OR COALESCE(NULLIF(callee_extension, ''), '') = ''
-    )
-    AND disposition <> 'ANSWERED'
-    """
 
 
 def _percent(value: object, total: object) -> int:

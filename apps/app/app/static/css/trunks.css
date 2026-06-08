@@ -3,6 +3,17 @@
   gap: 18px;
 }
 
+.trunks-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.trunks-toolbar .primary {
+  min-width: 164px;
+  min-height: 46px;
+  white-space: nowrap;
+}
+
 .trunk-card-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -194,6 +205,10 @@
 }
 
 @media (max-width: 640px) {
+  .trunks-toolbar .primary {
+    width: 100%;
+  }
+
   .trunk-card-grid {
     grid-template-columns: 1fr;
   }

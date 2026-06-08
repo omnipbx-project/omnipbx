@@ -385,10 +385,10 @@ def _https_site_address(host: str, port: int) -> str:
 
 
 def _render_http_redirect_block(host: str, public_base_url: str | None, port: int) -> str:
-    target = public_base_url or f"https://{host}"
     return (
         f"\nhttp://{host}:{port} {{\n"
-        f"  redir {target}{{uri}}\n"
+        f"{_render_webphone_proxy_block()}"
+        "  reverse_proxy app:18000\n"
         "}\n"
     )
 

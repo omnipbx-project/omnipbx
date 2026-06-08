@@ -1,12 +1,16 @@
 from urllib.parse import urlencode
+from io import BytesIO
+from pathlib import Path
+import zipfile
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.responses import RedirectResponse
 import json
 import psycopg
 
 from app.core.db import get_connection
+from app.core.settings import get_settings
 from app.services.extensions import list_extensions
 from app.services.softphone import (
     build_softphone_bootstrap,
@@ -19,6 +23,8 @@ from app.web import render_template
 
 
 router = APIRouter(tags=["softphone"])
+
+WEBPHONE_EXTENSION_EXCLUDES = {"__pycache__", ".DS_Store"}
 
 
 @router.get("/softphone", response_class=HTMLResponse)
@@ -90,6 +96,30 @@ def set_softphone_dnd_from_ui(
     return RedirectResponse(url=f"/softphone?{params}", status_code=303)
 
 
+@router.get("/softphone/extension/download")
+def download_webphone_extension() -> Response:
+    extension_dir = _webphone_extension_dir()
+    archive = BytesIO()
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+        for path in sorted(extension_dir.rglob("*")):
+            if not path.is_file() or any(part in WEBPHONE_EXTENSION_EXCLUDES for part in path.parts):
+                continue
+            zip_file.write(path, path.relative_to(extension_dir))
+    archive.seek(0)
+    return Response(
+        archive.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="omnipbx-webphone-extension.zip"'},
+    )
+
+
+def _webphone_extension_dir() -> Path:
+    host_path = Path(get_settings().host_project_path) / "third_party" / "web-softphone-demo"
+    if host_path.exists():
+        return host_path
+    return Path(__file__).resolve().parents[5] / "third_party" / "web-softphone-demo"
+
+
 @router.get("/webphone/detached", response_class=HTMLResponse)
 def detached_webphone_page(
     request: Request,
@@ -116,7 +146,7 @@ def detached_webphone_page(
         show_notifications=False,
         show_profile_avatar=False,
         bootstrap=bootstrap,
-        page_js=["/static/vendor/jssip.min.js", "/static/js/webphone.js"],
+        page_js=["/static/vendor/sip-simple-user.min.js", "/static/vendor/jssip.min.js", "/static/js/webphone.js"],
         page_css=["/static/css/webphone.css"],
     )
 

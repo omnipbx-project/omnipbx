@@ -1,4 +1,4 @@
-{% from "_ui_macros.html" import empty_state %}
+{% from "_ui_macros.html" import empty_state, date_range_filter %}
 {% extends "base.html" %}
 {% block content %}
 <section class="page-grid call-log-page">
@@ -10,7 +10,7 @@
       </div>
       <nav class="call-log-folder-list">
         {% for item in categories %}
-        <a class="call-log-folder {% if category == item.key %}active{% endif %}" href="/call-logs?category={{ item.key }}&search={{ search|urlencode }}&date_from={{ date_from|urlencode }}&date_to={{ date_to|urlencode }}&limit={{ limit }}">
+        <a class="call-log-folder {% if category == item.key %}active{% endif %}" href="/call-logs?category={{ item.key }}&search={{ search|urlencode }}&direction={{ direction }}&range={{ range }}&date_from={{ date_from|urlencode }}&date_to={{ date_to|urlencode }}&limit={{ limit }}">
           <span class="call-log-folder-icon" aria-hidden="true">
             {% if item.key == "missed" %}!
             {% elif item.key == "abandoned" %}×
@@ -32,6 +32,7 @@
           <h3>{{ categories|selectattr("key", "equalto", category)|map(attribute="label")|first }}</h3>
           <span>{{ rows|length }} visible</span>
         </div>
+        <a class="button-link secondary" href="/call-logs/export?category={{ category }}&search={{ search|urlencode }}&direction={{ direction }}&range={{ range }}&date_from={{ date_from|urlencode }}&date_to={{ date_to|urlencode }}">Export CSV</a>
       </div>
 
       <form method="get" action="/call-logs" class="call-log-searchbar">
@@ -40,14 +41,7 @@
           <span>Search</span>
           <input id="search" type="text" name="search" value="{{ search }}" placeholder="Name, number, extension, trunk">
         </label>
-        <label for="date_from">
-          <span>From</span>
-          <input id="date_from" type="text" name="date_from" value="{{ date_from }}" placeholder="YYYY-MM-DD">
-        </label>
-        <label for="date_to">
-          <span>To</span>
-          <input id="date_to" type="text" name="date_to" value="{{ date_to }}" placeholder="YYYY-MM-DD">
-        </label>
+        {{ date_range_filter(date_range.options, date_range.active, date_range.date_from, date_range.date_to) }}
         <label class="call-log-rows" for="limit">
           <span>Rows</span>
           <input id="limit" type="text" name="limit" value="{{ limit }}">

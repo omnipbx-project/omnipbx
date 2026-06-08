@@ -1346,9 +1346,14 @@ tbody tr:hover td {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
   padding: 15px 18px;
   border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--bg-panel-strong) 72%, transparent);
+}
+
+.call-log-topline > div {
+  min-width: 0;
 }
 
 .call-log-topline h3 {
@@ -1365,7 +1370,7 @@ tbody tr:hover td {
 
 .call-log-searchbar {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 132px 132px 78px auto;
+  grid-template-columns: minmax(220px, 1fr) 150px 170px 170px 78px auto;
   gap: 8px;
   align-items: end;
   padding: 12px 18px;
@@ -1383,7 +1388,8 @@ tbody tr:hover td {
   text-transform: uppercase;
 }
 
-.call-log-searchbar input {
+.call-log-searchbar input,
+.call-log-searchbar select {
   width: 100%;
   min-height: 38px;
   padding: 8px 10px;
@@ -1796,10 +1802,16 @@ tbody tr:hover td {
   justify-content: space-between;
   gap: 14px;
   align-items: center;
+  flex-wrap: wrap;
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
+}
+
+.reports-toolbar .section-copy {
+  flex: 1 1 260px;
+  min-width: 0;
 }
 
 .reports-range {
@@ -1826,6 +1838,49 @@ tbody tr:hover td {
   color: #ffffff;
 }
 
+.reports-range-form {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex: 1 1 460px;
+  min-width: 0;
+}
+
+.date-range-filter {
+  display: contents;
+}
+
+.date-range-filter label,
+.date-range-custom label {
+  display: grid;
+  gap: 6px;
+  min-width: 130px;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.date-range-filter select,
+.date-range-filter input {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-panel-strong) 96%, transparent);
+  color: var(--text);
+}
+
+.date-range-custom {
+  display: contents;
+}
+
+.date-range-custom[hidden] {
+  display: none !important;
+}
+
 .reports-two-column {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1834,7 +1889,7 @@ tbody tr:hover td {
 
 .reports-user-filter {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 140px 150px 150px auto;
+  grid-template-columns: minmax(180px, 1fr) 150px 170px 170px auto;
   gap: 10px;
   align-items: end;
 }
@@ -1883,7 +1938,7 @@ tbody tr:hover td {
 
 .call-records-filter {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 130px minmax(180px, 1fr) 145px 145px 90px auto;
+  grid-template-columns: minmax(180px, 1fr) 130px minmax(180px, 1fr) 150px 170px 170px 90px auto;
   gap: 10px;
   align-items: end;
 }
@@ -2227,7 +2282,15 @@ tbody tr:hover td {
   }
 
   .reports-range,
+  .reports-range-form,
   .reports-range a {
+    width: 100%;
+  }
+
+  .reports-range a,
+  .reports-range-form button,
+  .date-range-filter label,
+  .date-range-custom label {
     width: 100%;
   }
 

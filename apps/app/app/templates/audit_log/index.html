@@ -1,4 +1,4 @@
-{% from "_ui_macros.html" import empty_state, stat_card %}
+{% from "_ui_macros.html" import empty_state, stat_card, date_range_filter %}
 {% extends "base.html" %}
 {% block content %}
 <section class="reports-page">
@@ -17,11 +17,13 @@
         <h3>{{ report.sections|selectattr("active")|map(attribute="label")|first }} Report</h3>
         <p>Clear numbers for managers and agents. No technical terms needed.</p>
       </div>
-      <div class="reports-range" aria-label="Report date range">
-        {% for item in report.ranges %}
-        <a class="{% if item.key == report.active_range and not report.date_from and not report.date_to %}active{% endif %}" href="/reports?section={{ report.active_section }}&range={{ item.key }}&extension={{ report.user_detail.selected_extension }}">{{ item.label }}</a>
-        {% endfor %}
-      </div>
+      <form class="reports-range-form" method="get" action="/reports">
+        <input type="hidden" name="section" value="{{ report.active_section }}">
+        <input type="hidden" name="extension" value="{{ report.user_detail.selected_extension }}">
+        {{ date_range_filter(report.ranges, report.active_range, report.date_from, report.date_to) }}
+        <button type="submit" class="button-link">Apply</button>
+        <a class="button-link secondary" href="/reports/export?section={{ report.active_section }}&range={{ report.active_range }}&extension={{ report.user_detail.selected_extension }}&date_from={{ report.date_from }}&date_to={{ report.date_to }}">Export CSV</a>
+      </form>
     </div>
 
     {% if report.active_section == "overview" %}
@@ -38,6 +40,8 @@
           <tbody>
             <tr><td>Incoming calls</td><td class="mono">{{ report.calls.inbound }}</td></tr>
             <tr><td>Outgoing calls</td><td class="mono">{{ report.calls.outbound }}</td></tr>
+            <tr><td>Internal calls</td><td class="mono">{{ report.calls.internal }}</td></tr>
+            <tr><td>Recorded calls</td><td class="mono">{{ report.calls.recorded }} ({{ report.calls.recorded_rate }}%)</td></tr>
             <tr><td>Total talk time</td><td class="mono">{{ report.calls.total_talk_time_label }}</td></tr>
             <tr><td>Last call</td><td class="mono">{{ report.calls.last_call_label }}</td></tr>
           </tbody>
@@ -77,12 +81,59 @@
       {{ empty_state("No peak hour data", "Calls will appear here after CDR starts receiving records.") }}
       {% endif %}
     </div>
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>Disposition mix</h3><p>Answered, busy, failed, and no-answer result totals.</p></div></div>
+      {% if report.dispositions %}
+      <table>
+        <thead><tr><th>Result</th><th>Calls</th><th>Share</th><th>Talk time</th></tr></thead>
+        <tbody>
+          {% for row in report.dispositions %}
+          <tr><td>{{ row.disposition }}</td><td>{{ row.total_calls }}</td><td>{{ row.share }}%</td><td class="mono">{{ row.talk_time_label }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      {{ empty_state("No disposition data", "Call results will appear after CDR records are available.") }}
+      {% endif %}
+    </div>
     {% elif report.active_section == "calls" %}
     <div class="metric-grid">
       {{ stat_card("All Calls", report.calls.total, "Selected period") }}
       {{ stat_card("Incoming", report.calls.inbound, "Customers calling in") }}
       {{ stat_card("Outgoing", report.calls.outbound, "Team calling out") }}
       {{ stat_card("Talk Time", report.calls.total_talk_time_label, "Answered conversation time") }}
+    </div>
+    <div class="reports-two-column">
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>Daily trend</h3><p>Volume and answer rate by day.</p></div></div>
+        {% if report.daily %}
+        <table>
+          <thead><tr><th>Date</th><th>Calls</th><th>In</th><th>Out</th><th>Answered</th><th>Missed</th><th>Answer</th><th>Talk</th></tr></thead>
+          <tbody>
+            {% for row in report.daily %}
+            <tr><td class="mono">{{ row.day }}</td><td>{{ row.total_calls }}</td><td>{{ row.inbound }}</td><td>{{ row.outbound }}</td><td>{{ row.answered }}</td><td>{{ row.missed }}</td><td>{{ row.answer_rate }}%</td><td class="mono">{{ row.talk_time_label }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        {{ empty_state("No daily data", "Daily totals will appear after calls are logged.") }}
+        {% endif %}
+      </div>
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>Longest answered calls</h3><p>Useful for coaching and billing checks.</p></div></div>
+        {% if report.longest_calls %}
+        <table>
+          <thead><tr><th>Time</th><th>From</th><th>To</th><th>Type</th><th>Path</th><th>Talk</th></tr></thead>
+          <tbody>
+            {% for row in report.longest_calls %}
+            <tr><td class="mono">{{ row.call_time }}</td><td>{{ row.caller }}</td><td>{{ row.callee }}</td><td>{{ row.direction|title }}</td><td>{{ row.path }}</td><td class="mono">{{ row.talk_time_label }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        {{ empty_state("No answered calls", "Answered calls with talk time will appear here.") }}
+        {% endif %}
+      </div>
     </div>
     <div class="panel">
       <div class="section-header"><div class="section-copy"><h3>Recent calls</h3><p>Latest calls in this report range.</p></div><a class="button-link secondary" href="/call-logs">Open Call Log</a></div>
@@ -174,22 +225,7 @@
             {% endfor %}
           </select>
         </label>
-        <label>
-          Range
-          <select name="range">
-            {% for item in report.ranges %}
-            <option value="{{ item.key }}" {% if item.key == report.active_range %}selected{% endif %}>{{ item.label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          From
-          <input type="date" name="date_from" value="{{ report.date_from }}">
-        </label>
-        <label>
-          To
-          <input type="date" name="date_to" value="{{ report.date_to }}">
-        </label>
+        {{ date_range_filter(report.ranges, report.active_range, report.date_from, report.date_to) }}
         <button type="submit" class="button-link">View</button>
       </form>
     </div>
@@ -259,20 +295,44 @@
       {{ stat_card("Enabled", report.queues.enabled, "Active queues", "success") }}
       {{ stat_card("Queue Calls", report.queues.rows|sum(attribute="total_calls"), "Calls handled by queues") }}
       {{ stat_card("Answered", report.queues.rows|sum(attribute="answered"), "Answered from queues", "success") }}
+      {{ stat_card("Abandoned", report.queues.rows|sum(attribute="abandoned"), "Caller left before answer", "danger") }}
+      {{ stat_card("SLA", (report.queues.rows|sum(attribute="sla_answered")), "Answered within 30 sec") }}
     </div>
     <div class="panel">
       <div class="section-header"><div class="section-copy"><h3>Queue performance</h3><p>Simple service-level view for each queue.</p></div></div>
       {% if report.queues.rows %}
       <table>
-        <thead><tr><th>Queue</th><th>Calls</th><th>Answered</th><th>Missed</th><th>Answer rate</th><th>Avg wait</th></tr></thead>
+        <thead><tr><th>Queue</th><th>Calls</th><th>Answered</th><th>Missed</th><th>Abandoned</th><th>Answer rate</th><th>SLA</th><th>Avg wait</th></tr></thead>
         <tbody>
           {% for row in report.queues.rows %}
-          <tr><td>{{ row.queue_name }}</td><td>{{ row.total_calls }}</td><td>{{ row.answered }}</td><td>{{ row.missed }}</td><td>{{ row.answer_rate }}%</td><td class="mono">{{ row.avg_wait_label }}</td></tr>
+          <tr><td>{{ row.queue_name }}</td><td>{{ row.total_calls }}</td><td>{{ row.answered }}</td><td>{{ row.missed }}</td><td>{{ row.abandoned }} ({{ row.abandoned_rate }}%)</td><td>{{ row.answer_rate }}%</td><td>{{ row.sla_rate }}%</td><td class="mono">{{ row.avg_wait_label }}</td></tr>
           {% endfor %}
         </tbody>
       </table>
       {% else %}
       {{ empty_state("No queue calls", "Queue activity appears after calls are routed through queues.") }}
+      {% endif %}
+    </div>
+    {% elif report.active_section == "trunks" %}
+    <div class="metric-grid">
+      {{ stat_card("Trunks", report.trunks.configured, "Configured trunks") }}
+      {{ stat_card("Enabled", report.trunks.enabled, "Active trunks", "success") }}
+      {{ stat_card("Trunk Calls", report.trunks.rows|sum(attribute="total_calls"), "Calls using trunks") }}
+      {{ stat_card("Failures", report.trunks.rows|sum(attribute="failed"), "Unanswered or failed trunk calls", "warning") }}
+    </div>
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>Trunk performance</h3><p>Inbound, outbound, failure rate, and talk time by trunk.</p></div></div>
+      {% if report.trunks.rows %}
+      <table>
+        <thead><tr><th>Trunk</th><th>Calls</th><th>In</th><th>Out</th><th>Answered</th><th>Failed</th><th>Answer</th><th>Talk</th><th>Last call</th></tr></thead>
+        <tbody>
+          {% for row in report.trunks.rows %}
+          <tr><td>{{ row.trunk_name }}</td><td>{{ row.total_calls }}</td><td>{{ row.inbound }}</td><td>{{ row.outbound }}</td><td>{{ row.answered }}</td><td>{{ row.failed }} ({{ row.failure_rate }}%)</td><td>{{ row.answer_rate }}%</td><td class="mono">{{ row.talk_time_label }}</td><td class="mono">{{ row.last_call_label }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      {{ empty_state("No trunk calls", "Trunk usage appears after inbound or outbound calls use a trunk.") }}
       {% endif %}
     </div>
     {% elif report.active_section == "system" %}

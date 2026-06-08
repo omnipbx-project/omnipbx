@@ -51,7 +51,6 @@ def trunks_page(
         trunk_statuses={},
         result=result,
         detail=detail,
-        topbar_action={"id": "open-trunk-modal", "label": "+ Add Trunk"},
         page_css=["/static/css/trunks.css"],
         page_js=["/static/js/trunks.js"],
     )

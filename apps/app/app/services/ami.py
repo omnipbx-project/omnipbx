@@ -1,4 +1,5 @@
 import socket
+import threading
 
 from app.core.settings import get_settings
 
@@ -7,35 +8,90 @@ class AmiError(RuntimeError):
     pass
 
 
+class _PersistentAmiSession:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._sock: socket.socket | None = None
+        self._stream = None
+
+    def action(
+        self,
+        action: str,
+        fields: dict[str, str] | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> list[dict[str, str]]:
+        with self._lock:
+            try:
+                self._connect(timeout=timeout)
+                assert self._stream is not None
+                _send_message(self._stream, {"Action": action, **(fields or {})})
+                return _read_until_complete(self._stream)
+            except Exception:
+                self.close()
+                raise
+
+    def close(self) -> None:
+        stream = self._stream
+        sock = self._sock
+        self._stream = None
+        self._sock = None
+        if stream is not None:
+            try:
+                stream.close()
+            except OSError:
+                pass
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+    def _connect(self, *, timeout: float | None) -> None:
+        if self._sock is not None and self._stream is not None:
+            if timeout is not None:
+                self._sock.settimeout(timeout)
+            return
+
+        settings = get_settings()
+        timeout_value = timeout if timeout is not None else settings.ami_timeout_seconds
+        sock = socket.create_connection((settings.ami_host, settings.ami_port), timeout=timeout_value)
+        sock.settimeout(timeout_value)
+        stream = sock.makefile("rwb", buffering=0)
+        try:
+            _send_message(
+                stream,
+                {
+                    "Action": "Login",
+                    "Username": settings.ami_username,
+                    "Secret": settings.ami_password,
+                    "Events": "off",
+                },
+            )
+            login_response = _read_next_message(stream)
+            if login_response.get("Response") != "Success":
+                raise AmiError(login_response.get("Message", "AMI login failed."))
+        except Exception:
+            try:
+                stream.close()
+            finally:
+                sock.close()
+            raise
+
+        self._sock = sock
+        self._stream = stream
+
+
+_AMI_SESSION = _PersistentAmiSession()
+
+
 def ami_action(
     action: str,
     fields: dict[str, str] | None = None,
     *,
     timeout: float | None = None,
 ) -> list[dict[str, str]]:
-    settings = get_settings()
-    timeout_value = timeout if timeout is not None else settings.ami_timeout_seconds
-    with socket.create_connection((settings.ami_host, settings.ami_port), timeout=timeout_value) as sock:
-        sock.settimeout(timeout_value)
-        stream = sock.makefile("rwb", buffering=0)
-        _read_message(stream)
-        _send_message(
-            stream,
-            {
-                "Action": "Login",
-                "Username": settings.ami_username,
-                "Secret": settings.ami_password,
-                "Events": "off",
-            },
-        )
-        login_response = _read_message(stream)
-        if login_response.get("Response") != "Success":
-            raise AmiError(login_response.get("Message", "AMI login failed."))
-
-        _send_message(stream, {"Action": action, **(fields or {})})
-        messages = _read_until_complete(stream)
-        _send_message(stream, {"Action": "Logoff"})
-        return messages
+    return _AMI_SESSION.action(action, fields, timeout=timeout)
 
 
 def ami_command(command: str) -> str:
@@ -73,6 +129,8 @@ def _read_message(stream) -> dict[str, str]:
     while True:
         raw_line = stream.readline()
         if not raw_line:
+            if not message:
+                raise EOFError("AMI connection closed.")
             break
         line = raw_line.decode("utf-8", errors="replace").rstrip("\r\n")
         if not line:
@@ -84,6 +142,13 @@ def _read_message(stream) -> dict[str, str]:
             else:
                 message[key] = value.strip()
     return message
+
+
+def _read_next_message(stream) -> dict[str, str]:
+    while True:
+        message = _read_message(stream)
+        if message:
+            return message
 
 
 def _read_until_complete(stream) -> list[dict[str, str]]:

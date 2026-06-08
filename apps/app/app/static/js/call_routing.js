@@ -83,7 +83,15 @@ document.addEventListener("DOMContentLoaded", function () {
 
   searchInput.addEventListener("input", function () {
     const query = searchInput.value.trim().toLowerCase();
-    document.querySelectorAll("[data-routing-card]").forEach((card) => {
+    const routingCards = document.querySelectorAll("[data-routing-card]");
+    if (!routingCards.length) {
+      document.querySelectorAll("main.content .panel, main.content article, main.content tbody tr").forEach((target) => {
+        target.style.display = !query || target.textContent.toLowerCase().includes(query) ? "" : "none";
+      });
+      return;
+    }
+
+    routingCards.forEach((card) => {
       card.style.display = !query || card.textContent.toLowerCase().includes(query) ? "" : "none";
     });
     document.querySelectorAll("[data-routing-section]").forEach((section) => {

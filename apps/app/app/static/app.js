@@ -89,6 +89,37 @@
       });
     });
 
+    document.querySelectorAll("[data-date-range-filter]").forEach((filter) => {
+      const select = filter.querySelector("[data-date-range-select]");
+      const custom = filter.querySelector("[data-date-range-custom]");
+      if (!select || !custom) return;
+      function syncCustomRange() {
+        custom.hidden = select.value !== "custom";
+      }
+      select.addEventListener("change", syncCustomRange);
+      syncCustomRange();
+    });
+
+    document.querySelectorAll(".topbar-search input").forEach((input) => {
+      const customSearchPaths = ["/extensions", "/trunks", "/call-routing", "/live-overview"];
+      if (customSearchPaths.some((path) => window.location.pathname.startsWith(path))) {
+        return;
+      }
+
+      input.addEventListener("input", function () {
+        const query = input.value.trim().toLowerCase();
+        const content = document.querySelector("main.content");
+        if (!content) return;
+
+        const targets = content.querySelectorAll(
+          ".panel, .metric-card, .management-card, .call-log-row, .call-row, article, tbody tr"
+        );
+        targets.forEach((target) => {
+          target.style.display = !query || target.textContent.toLowerCase().includes(query) ? "" : "none";
+        });
+      });
+    });
+
     window.addEventListener("pagehide", function () {
       closeCardMenus();
     });

@@ -16,6 +16,7 @@
     registerBtn: $('registerBtn'),
     unregisterBtn: $('unregisterBtn'),
     dialNumber: $('dialNumber'),
+    backspaceBtn: $('backspaceBtn'),
     copyNumberBtn: $('copyNumberBtn'),
     keypad: document.querySelector('.keypad'),
     transferBtn: $('transferBtn'),
@@ -465,11 +466,11 @@
       if (state.isMuted) {
         session.unmute({ audio: true });
         state.isMuted = false;
-        els.micMuteBtn.textContent = '🎙';
+        els.micMuteBtn.textContent = 'Mic';
       } else {
         session.mute({ audio: true });
         state.isMuted = true;
-        els.micMuteBtn.textContent = '🔇';
+        els.micMuteBtn.textContent = 'Muted';
       }
     } catch (error) {
       console.warn(error);
@@ -480,7 +481,7 @@
     state.isSpeakerMuted = !state.isSpeakerMuted;
     els.remoteAudio.muted = state.isSpeakerMuted;
     els.remoteVideo.muted = state.isSpeakerMuted;
-    els.speakerMuteBtn.textContent = state.isSpeakerMuted ? '🔇' : '🔈';
+    els.speakerMuteBtn.textContent = state.isSpeakerMuted ? 'Muted' : 'Speaker';
   }
 
   function transferCall() {
@@ -585,6 +586,10 @@
     });
     els.clearBtn.addEventListener('click', () => {
       els.dialNumber.value = '';
+      els.dialNumber.focus();
+    });
+    els.backspaceBtn?.addEventListener('click', () => {
+      els.dialNumber.value = els.dialNumber.value.slice(0, -1);
       els.dialNumber.focus();
     });
     els.copyNumberBtn.addEventListener('click', copyDialNumber);

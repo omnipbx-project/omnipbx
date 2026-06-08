@@ -72,6 +72,7 @@ EOF
 enabled = yes
 port = ${OMNIPBX_AMI_PORT:-5038}
 bindaddr = 127.0.0.1
+displayconnects = yes
 
 [${OMNIPBX_AMI_USERNAME:-omnipbx}]
 secret = ${OMNIPBX_AMI_PASSWORD:-change-me}

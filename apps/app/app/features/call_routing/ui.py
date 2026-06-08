@@ -276,7 +276,6 @@ def call_routing_detail_page(
         extensions=list_extensions(connection),
         result=request.query_params.get("result", ""),
         detail=request.query_params.get("detail", ""),
-        topbar_search=None,
         page_css=["/static/css/call_routing.css"],
         page_js=["/static/js/call_routing.js"],
     )
@@ -387,7 +386,7 @@ def start_conference_now(
         try:
             ami_originate_application(f"PJSIP/{extension}", "ConfBridge", room)
             called += 1
-        except (AmiError, OSError, TimeoutError) as exc:
+        except (AmiError, EOFError, OSError, TimeoutError) as exc:
             errors.append(f"{extension}: {exc}")
     if called:
         detail = f"Started conference {room} and called {called} participant{'s' if called != 1 else ''}."
