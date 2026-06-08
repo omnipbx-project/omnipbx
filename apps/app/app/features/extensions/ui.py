@@ -77,6 +77,7 @@ def create_extension_from_ui(
     secret: str = Form(default=""),
     enabled_raw: str | None = Form(default=None),
     call_recording_raw: str | None = Form(default=None),
+    simultaneous_device_limit: int = Form(default=1),
     email: str = Form(default=""),
     group_name: str = Form(default=""),
     transport: str = Form(default="transport-udp"),
@@ -102,6 +103,7 @@ def create_extension_from_ui(
         secret=secret.strip() or None,
         transport=transport if transport in ALLOWED_USER_TRANSPORTS else "transport-udp",
         call_recording_enabled=call_recording_raw is not None,
+        simultaneous_device_limit=simultaneous_device_limit,
         enabled=enabled_raw is not None,
     )
     try:
@@ -152,6 +154,7 @@ def update_extension_from_ui(
     group_name: str = Form(default=""),
     transport: str = Form(default="transport-udp"),
     call_recording_raw: str | None = Form(default=None),
+    simultaneous_device_limit: int = Form(default=1),
     photo: UploadFile | None = File(default=None),
     connection: psycopg.Connection = Depends(get_connection),
 ) -> RedirectResponse:
@@ -176,6 +179,7 @@ def update_extension_from_ui(
             display_name.strip(),
             transport if transport in ALLOWED_USER_TRANSPORTS else "transport-udp",
             call_recording_raw is not None,
+            simultaneous_device_limit,
             secret.strip() or None,
         )
     except ValueError as exc:

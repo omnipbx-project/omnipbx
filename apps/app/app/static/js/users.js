@@ -94,6 +94,7 @@ document.addEventListener("DOMContentLoaded", function () {
           document.getElementById("edit_group").value = button.dataset.group || document.getElementById("edit_group").value;
           document.getElementById("edit_transport").value = button.dataset.transport || "transport-udp";
           document.getElementById("edit_call_recording").checked = button.dataset.callRecording === "1";
+          document.getElementById("edit_simultaneous_device_limit").value = button.dataset.deviceLimit || "1";
         }
         openPanel("edit-user", "Edit User");
       });

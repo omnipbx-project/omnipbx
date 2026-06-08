@@ -24,6 +24,8 @@ def initialize_schema() -> None:
         codecs VARCHAR(200) NOT NULL DEFAULT 'ulaw,alaw,g722',
         video_codecs VARCHAR(200) NOT NULL DEFAULT '',
         call_recording_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        auto_provision_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        simultaneous_device_limit INTEGER NOT NULL DEFAULT 1,
         enabled BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -506,6 +508,8 @@ def initialize_schema() -> None:
             cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS codecs VARCHAR(200) NOT NULL DEFAULT 'ulaw,alaw,g722'")
             cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS video_codecs VARCHAR(200) NOT NULL DEFAULT ''")
             cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS call_recording_enabled BOOLEAN NOT NULL DEFAULT FALSE")
+            cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS auto_provision_enabled BOOLEAN NOT NULL DEFAULT FALSE")
+            cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS simultaneous_device_limit INTEGER NOT NULL DEFAULT 1")
             cursor.execute("ALTER TABLE advanced_security_rules ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE")
             cursor.execute("ALTER TABLE advanced_security_rules ADD COLUMN IF NOT EXISTS note TEXT")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_app_security_bans_active ON app_security_bans (subject_type, subject_value, enabled, banned_until)")
@@ -521,6 +525,10 @@ def initialize_schema() -> None:
             cursor.execute("UPDATE extensions SET video_codecs = '' WHERE video_codecs IS NULL")
             cursor.execute("UPDATE extensions SET video_codecs = 'h264,vp8' WHERE transport = 'transport-udp-softphone' AND video_codecs = ''")
             cursor.execute("UPDATE extensions SET video_codecs = '' WHERE transport = 'transport-wss'")
+            cursor.execute("UPDATE extensions SET auto_provision_enabled = TRUE WHERE transport = 'transport-wss'")
+            cursor.execute("UPDATE extensions SET auto_provision_enabled = FALSE WHERE transport <> 'transport-wss'")
+            cursor.execute("UPDATE extensions SET simultaneous_device_limit = 1 WHERE simultaneous_device_limit IS NULL OR simultaneous_device_limit < 1")
+            cursor.execute("UPDATE extensions SET simultaneous_device_limit = 10 WHERE simultaneous_device_limit > 10")
             cursor.execute("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'admin'")
             cursor.execute(
                 """

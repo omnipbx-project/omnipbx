@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS extensions (
     codecs VARCHAR(200) NOT NULL DEFAULT 'ulaw,alaw,g722',
     video_codecs VARCHAR(200) NOT NULL DEFAULT '',
     call_recording_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    auto_provision_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    simultaneous_device_limit INTEGER NOT NULL DEFAULT 1,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

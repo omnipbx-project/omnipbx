@@ -202,6 +202,14 @@
     });
   }
 
+  function provisionWebExtension(config) {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: 'SOFTPHONE_PROVISION', config }, (response) => {
+        resolve(response || { ok: !chrome.runtime.lastError, error: chrome.runtime.lastError && chrome.runtime.lastError.message });
+      });
+    });
+  }
+
   async function handleNumber(number) {
     const clean = cleanNumber(number);
     if (!clean || digitCount(clean) < 10 || digitCount(clean) > 12) return;
@@ -239,6 +247,24 @@
     }, true);
   }
 
+  function bindOmniPbxProvisioning() {
+    window.addEventListener('message', async (event) => {
+      if (event.source !== window) return;
+      if (event.origin !== window.location.origin) return;
+      const message = event.data || {};
+      if (message.source !== 'OMNIPBX' || message.type !== 'OMNIPBX_PROVISION_WEB_EXTENSION') return;
+      const result = await provisionWebExtension(message.config || {});
+      window.postMessage({
+        source: 'OMNIPBX_EXTENSION',
+        type: 'OMNIPBX_PROVISION_WEB_EXTENSION_RESULT',
+        requestId: message.requestId || '',
+        ok: Boolean(result.ok),
+        error: result.error || ''
+      }, window.location.origin);
+      showToast(result.ok ? 'Web extension provisioned' : (result.error || 'Provision failed'));
+    });
+  }
+
   function observeDom() {
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
@@ -255,6 +281,7 @@
     injectStyles();
     bindClicks();
     bindSelectionFallback();
+    bindOmniPbxProvisioning();
     queueScan(document.body || document.documentElement);
     observeDom();
   }

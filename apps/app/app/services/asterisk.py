@@ -19,7 +19,7 @@ SOFTPHONE_TRANSPORT = "transport-udp-softphone"
 
 
 FETCH_ENABLED_EXTENSIONS_SQL = """
-SELECT extension, display_name, secret, context, transport, codecs, video_codecs, call_recording_enabled
+SELECT extension, display_name, secret, context, transport, codecs, video_codecs, call_recording_enabled, simultaneous_device_limit
 FROM extensions
 WHERE enabled = TRUE
 ORDER BY extension;
@@ -367,6 +367,7 @@ def render_pjsip_config(extensions: list[dict]) -> str:
         context = item["context"]
         transport = item.get("transport") or DEFAULT_EXTENSION_TRANSPORT
         pjsip_transport = WEBPHONE_TRANSPORT if transport == WEBPHONE_TRANSPORT else DEFAULT_EXTENSION_TRANSPORT
+        max_contacts = _simultaneous_device_limit(item.get("simultaneous_device_limit"))
         codecs = item.get("codecs") or DEFAULT_EXTENSION_CODECS
         video_codecs = item.get("video_codecs") or DEFAULT_EXTENSION_VIDEO_CODECS
         if transport == WEBPHONE_TRANSPORT:
@@ -418,7 +419,7 @@ def render_pjsip_config(extensions: list[dict]) -> str:
                 "\n"
                 f"[{extension}]\n"
                 "type = aor\n"
-                "max_contacts = 1\n"
+                f"max_contacts = {max_contacts}\n"
                 "remove_existing = yes\n"
                 f"{webphone_aor_options}"
                 f"qualify_frequency = {qualify_frequency}\n"
@@ -426,6 +427,14 @@ def render_pjsip_config(extensions: list[dict]) -> str:
             )
         )
     return "".join(blocks)
+
+
+def _simultaneous_device_limit(value: object) -> int:
+    try:
+        limit = int(value)
+    except (TypeError, ValueError):
+        limit = 1
+    return min(10, max(1, limit))
 
 
 def render_extensions_config(

@@ -78,6 +78,63 @@
       });
     });
 
+    document.querySelectorAll("#webphone-provision").forEach((button) => {
+      function waitForProvisionResult(requestId) {
+        return new Promise((resolve, reject) => {
+          const timeout = window.setTimeout(() => {
+            window.removeEventListener("message", onMessage);
+            reject(new Error("OmniPBX web extension did not respond. Install or reload the browser extension."));
+          }, 4000);
+          function onMessage(event) {
+            if (event.source !== window || event.origin !== window.location.origin) return;
+            const message = event.data || {};
+            if (message.source !== "OMNIPBX_EXTENSION" || message.type !== "OMNIPBX_PROVISION_WEB_EXTENSION_RESULT") return;
+            if (message.requestId !== requestId) return;
+            window.clearTimeout(timeout);
+            window.removeEventListener("message", onMessage);
+            resolve(message);
+          }
+          window.addEventListener("message", onMessage);
+        });
+      }
+
+      button.addEventListener("click", async function (event) {
+        event.stopPropagation();
+        const originalTitle = button.title;
+        button.disabled = true;
+        button.title = "Provisioning...";
+        try {
+          const response = await fetch("/api/softphone/bootstrap/current", {cache: "no-store"});
+          if (!response.ok) throw new Error("Unable to load webphone settings.");
+          const data = await response.json();
+          if (!data.available || !data.config) {
+            throw new Error(data.message || "Current user does not have Webphone enabled.");
+          }
+          if (!data.config.auto_provision_enabled) {
+            throw new Error("Auto provision is not enabled for the current Webphone extension.");
+          }
+          const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+          window.postMessage({
+            source: "OMNIPBX",
+            type: "OMNIPBX_PROVISION_WEB_EXTENSION",
+            requestId,
+            config: data.config,
+          }, window.location.origin);
+          const result = await waitForProvisionResult(requestId);
+          if (!result.ok) throw new Error(result.error || "Web extension provisioning failed.");
+          button.title = "Provision request sent";
+          window.setTimeout(() => {
+            button.title = originalTitle;
+          }, 1800);
+        } catch (error) {
+          alert(error.message || "Web extension provisioning failed.");
+          button.title = originalTitle;
+        } finally {
+          button.disabled = false;
+        }
+      });
+    });
+
     document.querySelectorAll(".card-menu").forEach((menu) => {
       menu.addEventListener("toggle", function () {
         if (menu.open) {

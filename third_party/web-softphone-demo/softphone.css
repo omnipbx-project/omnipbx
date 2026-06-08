@@ -18,7 +18,13 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; }
+html, body {
+  width: 100%;
+  min-width: 280px;
+  min-height: 420px;
+  margin: 0;
+  padding: 0;
+}
 body {
   min-height: 100vh;
   background: var(--bg);
@@ -26,24 +32,33 @@ body {
   font-family: Arial, Helvetica, sans-serif;
   display: flex;
   justify-content: center;
+  align-items: stretch;
   user-select: none;
 }
 
 .popup-body,
 .floating-body {
-  width: 272px;
-  min-height: 420px;
-  padding: 14px 0 0;
+  width: 100vw;
+  min-width: 280px;
+  min-height: 100vh;
+  padding: 14px;
 }
 
 .phone-shell {
-  width: 240px;
-  min-height: 392px;
+  width: 100%;
+  min-width: 252px;
+  min-height: calc(100vh - 28px);
   position: relative;
   background: var(--panel);
   border: 1px solid var(--line);
   box-shadow: 0 20px 54px rgba(0, 0, 0, 0.32);
   padding: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.phone-view {
+  flex: 1 1 auto;
 }
 
 .settings-panel {
@@ -126,7 +141,8 @@ button {
 .icon-btn,
 .main-call,
 .toggle-row button {
-  height: 36px;
+  min-height: 36px;
+  height: clamp(36px, 7vh, 54px);
   border: 1px solid var(--button-border);
   background: var(--button);
   color: var(--text);
@@ -274,7 +290,7 @@ button {
 }
 
 .log-panel {
-  max-height: 92px;
+  max-height: clamp(92px, 22vh, 180px);
   overflow: auto;
   margin-top: 8px;
   border: 1px solid var(--line);

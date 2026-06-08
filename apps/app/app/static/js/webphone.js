@@ -140,6 +140,12 @@
       setStatus("Phone engine not loaded", "bad");
       return;
     }
+    if (state.dnd) {
+      state.registered = false;
+      setStatus("DND on", "warn");
+      updateCallButton();
+      return;
+    }
     register();
   }
 
@@ -199,6 +205,28 @@
     }
   }
 
+  async function unregister() {
+    if (!state.ua) {
+      state.registered = false;
+      updateCallButton();
+      return;
+    }
+    try {
+      if (state.session) {
+        try { await state.ua.hangup(); } catch (error) { console.warn(error); }
+      }
+      try { await state.ua.unregister(); } catch (error) { console.warn(error); }
+      try { await state.ua.disconnect(); } catch (error) { console.warn(error); }
+    } finally {
+      state.ua = null;
+      state.registered = false;
+      state.session = null;
+      state.incoming = null;
+      updateCallButton();
+      log("Unregistered");
+    }
+  }
+
   function sipDelegate() {
     return {
       onServerConnect: () => setStatus("Registering...", "warn"),
@@ -227,6 +255,7 @@
       onCallReceived: () => {
         if (state.dnd) {
           state.ua.decline().catch((error) => console.warn(error));
+          setStatus("DND on", "warn");
           return;
         }
         state.session = true;
@@ -441,7 +470,13 @@
         body: JSON.stringify({enabled: state.dnd}),
       });
     }
-    setStatus(state.dnd ? "DND on" : (state.registered ? "Ready" : "DND off"), state.dnd ? "warn" : "ok");
+    if (state.dnd) {
+      await unregister();
+      setStatus("DND on", "warn");
+    } else {
+      setStatus("Registering...", "warn");
+      await register();
+    }
   }
 
   function bindUi() {

@@ -196,7 +196,9 @@
     box-shadow: var(--shadow-soft);
   }
 
-  .menu-list button {
+  .menu-list button,
+  .menu-list a {
+    display: flex;
     justify-content: flex-start;
     width: 100%;
     padding: 9px 10px;
@@ -206,9 +208,12 @@
     color: var(--text-soft);
     font-size: 0.9rem;
     box-shadow: none;
+    text-align: left;
+    text-decoration: none;
   }
 
-  .menu-list button:hover {
+  .menu-list button:hover,
+  .menu-list a:hover {
     background: var(--bg-subtle);
     color: var(--text);
   }

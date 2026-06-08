@@ -50,12 +50,13 @@
     remoteStream: null,
     localStream: null,
     isRegistered: false,
-    dnd: false,
     autoAnswer: false,
     isMuted: false,
     isSpeakerMuted: false,
     mediaRecorder: null,
-    recordedChunks: []
+    recordedChunks: [],
+    registering: false,
+    accountKey: ''
   };
 
   const DEFAULTS = {
@@ -65,7 +66,7 @@
     authUser: '',
     sipPass: '',
     displayName: '',
-    dnd: false,
+    autoRegister: false,
     autoAnswer: false
   };
 
@@ -119,6 +120,16 @@
     els.accountLabel.textContent = els.sipUser.value.trim() || '—';
   }
 
+  function accountKey() {
+    return [
+      els.wsUrl.value.trim(),
+      els.sipDomain.value.trim(),
+      els.sipUser.value.trim(),
+      els.authUser.value.trim(),
+      els.displayName.value.trim()
+    ].join('|');
+  }
+
   function logLine(text) {
     const li = document.createElement('li');
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -148,6 +159,12 @@
     button.dataset.toggle = value ? 'true' : 'false';
   }
 
+  function updateRegisterToggle() {
+    updateToggleButton(els.dndBtn, !state.isRegistered);
+    els.dndBtn.textContent = 'DND';
+    els.dndBtn.title = state.isRegistered ? 'Turn on DND and unregister this webphone' : 'Turn off DND and register this webphone';
+  }
+
   async function saveSettings() {
     await storageSet({
       wsUrl: els.wsUrl.value.trim(),
@@ -156,13 +173,12 @@
       authUser: els.authUser.value.trim(),
       sipPass: els.sipPass.value,
       displayName: els.displayName.value.trim(),
-      dnd: state.dnd,
       autoAnswer: state.autoAnswer
     });
     setAccountLabel();
   }
 
-  async function loadSettings() {
+  async function loadSettings(consumeAutoRegister = true) {
     const data = { ...DEFAULTS, ...(await storageGet(Object.keys(DEFAULTS).concat(['pendingNumber']))) };
     els.wsUrl.value = data.wsUrl || '';
     els.sipDomain.value = data.sipDomain || '';
@@ -170,15 +186,18 @@
     els.authUser.value = data.authUser || '';
     els.sipPass.value = data.sipPass || '';
     els.displayName.value = data.displayName || '';
-    state.dnd = Boolean(data.dnd);
     state.autoAnswer = Boolean(data.autoAnswer);
-    updateToggleButton(els.dndBtn, state.dnd);
+    updateRegisterToggle();
     updateToggleButton(els.autoAnswerBtn, state.autoAnswer);
     if (data.pendingNumber) {
       els.dialNumber.value = normalizeNumber(data.pendingNumber);
       storageSet({ pendingNumber: '' });
     }
     setAccountLabel();
+    if (consumeAutoRegister && data.autoRegister) {
+      await storageSet({ autoRegister: false });
+      setTimeout(registerUA, 250);
+    }
   }
 
   function validateBeforeRegister() {
@@ -201,10 +220,19 @@
   }
 
   async function registerUA() {
+    if (state.registering) return;
     if (!validateBeforeRegister()) return;
     await saveSettings();
+    const nextAccountKey = accountKey();
+    if (state.ua && state.isRegistered && state.accountKey === nextAccountKey) {
+      setStatus('Registered', 'ok');
+      updateCallButtons();
+      logLine('Already registered');
+      return;
+    }
 
     try {
+      state.registering = true;
       if (state.ua) {
         state.ua.stop();
         state.ua = null;
@@ -222,6 +250,7 @@
       if (els.authUser.value.trim()) config.authorization_user = els.authUser.value.trim();
 
       state.ua = new JsSIP.UA(config);
+      state.accountKey = nextAccountKey;
       bindUAEvents(state.ua);
       state.ua.start();
       setStatus('Connecting...', 'warn');
@@ -229,6 +258,8 @@
     } catch (error) {
       console.error(error);
       setStatus(`Register error: ${error.message || error}`, 'bad');
+    } finally {
+      state.registering = false;
     }
   }
 
@@ -241,8 +272,10 @@
     }
     state.ua = null;
     state.isRegistered = false;
+    state.accountKey = '';
     resetSessionState();
     setStatus('Not registered');
+    updateRegisterToggle();
     updateCallButtons();
     logLine('Unregistered');
   }
@@ -252,23 +285,27 @@
     ua.on('disconnected', () => {
       state.isRegistered = false;
       setStatus('Disconnected', 'bad');
+      updateRegisterToggle();
       updateCallButtons();
     });
     ua.on('registered', () => {
       state.isRegistered = true;
       setStatus('Registered', 'ok');
+      updateRegisterToggle();
       updateCallButtons();
       logLine('Registered successfully');
     });
     ua.on('unregistered', () => {
       state.isRegistered = false;
       setStatus('Unregistered', 'warn');
+      updateRegisterToggle();
       updateCallButtons();
     });
     ua.on('registrationFailed', (event) => {
       state.isRegistered = false;
       const cause = event && (event.cause || event.response && event.response.reason_phrase) || 'Registration failed';
       setStatus(String(cause), 'bad');
+      updateRegisterToggle();
       updateCallButtons();
       logLine(`Registration failed: ${cause}`);
     });
@@ -291,12 +328,6 @@
         ? session.remote_identity.uri.toString()
         : 'Unknown caller';
       logLine(`Incoming call from ${remoteIdentity}`);
-
-      if (state.dnd) {
-        session.terminate({ status_code: 486, reason_phrase: 'Do Not Disturb' });
-        setStatus('Rejected by DND', 'warn');
-        return;
-      }
 
       state.incomingSession = session;
       setStatus(`Incoming: ${remoteIdentity}`, 'warn');
@@ -608,10 +639,12 @@
     els.micMuteBtn.addEventListener('click', toggleMicMute);
 
     els.dndBtn.addEventListener('click', async () => {
-      state.dnd = !state.dnd;
-      updateToggleButton(els.dndBtn, state.dnd);
-      await saveSettings();
-      setStatus(state.dnd ? 'DND enabled' : 'DND disabled', state.dnd ? 'warn' : (state.isRegistered ? 'ok' : 'idle'));
+      if (state.isRegistered || state.ua) {
+        unregisterUA();
+        setStatus('DND on', 'warn');
+        return;
+      }
+      await registerUA();
     });
 
     els.autoAnswerBtn.addEventListener('click', async () => {
@@ -647,6 +680,12 @@
         if (message && message.type === 'SOFTPHONE_SET_NUMBER') {
           els.dialNumber.value = normalizeNumber(message.number);
         }
+        if (message && message.type === 'SOFTPHONE_REGISTER_NOW') {
+          loadSettings(false).then(async () => {
+            await storageSet({ autoRegister: false });
+            registerUA();
+          });
+        }
       });
     }
   }
@@ -654,6 +693,7 @@
   async function init() {
     await loadSettings();
     bindUI();
+    updateRegisterToggle();
     updateCallButtons();
     if (!window.JsSIP || !window.JsSIP.UA) {
       setStatus('Not registered');

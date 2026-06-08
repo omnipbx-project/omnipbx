@@ -99,12 +99,13 @@ def set_softphone_dnd_from_ui(
 @router.get("/softphone/extension/download")
 def download_webphone_extension() -> Response:
     extension_dir = _webphone_extension_dir()
+    archive_root = "omnipbx-webphone-extension"
     archive = BytesIO()
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zip_file:
         for path in sorted(extension_dir.rglob("*")):
             if not path.is_file() or any(part in WEBPHONE_EXTENSION_EXCLUDES for part in path.parts):
                 continue
-            zip_file.write(path, path.relative_to(extension_dir))
+            zip_file.write(path, Path(archive_root) / path.relative_to(extension_dir))
     archive.seek(0)
     return Response(
         archive.getvalue(),

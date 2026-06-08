@@ -71,11 +71,39 @@ function openSoftphoneWindow(number = '', callback) {
   else afterNumberSaved();
 }
 
+function provisionSoftphone(config, callback) {
+  const values = {
+    wsUrl: String(config.websocket_url || ''),
+    sipDomain: String(config.sip_domain || ''),
+    sipUser: String(config.extension || ''),
+    authUser: String(config.extension || ''),
+    sipPass: String(config.secret || ''),
+    displayName: String(config.display_name || config.extension || ''),
+    autoRegister: true
+  };
+  if (!values.wsUrl || !values.sipDomain || !values.sipUser || !values.sipPass) {
+    callback && callback({ ok: false, error: 'Webphone settings are incomplete.' });
+    return;
+  }
+  chrome.storage.local.set(values, () => {
+    if (chrome.runtime.lastError) {
+      callback && callback({ ok: false, error: chrome.runtime.lastError.message });
+      return;
+    }
+    openSoftphoneWindow('', (result) => {
+      if (result && result.reused) {
+        chrome.runtime.sendMessage({ type: 'SOFTPHONE_REGISTER_NOW' }, () => void chrome.runtime.lastError);
+      }
+      callback && callback({ ...(result || {}), ok: Boolean(result && result.ok) });
+    });
+  });
+}
+
 function createSoftphoneWindow(callback) {
   chrome.windows.create({
     url: chrome.runtime.getURL('floating.html'),
     type: 'popup',
-    width: 340,
+    width: 380,
     height: 650,
     focused: true
   }, (createdWindow) => {
@@ -123,6 +151,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message && message.type === 'SOFTPHONE_NOTIFY') {
     notify(message.message || '');
     sendResponse({ ok: true });
+    return true;
+  }
+
+  if (message && message.type === 'SOFTPHONE_PROVISION') {
+    provisionSoftphone(message.config || {}, sendResponse);
     return true;
   }
 });

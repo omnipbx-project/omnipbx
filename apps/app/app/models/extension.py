@@ -7,6 +7,8 @@ class ExtensionCreate(BaseModel):
     secret: str | None = Field(default=None, min_length=8, max_length=128)
     transport: str = "transport-udp"
     call_recording_enabled: bool = True
+    auto_provision_enabled: bool = False
+    simultaneous_device_limit: int = Field(default=1, ge=1, le=10)
     enabled: bool = True
 
 
@@ -20,4 +22,6 @@ class ExtensionRead(BaseModel):
     codecs: str
     video_codecs: str
     call_recording_enabled: bool
+    auto_provision_enabled: bool
+    simultaneous_device_limit: int
     enabled: bool

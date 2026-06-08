@@ -71,6 +71,14 @@
         <input type="checkbox" name="call_recording_raw" checked>
         Record this user's calls
       </label>
+      <div class="field">
+        <label for="simultaneous_device_limit">Simultaneous Devices</label>
+        <select id="simultaneous_device_limit" name="simultaneous_device_limit">
+          {% for count in range(1, 11) %}
+          <option value="{{ count }}">{{ count }} device{% if count != 1 %}s{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
       <input type="hidden" name="enabled_raw" value="on">
       <div class="button-row">
         <button type="submit" class="primary">Create User</button>
@@ -123,6 +131,14 @@
         <input id="edit_call_recording" type="checkbox" name="call_recording_raw">
         Record this user's calls
       </label>
+      <div class="field">
+        <label for="edit_simultaneous_device_limit">Simultaneous Devices</label>
+        <select id="edit_simultaneous_device_limit" name="simultaneous_device_limit">
+          {% for count in range(1, 11) %}
+          <option value="{{ count }}">{{ count }} device{% if count != 1 %}s{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
       <div class="button-row">
         <button type="submit" class="primary">Save User</button>
         <button type="button" class="secondary cancel-action">Cancel</button>
@@ -206,7 +222,7 @@
         <details class="card-menu">
           <summary aria-label="User actions">⋯</summary>
           <div class="menu-list">
-            <button type="button" class="edit-user-action" data-extension="{{ extension.extension }}" data-name="{{ extension.display_name }}" data-email="{{ email }}" data-group="{{ group_name }}" data-transport="{{ extension.transport or 'transport-udp' }}" data-call-recording="{{ '1' if extension.call_recording_enabled else '0' }}">Edit</button>
+            <button type="button" class="edit-user-action" data-extension="{{ extension.extension }}" data-name="{{ extension.display_name }}" data-email="{{ email }}" data-group="{{ group_name }}" data-transport="{{ extension.transport or 'transport-udp' }}" data-call-recording="{{ '1' if extension.call_recording_enabled else '0' }}" data-device-limit="{{ extension.simultaneous_device_limit or 1 }}">Edit</button>
             <form method="post" action="/extensions/{{ extension.extension }}/set-enabled">
               {% if extension.enabled %}
               <button type="submit">Disable User</button>
@@ -235,6 +251,7 @@
           {% if extension.call_recording_enabled %}
           <small>Recording on</small>
           {% endif %}
+          <small>{{ extension.simultaneous_device_limit or 1 }} device{% if (extension.simultaneous_device_limit or 1) != 1 %}s{% endif %} allowed</small>
           <em data-user-status>{{ runtime_state }}</em>
         </div>
       </article>
