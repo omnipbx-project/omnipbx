@@ -1,6 +1,8 @@
 from datetime import UTC
 from unittest import TestCase
 
+import support  # noqa: F401
+
 from app.services.date_ranges import parse_date_bound, resolve_date_range
 
 

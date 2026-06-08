@@ -48,6 +48,12 @@ For local development, use `deploy/compose.dev.yaml` together with
 Restart the active stack with:
 `omnipbx restart`
 
+## Testing
+
+Install the app dependencies, then run the regression suite from the repo root:
+
+`python3 -m unittest discover -s tests -v`
+
 See `docs/release.md` for Docker Hub and GitHub Actions release setup.
 
 ## Light Runtime Direction

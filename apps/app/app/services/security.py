@@ -271,10 +271,13 @@ def _ip_matches_any(value: str, rules: list[str]) -> bool:
 def _clean_ip(value: str) -> str:
     value = (value or "").strip()
     if value.startswith("[") and "]" in value:
-        return value[1:value.index("]")]
-    if value.count(":") == 1 and "." in value:
-        return value.rsplit(":", 1)[0]
-    return value
+        value = value[1:value.index("]")]
+    elif value.count(":") == 1 and "." in value:
+        value = value.rsplit(":", 1)[0]
+    try:
+        return str(ipaddress.ip_address(value))
+    except ValueError:
+        return ""
 
 
 if __name__ == "__main__":

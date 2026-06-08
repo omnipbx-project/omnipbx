@@ -1,5 +1,7 @@
 from unittest import TestCase
 
+import support  # noqa: F401
+
 from app.services.call_classification import (
     abandoned_call_condition,
     call_type_label,
