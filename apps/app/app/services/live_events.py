@@ -3,8 +3,10 @@ import threading
 import time
 from copy import deepcopy
 from collections.abc import Callable
+from datetime import UTC, datetime
 
 from app.core.settings import get_settings
+from app.services.api_push import dispatch_realtime_call_event
 
 
 INTERESTING_EVENTS = {
@@ -14,6 +16,8 @@ INTERESTING_EVENTS = {
     "BridgeLeave",
     "ContactStatus",
     "DeviceStateChange",
+    "DialBegin",
+    "DialEnd",
     "EndpointDetailComplete",
     "Hangup",
     "Newchannel",
@@ -34,6 +38,7 @@ class LiveEventHub:
         self._snapshot_loader: Callable[[], dict[str, object]] | None = None
         self._snapshot: dict[str, object] | None = None
         self._snapshot_refreshing = False
+        self._sent_call_events: dict[str, float] = {}
 
     @property
     def version(self) -> int:
@@ -85,6 +90,7 @@ class LiveEventHub:
 
     def notify_ami_event(self, event_name: str, message: dict[str, str]) -> None:
         changed = self._apply_presence_event(event_name, message)
+        self._dispatch_call_webhook(event_name, message)
         self.refresh_snapshot_async(event_name)
         with self._condition:
             self._version += 1
@@ -186,6 +192,23 @@ class LiveEventHub:
                     )
             return changed
 
+    def _dispatch_call_webhook(self, event_name: str, message: dict[str, str]) -> None:
+        event = _call_webhook_payload(event_name, message)
+        if not event:
+            return
+        event_id = str(event["event_id"])
+        now = time.time()
+        with self._condition:
+            self._sent_call_events = {
+                key: seen_at
+                for key, seen_at in self._sent_call_events.items()
+                if now - seen_at < 600
+            }
+            if event_id in self._sent_call_events:
+                return
+            self._sent_call_events[event_id] = now
+        dispatch_realtime_call_event(event)
+
 
 def _send_message(stream, fields: dict[str, str]) -> None:
     payload = "".join(f"{key}: {value}\r\n" for key, value in fields.items()) + "\r\n"
@@ -214,6 +237,142 @@ def _read_next_message(stream) -> dict[str, str]:
         message = _read_message(stream)
         if message:
             return message
+
+
+def _call_webhook_payload(event_name: str, message: dict[str, str]) -> dict[str, object] | None:
+    event_type = _call_event_type(event_name, message)
+    if not event_type:
+        return None
+    channel = message.get("Channel", "")
+    dest_channel = message.get("DestChannel", "")
+    uniqueid = message.get("Uniqueid") or message.get("DestUniqueid") or ""
+    linkedid = message.get("Linkedid") or uniqueid
+    direction = _call_direction(message)
+    caller = _caller_number(message, direction)
+    callee = _callee_number(message, direction)
+    agent_extension = _agent_extension(message, direction)
+    trunk = _trunk_name(message)
+    status = event_type.rsplit(".", 1)[-1]
+    call_key = linkedid or uniqueid or channel or dest_channel
+    return {
+        "event": event_type,
+        "event_id": "|".join([event_type, call_key]),
+        "ami_event": event_name,
+        "direction": direction,
+        "caller": caller,
+        "callee": callee,
+        "agent_extension": agent_extension,
+        "trunk": trunk,
+        "uniqueid": uniqueid,
+        "linkedid": linkedid,
+        "channel": channel,
+        "dest_channel": dest_channel,
+        "status": status,
+        "dial_status": message.get("DialStatus", ""),
+        "hangup_cause": message.get("Cause", ""),
+        "hangup_cause_text": message.get("Cause-txt", ""),
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+
+
+def _call_event_type(event_name: str, message: dict[str, str]) -> str:
+    if event_name == "DialBegin":
+        return "call.ringing" if _call_direction(message) == "inbound" else "call.dialing"
+    if event_name in {"Newchannel", "Newstate"}:
+        status = _channel_status(message.get("ChannelStateDesc") or message.get("State"))
+        return "call.ringing" if status == "Ringing" else ""
+    if event_name == "BridgeEnter":
+        return "call.answered"
+    if event_name == "DialEnd":
+        return "call.dial_ended"
+    if event_name == "Hangup":
+        return "call.hangup"
+    return ""
+
+
+def _call_direction(message: dict[str, str]) -> str:
+    context = (message.get("Context") or message.get("DestContext") or "").lower()
+    channel = message.get("Channel", "")
+    dest_channel = message.get("DestChannel", "")
+    if "from-trunk" in context or (_is_trunk_channel(channel) and _is_extension_channel(dest_channel)):
+        return "inbound"
+    if "from-internal-trunks" in context or (_is_extension_channel(channel) and (_is_trunk_channel(dest_channel) or message.get("DialString"))):
+        return "outbound"
+    if _is_extension_channel(channel) and _is_extension_channel(dest_channel):
+        return "internal"
+    return "unknown"
+
+
+def _caller_number(message: dict[str, str], direction: str) -> str:
+    if direction == "outbound":
+        return _first_present(message, "CallerIDNum", "ConnectedLineNum")
+    if direction == "inbound":
+        return _first_present(message, "CallerIDNum", "ConnectedLineNum")
+    return _first_present(message, "CallerIDNum", "ConnectedLineNum", "DestCallerIDNum")
+
+
+def _callee_number(message: dict[str, str], direction: str) -> str:
+    if direction == "outbound":
+        return _dialed_number(message)
+    if direction == "inbound":
+        return _extension_from_channel(message.get("DestChannel", "")) or _first_present(message, "Exten", "DestExten", "ConnectedLineNum")
+    return _dialed_number(message) or _first_present(message, "Exten", "DestExten", "DestCallerIDNum")
+
+
+def _agent_extension(message: dict[str, str], direction: str) -> str:
+    if direction == "outbound":
+        return _extension_from_channel(message.get("Channel", "")) or _first_present(message, "CallerIDNum")
+    if direction == "inbound":
+        return _extension_from_channel(message.get("DestChannel", "")) or _first_present(message, "DestCallerIDNum", "ConnectedLineNum")
+    return _extension_from_channel(message.get("Channel", "")) or _extension_from_channel(message.get("DestChannel", ""))
+
+
+def _trunk_name(message: dict[str, str]) -> str:
+    for channel in (message.get("Channel", ""), message.get("DestChannel", "")):
+        if _is_trunk_channel(channel):
+            return _channel_resource(channel)
+    dial_string = message.get("DialString", "")
+    if "@" in dial_string:
+        return dial_string.rsplit("@", 1)[-1].split("/", 1)[0].strip()
+    return ""
+
+
+def _dialed_number(message: dict[str, str]) -> str:
+    dial_string = message.get("DialString", "")
+    if dial_string:
+        value = dial_string.split("@", 1)[0].split("/", 1)[0].strip()
+        if value:
+            return value
+    return _first_present(message, "Exten", "DestExten", "DestCallerIDNum", "ConnectedLineNum")
+
+
+def _first_present(message: dict[str, str], *keys: str) -> str:
+    for key in keys:
+        value = str(message.get(key) or "").strip()
+        if value and value != "<unknown>":
+            return value
+    return ""
+
+
+def _is_extension_channel(channel: str) -> bool:
+    return _extension_from_channel(channel) != ""
+
+
+def _is_trunk_channel(channel: str) -> bool:
+    resource = _channel_resource(channel)
+    return bool(resource and not resource.isdigit())
+
+
+def _extension_from_channel(channel: str) -> str:
+    resource = _channel_resource(channel)
+    return resource if resource.isdigit() else ""
+
+
+def _channel_resource(channel: str) -> str:
+    value = (channel or "").strip()
+    if "/" in value:
+        value = value.split("/", 1)[1]
+    return value.split(";", 1)[0].split("@", 1)[0].split("-", 1)[0].strip()
 
 
 def _extension_from_event(message: dict[str, str]) -> str:

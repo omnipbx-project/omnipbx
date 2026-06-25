@@ -81,7 +81,7 @@ async def api_push_test_receiver(
     request: Request,
     connection: psycopg.Connection = Depends(get_connection),
 ) -> dict[str, str]:
-    if entity_type not in {"call_logs", "callbacks"}:
+    if entity_type not in {"call_logs", "callbacks", "call_events"}:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown entity type.")
     payload = await request.json()
     record_test_payload(

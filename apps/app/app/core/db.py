@@ -305,6 +305,7 @@ def initialize_schema() -> None:
         enabled BOOLEAN NOT NULL DEFAULT FALSE,
         call_logs_url VARCHAR(500),
         callbacks_url VARCHAR(500),
+        realtime_events_url VARCHAR(500),
         public_base_url VARCHAR(500),
         api_key VARCHAR(255),
         timeout_seconds INTEGER NOT NULL DEFAULT 10,
@@ -530,6 +531,8 @@ def initialize_schema() -> None:
             cursor.execute("UPDATE extensions SET simultaneous_device_limit = 1 WHERE simultaneous_device_limit IS NULL OR simultaneous_device_limit < 1")
             cursor.execute("UPDATE extensions SET simultaneous_device_limit = 10 WHERE simultaneous_device_limit > 10")
             cursor.execute("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'admin'")
+            cursor.execute("ALTER TABLE api_push_settings ADD COLUMN IF NOT EXISTS realtime_events_url VARCHAR(500)")
+            cursor.execute("UPDATE api_push_settings SET api_key = 'omnipbx-test-key' WHERE api_key IS NULL OR api_key = ''")
             cursor.execute(
                 """
                 INSERT INTO softphone_settings (id, enabled, websocket_url, sip_domain, display_name_prefix, public_host, note)
@@ -568,10 +571,10 @@ def initialize_schema() -> None:
             cursor.execute(
                 """
                 INSERT INTO api_push_settings (
-                    id, enabled, call_logs_url, callbacks_url, public_base_url, api_key,
+                    id, enabled, call_logs_url, callbacks_url, realtime_events_url, public_base_url, api_key,
                     timeout_seconds, poll_interval_seconds, verify_ssl, batch_limit
                 )
-                VALUES (1, FALSE, NULL, NULL, NULL, NULL, 10, 30, TRUE, 200)
+                VALUES (1, FALSE, NULL, NULL, NULL, NULL, 'omnipbx-test-key', 10, 30, TRUE, 200)
                 ON CONFLICT (id) DO NOTHING
                 """
             )

@@ -19,6 +19,7 @@ from app.features.call_records.ui import router as call_records_ui_router
 from app.features.call_routing.ui import router as call_routing_ui_router
 from app.features.call_logs.api import router as call_logs_api_router
 from app.features.call_logs.ui import router as call_logs_ui_router
+from app.features.crm_api.api import router as crm_api_router
 from app.features.dashboard.ui import router as dashboard_ui_router
 from app.features.extensions.api import router as extensions_api_router
 from app.features.extensions.ui import router as extensions_ui_router
@@ -46,6 +47,7 @@ from app.features.working_hours.ui import router as working_hours_ui_router
 from app.services.asterisk import sync_asterisk_config
 from app.services.api_push import start_api_push_worker
 from app.services.auth import AUTH_COOKIE_NAME, has_admin_users, resolve_session
+from app.services.crm_api import is_valid_crm_api_key
 from app.services.live_events import live_event_hub
 from app.services.security import request_security_decision
 from app.services.setup import get_system_settings, is_setup_complete, render_caddyfile, write_caddyfile
@@ -97,6 +99,7 @@ app.include_router(call_records_ui_router)
 app.include_router(call_routing_ui_router)
 app.include_router(call_logs_api_router)
 app.include_router(call_logs_ui_router)
+app.include_router(crm_api_router)
 app.include_router(dashboard_ui_router)
 app.include_router(extensions_api_router)
 app.include_router(extensions_ui_router)
@@ -151,6 +154,16 @@ async def setup_guard(request: Request, call_next):
             if current_user:
                 return await call_next(request)
             return RedirectResponse(url=f"/login?next={path}", status_code=303)
+
+        if path.startswith("/crm-api"):
+            if is_valid_crm_api_key(connection, request.headers.get("X-API-Key")):
+                request.state.current_user = {"role": "system", "username": "CRM API"}
+                return await call_next(request)
+            return PlainTextResponse(
+                "Invalid or missing CRM API key.",
+                status_code=401,
+                headers={"WWW-Authenticate": "ApiKey"},
+            )
 
         if path.startswith(public_prefixes):
             return await call_next(request)
