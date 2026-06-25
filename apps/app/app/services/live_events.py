@@ -4,9 +4,11 @@ import time
 from copy import deepcopy
 from collections.abc import Callable
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.core.settings import get_settings
 from app.services.api_push import dispatch_realtime_call_event
+from app.services.setup import get_system_settings
 
 
 INTERESTING_EVENTS = {
@@ -214,7 +216,7 @@ class LiveEventHub:
             if event_id in self._sent_call_events:
                 return
             self._sent_call_events[event_id] = now
-        dispatch_realtime_call_event(event)
+        dispatch_realtime_call_event(_with_local_timestamp(event))
 
     def _normalize_call_event(self, event: dict[str, object], seen_at: float) -> dict[str, object]:
         linkedid = str(event.get("linkedid") or event.get("uniqueid") or "")
@@ -306,6 +308,40 @@ def _call_webhook_payload(event_name: str, message: dict[str, str]) -> dict[str,
         "hangup_cause_text": message.get("Cause-txt", ""),
         "timestamp": datetime.now(UTC).isoformat(),
     }
+
+
+def _with_local_timestamp(event: dict[str, object]) -> dict[str, object]:
+    timezone_name = "UTC"
+    try:
+        import psycopg
+
+        settings = get_settings()
+        with psycopg.connect(settings.db_dsn, autocommit=True) as connection:
+            timezone_name = str(get_system_settings(connection).get("timezone") or "UTC")
+    except Exception:
+        timezone_name = "UTC"
+
+    try:
+        local_tz = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        local_tz = ZoneInfo("UTC")
+        timezone_name = "UTC"
+
+    enriched = dict(event)
+    event_time = _event_datetime(event)
+    enriched["timezone"] = timezone_name
+    enriched["local_timestamp"] = event_time.astimezone(local_tz).isoformat()
+    return enriched
+
+
+def _event_datetime(event: dict[str, object]) -> datetime:
+    timestamp = str(event.get("timestamp") or "")
+    if timestamp:
+        try:
+            return datetime.fromisoformat(timestamp).astimezone(UTC)
+        except ValueError:
+            pass
+    return datetime.now(UTC)
 
 
 def _call_event_type(event_name: str, message: dict[str, str]) -> str:

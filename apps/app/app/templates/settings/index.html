@@ -2,11 +2,40 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="settings-page">
+  {% if result %}
+  <div class="notice {{ result }}">
+    <strong>{{ result|capitalize }}</strong>
+    <span>{{ detail }}</span>
+  </div>
+  {% endif %}
+
   <div class="metric-grid">
     {{ stat_card("Company", system_settings.company_name or "OmniPBX", system_settings.timezone or "UTC") }}
     {{ stat_card("Admins", admins|length, "Owner and admin accounts") }}
     {{ stat_card("Email", "Ready" if smtp_settings.enabled else "Not ready", "Password reset email", "success" if smtp_settings.enabled else "warning") }}
     {{ stat_card("Security Rules", security_rules|length, "Number/IP rules") }}
+  </div>
+
+  <div class="panel block-spaced">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Timezone</h3>
+        <p>Used for reports, date filters, and CRM webhook local timestamps.</p>
+      </div>
+    </div>
+    <form method="post" action="/settings/timezone" class="stack">
+      <div class="field">
+        <label for="timezone">PBX timezone</label>
+        <select id="timezone" name="timezone">
+          {% for item in timezone_options %}
+          <option value="{{ item.value }}" {% if system_settings.timezone == item.value %}selected{% endif %}>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="button-row">
+        <button type="submit">Save timezone</button>
+      </div>
+    </form>
   </div>
 
   <div class="settings-grid">

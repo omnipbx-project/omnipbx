@@ -8,6 +8,7 @@ import socket
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import psycopg
 from psycopg.rows import dict_row
@@ -42,6 +43,26 @@ def get_system_settings(connection: psycopg.Connection) -> dict:
 
 def is_setup_complete(connection: psycopg.Connection) -> bool:
     return bool(get_system_settings(connection).get("setup_completed"))
+
+
+def save_timezone_setting(connection: psycopg.Connection, timezone_name: str) -> dict:
+    timezone_name = (timezone_name or "").strip()
+    try:
+        ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError("Choose a valid timezone.") from exc
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE system_settings
+            SET timezone = %(timezone)s,
+                updated_at = NOW()
+            WHERE id = %(id)s
+            """,
+            {"id": SETTINGS_ID, "timezone": timezone_name},
+        )
+    return get_system_settings(connection)
 
 
 def save_ssl_settings(
