@@ -77,6 +77,9 @@ def start_supervisor_action(
         return {"ok": False, "message": "Enter your supervisor extension first."}
     if not re.fullmatch(r"[A-Za-z0-9_./:@;,+-]+", channel_id):
         return {"ok": False, "message": "The selected call is no longer available."}
+    chanspy_error = _ensure_chanspy_available()
+    if chanspy_error:
+        return {"ok": False, "message": chanspy_error}
 
     overview = collect_live_overview(connection)
     active_channel_ids = {call["id"] for call in overview["active_calls"]}
@@ -97,6 +100,26 @@ def start_supervisor_action(
         "ok": True,
         "message": f"Calling extension {supervisor_extension} to {action_config['label'].lower()}.",
     }
+
+
+def _ensure_chanspy_available() -> str:
+    errors: list[str] = []
+    output = _run_asterisk_command("core show application ChanSpy", errors)
+    if "Application 'ChanSpy'" in output:
+        return ""
+
+    errors.clear()
+    load_output = _run_asterisk_command("module load app_chanspy.so", errors)
+    if errors or "Unable to load" in load_output:
+        detail = errors[-1] if errors else load_output.strip()
+        return f"Supervisor monitoring is unavailable: {detail or 'ChanSpy could not be loaded.'}"
+
+    errors.clear()
+    output = _run_asterisk_command("core show application ChanSpy", errors)
+    if errors or "Application 'ChanSpy'" not in output:
+        detail = errors[-1] if errors else "ChanSpy did not register."
+        return f"Supervisor monitoring is unavailable: {detail}"
+    return ""
 
 
 def _run_asterisk_command(command: str, errors: list[str]) -> str:
@@ -166,7 +189,25 @@ def _parse_active_calls(output: str, trunks: list[dict]) -> list[dict[str, str]]
             }
         )
 
-    return calls
+    return _deduplicate_unbridged_trunk_legs(calls)
+
+
+def _deduplicate_unbridged_trunk_legs(calls: list[dict[str, str]]) -> list[dict[str, str]]:
+    outbound_keys = {
+        (call["to"], call["trunk"], call["duration"])
+        for call in calls
+        if call["direction"] == "Outgoing" and call["trunk"] != "-"
+    }
+    return [
+        call
+        for call in calls
+        if not (
+            call["direction"] == "Incoming"
+            and call["from"] == call["to"]
+            and (call["to"], call["trunk"], call["duration"]) in outbound_keys
+            and call["id"].startswith(f"PJSIP/{call['trunk']}-")
+        )
+    ]
 
 
 def _number_from_channel(channel: str) -> str:

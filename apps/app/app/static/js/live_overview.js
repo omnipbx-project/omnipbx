@@ -6,12 +6,16 @@ document.addEventListener("DOMContentLoaded", function () {
     const supervisorExtension = document.getElementById("supervisor-extension");
     const actionMessage = document.getElementById("live-action-message");
 
-    if (supervisorExtension) {
-      supervisorExtension.value = window.localStorage.getItem("omnipbx-supervisor-extension") || "";
-      supervisorExtension.addEventListener("input", function () {
-        window.localStorage.setItem("omnipbx-supervisor-extension", supervisorExtension.value.trim());
-      });
+    function setSupervisorExtension(extension) {
+      if (!supervisorExtension) return;
+      const normalized = String(extension || "").trim();
+      supervisorExtension.dataset.extension = normalized;
+      supervisorExtension.textContent = normalized || "Not available";
     }
+
+    window.addEventListener("omnipbx:webphone-config", function (event) {
+      setSupervisorExtension(event.detail?.extension);
+    });
 
     tabs.forEach((tab) => {
       tab.addEventListener("click", function () {
@@ -133,10 +137,9 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     async function runSupervisorAction(button) {
-      const extension = supervisorExtension?.value.trim() || "";
+      const extension = supervisorExtension?.dataset.extension || "";
       if (!extension) {
-        showActionMessage("Enter your extension first, then choose an action.", false);
-        supervisorExtension?.focus();
+        showActionMessage("Your logged-in account does not have a ready webphone extension.", false);
         return;
       }
 

@@ -13,6 +13,9 @@ document.addEventListener("DOMContentLoaded", function () {
     const actionForms = document.querySelectorAll(".action-form");
     const editUserForm = document.getElementById("edit-user-form");
     const searchInput = document.querySelector(".topbar-search input");
+    const permissionFeaturesInput = document.getElementById("permission_features");
+    const permissionFeatureChecks = Array.from(document.querySelectorAll("[data-permission-feature]"));
+    const permissionTemplateRadios = Array.from(document.querySelectorAll("[data-permission-template]"));
     const userCards = new Map(
       Array.from(document.querySelectorAll(".user-management-card[data-extension]")).map((card) => [
         String(card.dataset.extension),
@@ -20,6 +23,160 @@ document.addEventListener("DOMContentLoaded", function () {
       ])
     );
     let activeTab = "users";
+
+    const permissionTemplates = {
+      read_only: [
+        "dashboard:view",
+        "users:view",
+        "groups:view",
+        "permissions:view",
+        "live_overview:view",
+        "trunks:view",
+        "call_routing:view",
+        "inbound_routes:view",
+        "ring_groups:view",
+        "queues:view",
+        "ivrs:view",
+        "working_hours:view",
+        "call_logs:view",
+        "callbacks:view",
+        "call_records:view",
+        "voicemail:view",
+        "reports:view",
+        "softphone:view",
+        "settings:view",
+        "status:view",
+        "backup_restore:view",
+        "api_push:view",
+        "audit_log:view",
+        "admin_accounts:view",
+      ],
+      operator: [
+        "dashboard:view",
+        "users:view",
+        "groups:view",
+        "live_overview:view",
+        "live_overview:supervise",
+        "call_logs:view",
+        "call_logs:recordings",
+        "callbacks:view",
+        "callbacks:take",
+        "callbacks:complete",
+        "call_records:view",
+        "voicemail:view",
+        "voicemail:manage",
+        "softphone:view",
+        "softphone:provision",
+        "reports:view",
+        "status:view",
+      ],
+      manager: [
+        "dashboard:view",
+        "users:view",
+        "users:create",
+        "users:edit",
+        "groups:view",
+        "groups:manage",
+        "permissions:view",
+        "live_overview:view",
+        "live_overview:supervise",
+        "trunks:view",
+        "call_routing:view",
+        "call_routing:manage",
+        "inbound_routes:view",
+        "inbound_routes:manage",
+        "ring_groups:view",
+        "ring_groups:manage",
+        "queues:view",
+        "queues:manage",
+        "ivrs:view",
+        "ivrs:manage",
+        "working_hours:view",
+        "working_hours:manage",
+        "call_logs:view",
+        "call_logs:export",
+        "call_logs:recordings",
+        "callbacks:view",
+        "callbacks:take",
+        "callbacks:complete",
+        "call_records:view",
+        "call_records:download",
+        "voicemail:view",
+        "voicemail:manage",
+        "reports:view",
+        "reports:export",
+        "softphone:view",
+        "softphone:configure",
+        "softphone:provision",
+        "settings:view",
+        "status:view",
+        "status:run_checks",
+        "backup_restore:view",
+        "api_push:view",
+        "audit_log:view",
+      ],
+    };
+
+    function selectedPermissionFeatures() {
+      return permissionFeatureChecks.filter((input) => input.checked).map((input) => input.value);
+    }
+
+    function syncPermissionFeaturesInput() {
+      if (permissionFeaturesInput) {
+        permissionFeaturesInput.value = selectedPermissionFeatures().join(",");
+      }
+    }
+
+    function setPermissionTemplate(template) {
+      const values = new Set(permissionTemplates[template] || []);
+      permissionFeatureChecks.forEach((input) => {
+        input.checked = values.has(input.value);
+      });
+      syncPermissionFeaturesInput();
+    }
+
+    function setPermissionFeatures(values) {
+      const selected = new Set(values);
+      permissionFeatureChecks.forEach((input) => {
+        input.checked = selected.has(input.value);
+      });
+      const custom = permissionTemplateRadios.find((input) => input.value === "custom");
+      if (custom) {
+        custom.checked = true;
+      }
+      syncPermissionFeaturesInput();
+    }
+
+    function resetPermissionForm() {
+      const nameInput = document.getElementById("permission_name");
+      const descriptionInput = document.getElementById("permission_description");
+      if (nameInput) nameInput.value = "";
+      if (descriptionInput) descriptionInput.value = "";
+      setPermissionFeatures([]);
+    }
+
+    permissionFeatureChecks.forEach((input) => {
+      input.addEventListener("change", function () {
+        const custom = permissionTemplateRadios.find((radio) => radio.value === "custom");
+        if (custom) {
+          custom.checked = true;
+        }
+        syncPermissionFeaturesInput();
+      });
+    });
+
+    permissionTemplateRadios.forEach((input) => {
+      input.addEventListener("change", function () {
+        if (input.checked && input.value !== "custom") {
+          setPermissionTemplate(input.value);
+        }
+        if (input.checked && input.value === "custom") {
+          syncPermissionFeaturesInput();
+        }
+      });
+    });
+
+    syncPermissionFeaturesInput();
 
     function setActiveForm(target, title) {
       actionForms.forEach((form) => {
@@ -34,13 +191,21 @@ document.addEventListener("DOMContentLoaded", function () {
       setActiveForm(target, title);
       if (actionPanel) {
         actionPanel.hidden = false;
-        actionPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        actionPanel.scrollTop = 0;
+        document.body.classList.add("users-dialog-open");
+        document.querySelectorAll(".card-menu[open]").forEach((menu) => {
+          menu.open = false;
+        });
+        window.requestAnimationFrame(function () {
+          actionPanelTitle?.focus({preventScroll: true});
+        });
       }
     }
 
     function closePanel() {
       if (actionPanel) {
         actionPanel.hidden = true;
+        document.body.classList.remove("users-dialog-open");
       }
     }
 
@@ -65,6 +230,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (action) {
       action.addEventListener("click", function () {
+        if (activeTab === "permissions") {
+          resetPermissionForm();
+        }
         openPanel(activeTab);
       });
     }
@@ -75,6 +243,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
     document.querySelectorAll(".cancel-action").forEach((button) => {
       button.addEventListener("click", closePanel);
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && actionPanel && !actionPanel.hidden) {
+        closePanel();
+      }
     });
 
     document.querySelectorAll(".edit-user-action").forEach((button) => {
@@ -114,7 +288,12 @@ document.addEventListener("DOMContentLoaded", function () {
       button.addEventListener("click", function () {
         document.getElementById("permission_name").value = button.dataset.name || "";
         document.getElementById("permission_description").value = button.dataset.description || "";
-        document.getElementById("permission_features").value = button.dataset.features || "";
+        setPermissionFeatures(
+          (button.dataset.features || "")
+            .split(",")
+            .map((feature) => feature.trim())
+            .filter(Boolean)
+        );
         activeTab = "permissions";
         openPanel("permissions", "Edit Permission");
       });

@@ -4,7 +4,7 @@ from pathlib import Path
 import zipfile
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from fastapi.responses import RedirectResponse
 import json
 import psycopg
@@ -87,10 +87,15 @@ def save_softphone_settings_from_ui(
 
 @router.post("/softphone/dnd/{extension}")
 def set_softphone_dnd_from_ui(
+    request: Request,
     extension: str,
     enabled_raw: str | None = Form(default=None),
     connection: psycopg.Connection = Depends(get_connection),
-) -> RedirectResponse:
+) -> Response:
+    current_user = getattr(request.state, "current_user", None) or {}
+    own_extension = str(current_user.get("extension") or current_user.get("username") or "")
+    if current_user.get("role") == "user" and extension != own_extension:
+        return PlainTextResponse("You can only change your own webphone.", status_code=403)
     set_softphone_dnd(connection, extension, enabled_raw is not None)
     params = urlencode({"extension": extension})
     return RedirectResponse(url=f"/softphone?{params}", status_code=303)

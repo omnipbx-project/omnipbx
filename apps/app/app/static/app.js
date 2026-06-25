@@ -22,6 +22,31 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     applyTheme(preferredTheme());
+    const currentUrl = new URL(window.location.href);
+    const hasFlashMessage = currentUrl.searchParams.has("result") || currentUrl.searchParams.has("detail");
+    if (hasFlashMessage) {
+      const flashNotice = document.querySelector("main .notice.success, main .notice.notice-success");
+      currentUrl.searchParams.delete("result");
+      currentUrl.searchParams.delete("detail");
+      window.history.replaceState({}, "", `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+      if (flashNotice) {
+        window.setTimeout(function () {
+          flashNotice.classList.add("notice-dismissing");
+          window.setTimeout(() => flashNotice.remove(), 240);
+        }, 4500);
+      }
+    }
+    const mobileNavToggle = document.getElementById("mobile-nav-toggle");
+    const sidebar = document.getElementById("primary-sidebar");
+    const sidebarClose = document.getElementById("sidebar-close");
+    const sidebarBackdrop = document.getElementById("sidebar-backdrop");
+
+    function setSidebarOpen(isOpen) {
+      document.body.classList.toggle("sidebar-open", isOpen);
+      if (mobileNavToggle) {
+        mobileNavToggle.setAttribute("aria-expanded", String(isOpen));
+      }
+    }
 
     function closeCardMenus(exceptMenu) {
       document.querySelectorAll(".card-menu[open]").forEach((menu) => {
@@ -30,6 +55,32 @@
         }
       });
     }
+
+    if (mobileNavToggle) {
+      mobileNavToggle.addEventListener("click", function (event) {
+        event.stopPropagation();
+        setSidebarOpen(!document.body.classList.contains("sidebar-open"));
+      });
+    }
+
+    [sidebarClose, sidebarBackdrop].forEach((element) => {
+      if (!element) return;
+      element.addEventListener("click", function () {
+        setSidebarOpen(false);
+      });
+    });
+
+    if (sidebar) {
+      sidebar.addEventListener("click", function (event) {
+        event.stopPropagation();
+      });
+    }
+
+    document.querySelectorAll(".sidebar .nav-link").forEach((link) => {
+      link.addEventListener("click", function () {
+        setSidebarOpen(false);
+      });
+    });
 
     document.querySelectorAll("#theme-toggle").forEach((button) => {
       button.addEventListener("click", toggleTheme);
@@ -63,6 +114,19 @@
         trigger.setAttribute("aria-expanded", "false");
       });
       closeCardMenus();
+      setSidebarOpen(false);
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "Escape") return;
+      document.querySelectorAll(".notification-panel.open, .profile-panel.open").forEach((panel) => {
+        panel.classList.remove("open");
+      });
+      document.querySelectorAll(".notification-trigger[aria-expanded='true'], .topbar-profile[aria-expanded='true']").forEach((trigger) => {
+        trigger.setAttribute("aria-expanded", "false");
+      });
+      closeCardMenus();
+      setSidebarOpen(false);
     });
 
     document.querySelectorAll(".topbar-profile").forEach((trigger) => {

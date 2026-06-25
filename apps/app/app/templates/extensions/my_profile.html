@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block content %}
+{% if result %}
+<div class="notice {{ result }}">
+  <strong>{{ result|capitalize }}</strong>
+  <span>{{ detail }}</span>
+</div>
+{% endif %}
+
+<section class="panel my-profile-panel">
+  <div class="section-header">
+    <div class="section-copy">
+      <h3>Personal details</h3>
+      <p>Your extension, group, permissions, and phone settings are managed by an administrator.</p>
+    </div>
+  </div>
+
+  <form method="post" action="/my-profile" enctype="multipart/form-data" class="action-form active">
+    <input type="hidden" name="return_to" value="{{ return_to }}">
+    <div class="field-grid two">
+      <div class="field">
+        <label for="self_display_name">Name</label>
+        <input id="self_display_name" type="text" name="display_name" value="{{ extension.display_name }}" required>
+      </div>
+      <div class="field">
+        <label>Extension</label>
+        <input type="text" value="{{ extension.extension }}" disabled>
+      </div>
+    </div>
+    <div class="field-grid two">
+      <div class="field">
+        <label for="self_email">Email</label>
+        <input id="self_email" type="email" name="email" value="{{ profile.email or '' }}">
+      </div>
+      <div class="field">
+        <label for="self_photo">Photo</label>
+        <input id="self_photo" type="file" name="photo" accept="image/*">
+      </div>
+    </div>
+    <div class="field-grid two">
+      <div class="field">
+        <label for="self_transport">Device Type</label>
+        <select id="self_transport" name="transport">
+          <option value="transport-udp" {% if extension.transport == "transport-udp" %}selected{% endif %}>Desk Phone</option>
+          <option value="transport-udp-softphone" {% if extension.transport == "transport-udp-softphone" %}selected{% endif %}>Softphone</option>
+          <option value="transport-wss" {% if extension.transport == "transport-wss" %}selected{% endif %}>Webphone</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="self_simultaneous_device_limit">Simultaneous Devices</label>
+        <select id="self_simultaneous_device_limit" name="simultaneous_device_limit">
+          {% for count in range(1, 11) %}
+          <option value="{{ count }}" {% if (extension.simultaneous_device_limit or 1) == count %}selected{% endif %}>{{ count }} device{% if count != 1 %}s{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <label class="toggle-line">
+      <input type="checkbox" name="call_recording_raw" {% if extension.call_recording_enabled %}checked{% endif %}>
+      Record this user's calls
+    </label>
+
+    <div class="permission-builder-title">
+      <strong>Change password</strong>
+      <span>Leave these fields empty to keep your current password.</span>
+    </div>
+    <div class="field-grid three">
+      <div class="field">
+        <label for="self_current_password">Current password</label>
+        <input id="self_current_password" type="password" name="current_password">
+      </div>
+      <div class="field">
+        <label for="self_new_password">New password</label>
+        <input id="self_new_password" type="password" name="new_password" minlength="8">
+      </div>
+      <div class="field">
+        <label for="self_confirm_password">Confirm password</label>
+        <input id="self_confirm_password" type="password" name="confirm_password" minlength="8">
+      </div>
+    </div>
+
+    <div class="button-row">
+      <button type="submit" class="primary">Save My Profile</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

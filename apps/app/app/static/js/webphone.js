@@ -7,6 +7,7 @@
   if (!dock || !panel) return;
 
   const detached = Boolean($("webphone-detached-bootstrap"));
+  let allowLogoutNavigation = false;
   const state = {
     config: null,
     ua: null,
@@ -130,6 +131,9 @@
   function applyBootstrap(data) {
     const config = data.config || null;
     state.config = config;
+    window.dispatchEvent(new CustomEvent("omnipbx:webphone-config", {
+      detail: {extension: config?.extension || "", available: Boolean(data.available)},
+    }));
     setAccount(config);
     renderExtensionPicker(data.extensions || [], config && config.extension, Boolean(data.can_switch));
     if (!data.available || !config) {
@@ -552,13 +556,17 @@
       if (!link || link.matches("a[href^='tel:']") || link.target || link.hasAttribute("download")) return;
       const href = link.getAttribute("href") || "";
       if (!href || href.startsWith("#") || href.startsWith("javascript:")) return;
+      if (new URL(href, window.location.href).pathname === "/logout") {
+        allowLogoutNavigation = true;
+        return;
+      }
       if (!confirmNavigationDuringCall()) {
         setOpen(true);
         event.preventDefault();
       }
     }, true);
     window.addEventListener("beforeunload", (event) => {
-      if (!state.session) return;
+      if (!state.session || allowLogoutNavigation) return;
       event.preventDefault();
       event.returnValue = "";
     });

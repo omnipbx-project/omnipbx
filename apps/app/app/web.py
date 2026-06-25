@@ -2,6 +2,7 @@ from fastapi import Request
 from starlette.templating import Jinja2Templates
 
 from app.core.settings import get_settings
+from app.services.permissions import filter_navigation
 from app.services.updates import get_update_banner
 
 
@@ -11,12 +12,12 @@ NAV_SECTIONS = [
     {
         "title": "Main",
         "items": [
-            {"href": "/dashboard", "label": "Dashboard", "icon": "📊"},
+            {"href": "/dashboard", "label": "Dashboard", "icon": "▦"},
             {"href": "/live-overview", "label": "Live Overview", "icon": "◉"},
-            {"href": "/extensions", "label": "Users", "icon": "👥"},
-            {"href": "/trunks", "label": "Trunks", "icon": "🌐"},
+            {"href": "/extensions", "label": "Users", "icon": "◫"},
+            {"href": "/trunks", "label": "Trunks", "icon": "⌁"},
             {"href": "/call-routing", "label": "Call Routing", "icon": "↗"},
-            {"href": "/call-logs", "label": "Call Log", "icon": "☎"},
+            {"href": "/call-logs", "label": "Call Log", "icon": "☏"},
             {"href": "/callbacks", "label": "Follow Up", "icon": "◎"},
             {"href": "/call-records", "label": "Call Records", "icon": "◌"},
             {"href": "/welcome-messages", "label": "Voicemail", "icon": "✉"},
@@ -39,6 +40,7 @@ def render_template(
 ):
     settings = get_settings()
     current_user = getattr(request.state, "current_user", None)
+    user_features = set(getattr(request.state, "user_features", set()))
     search_by_nav = {
         "/dashboard": {
             "placeholder": "Search user, extension, call...",
@@ -115,9 +117,10 @@ def render_template(
         "page_title": page_title,
         "page_description": page_description,
         "active_nav": active_nav,
-        "nav_sections": NAV_SECTIONS,
+        "nav_sections": filter_navigation(NAV_SECTIONS, user_features) if current_user and current_user.get("role") == "user" else NAV_SECTIONS,
         "show_shell": show_shell,
         "current_user": current_user,
+        "user_features": user_features,
         "update_banner": get_update_banner(settings),
         "topbar_search": topbar_search,
         "show_notifications": show_notifications,

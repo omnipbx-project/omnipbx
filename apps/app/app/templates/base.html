@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ page_title }} · {{ app_name }}</title>
   <link rel="stylesheet" href="/static/app.css">
-  {% if show_shell and current_user %}
+  {% if show_shell and current_user and (current_user.role != 'user' or 'softphone:view' in user_features) %}
   <link rel="stylesheet" href="/static/css/webphone.css">
   {% endif %}
   {% for stylesheet in page_css|default([]) %}
   <link rel="stylesheet" href="{{ stylesheet }}">
   {% endfor %}
   <script src="/static/app.js" defer></script>
-  {% if show_shell and current_user %}
+  {% if show_shell and current_user and (current_user.role != 'user' or 'softphone:view' in user_features) %}
   <script src="/static/vendor/sip-simple-user.min.js" defer></script>
   <script src="/static/vendor/jssip.min.js" defer></script>
   <script src="/static/js/webphone.js" defer></script>
@@ -51,8 +51,8 @@
         </div>
       </div>
       <button type="button" class="icon-button" id="theme-toggle" aria-label="Toggle light and dark mode" title="Toggle theme">
-        <span class="theme-toggle-sun">Light</span>
-        <span class="theme-toggle-moon">Dark</span>
+        <span class="theme-toggle-sun" aria-hidden="true">☼</span>
+        <span class="theme-toggle-moon" aria-hidden="true">◐</span>
       </button>
     </div>
     <section class="guest-header">
@@ -70,7 +70,8 @@
   {% if show_shell %}
     </div>
   </div>
-  {% if current_user %}
+  <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
+  {% if current_user and (current_user.role != 'user' or 'softphone:view' in user_features) %}
   {% include "components/_webphone.html" %}
   {% endif %}
   {% endif %}

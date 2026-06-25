@@ -57,14 +57,14 @@
     font-weight: 600;
   }
 
-  .supervisor-extension-field input {
-    width: 92px;
+  .supervisor-extension-field strong {
+    min-width: 72px;
     padding: 9px 11px;
     border: 1px solid var(--line);
     border-radius: 12px;
     background: color-mix(in srgb, var(--bg-panel-strong) 94%, transparent);
     color: var(--text);
-    outline: none;
+    text-align: center;
   }
 
   .live-action-message {

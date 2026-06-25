@@ -22,6 +22,7 @@ from app.services.auth import (
     issue_session_cookie,
 )
 from app.services.mailer import send_password_reset_email, smtp_is_ready
+from app.services.permissions import features_for_principal, first_allowed_path, required_feature
 from app.services.security import record_login_failure, record_login_success, username_security_decision
 from app.services.setup import get_system_settings, is_setup_complete
 from app.web import render_template
@@ -94,7 +95,13 @@ def login_submit(
         return RedirectResponse(url=f"/login?{params}", status_code=303)
 
     record_login_success(connection, request=request, username=username)
-    response = RedirectResponse(url=_safe_next_path(next_url), status_code=303)
+    target_url = _safe_next_path(next_url)
+    if admin.get("role") == "user":
+        features = features_for_principal(connection, admin)
+        required = required_feature("GET", target_url)
+        if required == "" or (required and required not in features):
+            target_url = first_allowed_path(features)
+    response = RedirectResponse(url=target_url, status_code=303)
     session_cookie = issue_session_cookie(connection, admin)
     response.set_cookie(
         AUTH_COOKIE_NAME,

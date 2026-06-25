@@ -91,6 +91,31 @@ def ensure_profile(
         )
 
 
+def update_own_profile(
+    connection: psycopg.Connection,
+    *,
+    extension: str,
+    email: str,
+    photo_path: str = "",
+) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO user_profiles (extension, email, photo_path)
+            VALUES (%(extension)s, %(email)s, %(photo_path)s)
+            ON CONFLICT (extension) DO UPDATE
+            SET email = EXCLUDED.email,
+                photo_path = COALESCE(NULLIF(EXCLUDED.photo_path, ''), user_profiles.photo_path),
+                updated_at = NOW()
+            """,
+            {
+                "extension": extension,
+                "email": email.strip() or None,
+                "photo_path": photo_path.strip(),
+            },
+        )
+
+
 def create_group(connection: psycopg.Connection, *, name: str, description: str, permission_name: str) -> None:
     with connection.cursor(row_factory=dict_row) as cursor:
         permission_id = _lookup_id(cursor, "user_permissions", permission_name)

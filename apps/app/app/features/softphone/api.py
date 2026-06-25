@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 import psycopg
 
 from app.core.db import get_connection
@@ -71,10 +71,12 @@ def get_current_softphone_bootstrap_api(
 
 @router.post("/dnd/{extension}")
 def post_softphone_dnd_api(
+    request: Request,
     extension: str,
     payload: SoftphoneDndPayload,
     connection: psycopg.Connection = Depends(get_connection),
 ) -> dict[str, object]:
+    _require_own_extension(request, extension)
     set_softphone_dnd(connection, extension, payload.enabled)
     return {"status": "ok", "extension": extension, "dnd": payload.enabled}
 
@@ -82,3 +84,15 @@ def post_softphone_dnd_api(
 def _request_scheme(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip()
     return forwarded or request.url.scheme
+
+
+def _require_own_extension(request: Request, extension: str) -> None:
+    current_user = getattr(request.state, "current_user", None) or {}
+    if current_user.get("role") != "user":
+        return
+    own_extension = str(current_user.get("extension") or current_user.get("username") or "")
+    if extension != own_extension:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only change your own webphone.",
+        )

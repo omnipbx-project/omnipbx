@@ -1,4 +1,5 @@
 from unittest import TestCase
+from unittest.mock import patch
 
 import support  # noqa: F401
 
@@ -6,6 +7,7 @@ from app.features.live_overview.service import (
     _build_active_users,
     _build_trunk_rows,
     _extensions_on_call,
+    _ensure_chanspy_available,
     _parse_active_calls,
     _parse_registration_status,
     _system_status,
@@ -13,6 +15,27 @@ from app.features.live_overview.service import (
 
 
 class LiveOverviewTests(TestCase):
+    def test_chanspy_readiness_loads_missing_module(self):
+        with patch(
+            "app.features.live_overview.service._run_asterisk_command",
+            side_effect=[
+                "Your application(s) is (are) not registered",
+                "Loaded app_chanspy.so",
+                "Info about Application 'ChanSpy'",
+            ],
+        ) as run_command:
+            error = _ensure_chanspy_available()
+
+        self.assertEqual(error, "")
+        self.assertEqual(
+            [call.args[0] for call in run_command.call_args_list],
+            [
+                "core show application ChanSpy",
+                "module load app_chanspy.so",
+                "core show application ChanSpy",
+            ],
+        )
+
     def test_parse_active_calls_deduplicates_bridged_channels_and_infers_direction(self):
         output = "\n".join(
             [
@@ -33,6 +56,22 @@ class LiveOverviewTests(TestCase):
         self.assertEqual(calls[0]["trunk"], "carrier")
         self.assertEqual(calls[1]["direction"], "Incoming")
         self.assertEqual(calls[1]["status"], "Ringing")
+
+    def test_parse_active_calls_hides_unbridged_outbound_trunk_mirror(self):
+        output = "\n".join(
+            [
+                "PJSIP/icc-00000011!from-trunk-icc!01911419050!1!Down!AppDial!(Outgoing Line)!01911419050!00:00:00!bridge!x!",
+                "PJSIP/1001-00000010!from-internal-trunks!01911419050!1!Ringing!Dial!PJSIP/01911419050@icc!1001!00:00:00!bridge!x!",
+            ]
+        )
+
+        calls = _parse_active_calls(output, [{"name": "icc"}])
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["from"], "1001")
+        self.assertEqual(calls[0]["to"], "01911419050")
+        self.assertEqual(calls[0]["direction"], "Outgoing")
+        self.assertEqual(calls[0]["trunk"], "icc")
 
     def test_extensions_on_call_collects_numeric_participants(self):
         active = _extensions_on_call(

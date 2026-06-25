@@ -49,6 +49,7 @@ from app.services.api_push import start_api_push_worker
 from app.services.auth import AUTH_COOKIE_NAME, has_admin_users, resolve_session
 from app.services.crm_api import is_valid_crm_api_key
 from app.services.live_events import live_event_hub
+from app.services.permissions import features_for_principal, first_allowed_path, has_feature, required_feature
 from app.services.security import request_security_decision
 from app.services.setup import get_system_settings, is_setup_complete, render_caddyfile, write_caddyfile
 from app.services.user_management import PHOTO_DIR
@@ -142,6 +143,8 @@ async def setup_guard(request: Request, call_next):
                 return PlainTextResponse(security.reason or "Access blocked by OmniPBX security.", status_code=403)
         current_user = resolve_session(connection, request.cookies.get(AUTH_COOKIE_NAME))
         request.state.current_user = current_user
+        user_features = features_for_principal(connection, current_user)
+        request.state.user_features = user_features
 
         if not setup_complete or not admin_ready:
             # On a fresh install, only allow setup wizard, static assets, and health checks.
@@ -170,17 +173,9 @@ async def setup_guard(request: Request, call_next):
 
         if current_user:
             if current_user.get("role") == "user":
-                user_allowed_prefixes = (
-                    "/dashboard",
-                    "/softphone",
-                    "/webphone",
-                    "/api/softphone",
-                    "/live-overview",
-                    "/user-photos",
-                    "/logout",
-                )
-                if not path.startswith(user_allowed_prefixes):
-                    return RedirectResponse(url="/dashboard", status_code=303)
+                required = required_feature(request.method, path)
+                if required == "" or (required and not has_feature(user_features, required)):
+                    return PlainTextResponse("You do not have permission to access this feature.", status_code=403)
             if current_user.get("role") == "read_only" and request.method not in {"GET", "HEAD", "OPTIONS"}:
                 if path not in {"/admin-accounts/change-password"}:
                     return PlainTextResponse("Read-only accounts cannot modify OmniPBX.", status_code=403)
@@ -194,8 +189,12 @@ async def root(request: Request) -> RedirectResponse:
     with psycopg.connect(settings.db_dsn, autocommit=True) as connection:
         if not is_setup_complete(connection) or not has_admin_users(connection):
             target = "/setup"
-        elif resolve_session(connection, request.cookies.get(AUTH_COOKIE_NAME)):
-            target = "/dashboard"
+        elif principal := resolve_session(connection, request.cookies.get(AUTH_COOKIE_NAME)):
+            target = (
+                first_allowed_path(features_for_principal(connection, principal))
+                if principal.get("role") == "user"
+                else "/dashboard"
+            )
         else:
             target = "/login"
     return RedirectResponse(url=target, status_code=307)

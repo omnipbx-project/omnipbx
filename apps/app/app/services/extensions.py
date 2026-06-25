@@ -80,6 +80,65 @@ def list_extensions(connection: psycopg.Connection) -> list[dict]:
         return list(cursor.fetchall())
 
 
+def get_extension(connection: psycopg.Connection, extension: str) -> dict | None:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            SELECT
+                id, extension, display_name, secret, context, transport, codecs, video_codecs,
+                call_recording_enabled, auto_provision_enabled, simultaneous_device_limit, enabled
+            FROM extensions
+            WHERE extension = %(extension)s
+            """,
+            {"extension": extension},
+        )
+        row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+def update_own_extension_profile(
+    connection: psycopg.Connection,
+    extension: str,
+    *,
+    display_name: str,
+    transport: str,
+    call_recording_enabled: bool,
+    simultaneous_device_limit: int,
+    secret: str | None = None,
+) -> dict | None:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            UPDATE extensions
+            SET display_name = %(display_name)s,
+                transport = %(transport)s,
+                codecs = %(codecs)s,
+                video_codecs = %(video_codecs)s,
+                call_recording_enabled = %(call_recording_enabled)s,
+                auto_provision_enabled = %(auto_provision_enabled)s,
+                simultaneous_device_limit = %(simultaneous_device_limit)s,
+                secret = COALESCE(%(secret)s, secret)
+            WHERE extension = %(extension)s
+            RETURNING
+                id, extension, display_name, secret, context, transport, codecs, video_codecs,
+                call_recording_enabled, auto_provision_enabled, simultaneous_device_limit, enabled
+            """,
+            {
+                "extension": extension,
+                "display_name": display_name.strip(),
+                "transport": transport,
+                "codecs": audio_codecs_for_transport(transport),
+                "video_codecs": video_codecs_for_transport(transport),
+                "call_recording_enabled": call_recording_enabled,
+                "auto_provision_enabled": auto_provision_enabled_for_transport(transport),
+                "simultaneous_device_limit": normalize_simultaneous_device_limit(simultaneous_device_limit),
+                "secret": secret,
+            },
+        )
+        row = cursor.fetchone()
+    return dict(row) if row else None
+
+
 def create_extension(connection: psycopg.Connection, payload: ExtensionCreate) -> dict:
     settings = get_settings()
     values = {

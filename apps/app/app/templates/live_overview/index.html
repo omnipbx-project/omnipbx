@@ -22,10 +22,10 @@
           <h3>Active Calls</h3>
         </div>
         <div class="live-call-tools">
-          <label class="supervisor-extension-field">
-            <span>Your extension</span>
-            <input type="text" inputmode="numeric" id="supervisor-extension" placeholder="1001">
-          </label>
+          <span class="supervisor-extension-field">
+            <span>Your webphone</span>
+            <strong id="supervisor-extension" data-extension="{{ supervisor_extension }}">{{ supervisor_extension or "Not available" }}</strong>
+          </span>
           <span class="status-pill available" id="live-refresh-label">Live</span>
         </div>
       </div>

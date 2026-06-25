@@ -1,6 +1,6 @@
 .trunks-page {
   display: grid;
-  gap: 18px;
+  gap: 14px;
 }
 
 .trunks-toolbar {
@@ -10,24 +10,24 @@
 
 .trunks-toolbar .primary {
   min-width: 164px;
-  min-height: 46px;
+  min-height: 38px;
   white-space: nowrap;
 }
 
 .trunk-card-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 12px;
 }
 
 .trunk-card {
   position: relative;
   display: grid;
-  gap: 16px;
+  gap: 12px;
   min-width: 0;
-  padding: 18px;
+  padding: 16px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: 8px;
   background: var(--bg-panel);
   box-shadow: var(--shadow-card);
 }
@@ -40,9 +40,9 @@
 .trunk-icon {
   display: grid;
   place-items: center;
-  width: 58px;
-  height: 58px;
-  border-radius: 18px;
+  width: 50px;
+  height: 50px;
+  border-radius: 8px;
   background: var(--bg-accent-soft);
   color: var(--accent-strong);
   font-weight: 800;
@@ -96,7 +96,7 @@
   width: 34px;
   height: 34px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 8px;
   color: var(--text-soft);
   cursor: pointer;
   list-style: none;
@@ -116,7 +116,7 @@
   min-width: 178px;
   padding: 8px;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 8px;
   background: var(--bg-panel-strong);
   box-shadow: var(--shadow-soft);
 }
