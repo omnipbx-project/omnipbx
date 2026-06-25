@@ -65,6 +65,123 @@ def save_timezone_setting(connection: psycopg.Connection, timezone_name: str) ->
     return get_system_settings(connection)
 
 
+def save_company_network_settings(
+    connection: psycopg.Connection,
+    *,
+    company_name: str,
+    country: str,
+    timezone_name: str,
+    default_language: str,
+    dialing_region: str,
+    deployment_mode: str,
+    access_mode: str,
+    behind_nat: bool,
+    external_host: str,
+    sip_port: int,
+    rtp_start: int,
+    rtp_end: int,
+    local_networks: str,
+) -> dict[str, object]:
+    company_name = (company_name or "").strip()
+    country = (country or "").strip()
+    timezone_name = (timezone_name or "").strip()
+    default_language = (default_language or "").strip()
+    dialing_region = (dialing_region or "").strip()
+    deployment_mode = (deployment_mode or "").strip()
+    access_mode = (access_mode or "").strip()
+    external_host = (external_host or "").strip()
+    local_networks = (local_networks or "").strip()
+
+    if len(company_name) < 2:
+        raise ValueError("Enter a company name.")
+    if len(country) < 2:
+        raise ValueError("Choose a country.")
+    try:
+        ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError("Choose a valid timezone.") from exc
+    if default_language not in {"en", "bn", "ar", "hi"}:
+        raise ValueError("Choose a valid interface language.")
+    if not dialing_region:
+        raise ValueError("Enter a calling region code.")
+    if deployment_mode not in {"office", "public_server", "advanced"}:
+        raise ValueError("Choose a valid deployment mode.")
+    if access_mode not in {"local_network", "public_domain", "public_ip", "private_self_hosted", "http_only"}:
+        raise ValueError("Choose a valid access type.")
+    if sip_port < 1 or sip_port > 65535:
+        raise ValueError("SIP port must be between 1 and 65535.")
+    if rtp_start < 1024 or rtp_start > 65535 or rtp_end < 1024 or rtp_end > 65535 or rtp_end < rtp_start:
+        raise ValueError("Enter a valid RTP port range.")
+
+    ssl_mode = {
+        "local_network": "internal_local",
+        "public_domain": "public_domain",
+        "public_ip": "public_ip",
+        "private_self_hosted": "custom_certificate",
+        "http_only": "http",
+    }.get(access_mode, "http")
+    if access_mode != "http_only" and not external_host:
+        raise ValueError("Enter the PBX address users should open.")
+    if ssl_mode == "public_domain" and external_host and _is_ip_address(external_host):
+        raise ValueError("Public domain HTTPS needs a domain name, not an IP address.")
+    if ssl_mode == "public_ip" and external_host and not _is_ip_address(external_host):
+        raise ValueError("Public IP HTTPS needs an IP address.")
+    if ssl_mode == "custom_certificate" and not custom_certificate_ready():
+        raise ValueError("Upload the certificate and private key in setup before using Bring Your Own Certificate.")
+
+    public_base_url = _build_public_base_url(ssl_mode, external_host)
+    caddy_enabled = ssl_mode in {"public_domain", "public_ip", "internal_local", "custom_certificate"}
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE system_settings
+            SET
+                company_name = %(company_name)s,
+                country = %(country)s,
+                timezone = %(timezone)s,
+                default_language = %(default_language)s,
+                dialing_region = %(dialing_region)s,
+                deployment_mode = %(deployment_mode)s,
+                access_mode = %(access_mode)s,
+                behind_nat = %(behind_nat)s,
+                external_host = %(external_host)s,
+                ssl_mode = %(ssl_mode)s,
+                sip_port = %(sip_port)s,
+                rtp_start = %(rtp_start)s,
+                rtp_end = %(rtp_end)s,
+                local_networks = %(local_networks)s,
+                public_base_url = %(public_base_url)s,
+                caddy_enabled = %(caddy_enabled)s,
+                updated_at = NOW()
+            WHERE id = %(id)s
+            """,
+            {
+                "id": SETTINGS_ID,
+                "company_name": company_name,
+                "country": country,
+                "timezone": timezone_name,
+                "default_language": default_language,
+                "dialing_region": dialing_region,
+                "deployment_mode": deployment_mode,
+                "access_mode": access_mode,
+                "behind_nat": behind_nat,
+                "external_host": external_host or None,
+                "ssl_mode": ssl_mode,
+                "sip_port": sip_port,
+                "rtp_start": rtp_start,
+                "rtp_end": rtp_end,
+                "local_networks": local_networks or None,
+                "public_base_url": public_base_url,
+                "caddy_enabled": caddy_enabled,
+            },
+        )
+
+    sync_asterisk_config(connection, reload_config=True)
+    refresh_caddy_config(connection)
+    return get_system_settings(connection)
+
+
 def save_ssl_settings(
     connection: psycopg.Connection,
     *,
