@@ -47,7 +47,7 @@ def api_push_page(
     )
 
 
-@router.post("/api-push/settings")
+@router.post("/api-push/settings/form")
 def save_api_push_settings_from_ui(
     enabled_raw: str | None = Form(default=None),
     call_logs_url: str = Form(default=""),

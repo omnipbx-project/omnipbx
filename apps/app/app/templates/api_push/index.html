@@ -38,7 +38,7 @@
           <p>Send live AMI call events to your CRM webhook.</p>
         </div>
       </div>
-      <form method="post" action="/api-push/settings" class="stack">
+      <form method="post" action="/api-push/settings/form" class="stack">
         <input type="hidden" name="call_logs_url" value="{{ settings.call_logs_url or '' }}">
         <input type="hidden" name="callbacks_url" value="{{ settings.callbacks_url or '' }}">
         <input type="hidden" name="public_base_url" value="{{ settings.public_base_url or '' }}">
