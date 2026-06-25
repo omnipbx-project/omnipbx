@@ -47,7 +47,7 @@ def settings_page(
         admins=list_admin_accounts(connection),
         backups=list_backup_files(),
         security_rules=list_security_rules(connection),
-        page_js=["/static/js/updates.js"],
+        page_js=["/static/js/updates.js", "/static/js/settings.js"],
     )
 
 

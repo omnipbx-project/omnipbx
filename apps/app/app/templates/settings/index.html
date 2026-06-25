@@ -16,131 +16,15 @@
     {{ stat_card("Security Rules", security_rules|length, "Number/IP rules") }}
   </div>
 
-  <div class="panel block-spaced" id="company-network">
-    <div class="section-header">
-      <div class="section-copy">
-        <h3>Company & Network</h3>
-        <p>Correct setup details later without running the setup wizard again.</p>
-      </div>
-    </div>
-    <form method="post" action="/settings/company-network" class="stack">
-      <div class="field">
-        <label for="company_name">Company name</label>
-        <input id="company_name" type="text" name="company_name" value="{{ system_settings.company_name or '' }}" required>
-      </div>
-      <div class="field-grid two">
-        <div class="field">
-          <label for="country">Country</label>
-          <select id="country" name="country">
-            {% for item in countries %}
-            <option value="{{ item.value }}" {% if system_settings.country == item.value %}selected{% endif %}>{{ item.label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="field">
-          <label for="timezone">PBX timezone</label>
-          <select id="timezone" name="timezone">
-            {% for item in timezone_options %}
-            <option value="{{ item.value }}" {% if system_settings.timezone == item.value %}selected{% endif %}>{{ item.label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-      </div>
-      <div class="field-grid two">
-        <div class="field">
-          <label for="default_language">Interface language</label>
-          <select id="default_language" name="default_language">
-            {% for item in languages %}
-            <option value="{{ item.value }}" {% if system_settings.default_language == item.value %}selected{% endif %}>{{ item.label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="field">
-          <label for="dialing_region">Calling region code</label>
-          <input id="dialing_region" type="text" name="dialing_region" value="{{ system_settings.dialing_region or '+880' }}" required>
-        </div>
-      </div>
-      <div class="field">
-        <label for="external_host">PBX address</label>
-        <input id="external_host" type="text" name="external_host" value="{{ system_settings.external_host or '' }}" placeholder="pbx.example.com or 192.168.8.53">
-      </div>
-      <div class="field-grid two">
-        <div class="field">
-          <label for="deployment_mode">Deployment mode</label>
-          <select id="deployment_mode" name="deployment_mode">
-            {% for item in deployment_modes %}
-            <option value="{{ item.value }}" {% if system_settings.deployment_mode == item.value %}selected{% endif %}>{{ item.label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="field">
-          <label for="access_mode">Access mode</label>
-          <select id="access_mode" name="access_mode">
-            {% for item in access_modes %}
-            <option value="{{ item.value }}" {% if system_settings.access_mode == item.value %}selected{% endif %}>{{ item.label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-      </div>
-      <label class="checkbox-row">
-        <input type="checkbox" name="behind_nat_raw" {% if system_settings.behind_nat %}checked{% endif %}>
-        PBX is behind a router or NAT
-      </label>
-      <div class="field-grid three">
-        <div class="field">
-          <label for="sip_port">SIP port</label>
-          <input id="sip_port" type="number" name="sip_port" value="{{ system_settings.sip_port }}">
-        </div>
-        <div class="field">
-          <label for="rtp_start">RTP start</label>
-          <input id="rtp_start" type="number" name="rtp_start" value="{{ system_settings.rtp_start }}">
-        </div>
-        <div class="field">
-          <label for="rtp_end">RTP end</label>
-          <input id="rtp_end" type="number" name="rtp_end" value="{{ system_settings.rtp_end }}">
-        </div>
-      </div>
-      <div class="field">
-        <label for="local_networks">Local networks</label>
-        <input id="local_networks" type="text" name="local_networks" value="{{ system_settings.local_networks or '' }}" placeholder="192.168.1.0/24">
-      </div>
-      <div class="button-row">
-        <button type="submit">Save company & network</button>
-      </div>
-    </form>
-  </div>
-
-  <div class="panel block-spaced" id="timezone">
-    <div class="section-header">
-      <div class="section-copy">
-        <h3>Timezone</h3>
-        <p>Quick timezone change for reports, date filters, and CRM webhook local timestamps.</p>
-      </div>
-    </div>
-    <form method="post" action="/settings/timezone" class="stack">
-      <div class="field">
-        <label for="quick_timezone">PBX timezone</label>
-        <select id="quick_timezone" name="timezone">
-          {% for item in timezone_options %}
-          <option value="{{ item.value }}" {% if system_settings.timezone == item.value %}selected{% endif %}>{{ item.label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="button-row">
-        <button type="submit">Save timezone</button>
-      </div>
-    </form>
-  </div>
-
   <div class="settings-grid">
     <a class="settings-tile panel" href="#updates">
       <strong>Updates</strong>
       <span>Check for new git changes and run manual updates.</span>
     </a>
-    <a class="settings-tile panel" href="#company-network">
-      <strong>Company & Network</strong>
-      <span>Company name, timezone, URL, SIP and RTP basics.</span>
-    </a>
+    <button type="button" class="settings-tile panel settings-tile-button" id="open-setup-details-modal">
+      <strong>PBX Setup Details</strong>
+      <span>Fix company, timezone, PBX address, SIP, RTP, and access settings.</span>
+    </button>
     <a class="settings-tile panel" href="/admin-accounts">
       <strong>Admin Accounts & Email</strong>
       <span>Owners, admins, password reset, and SMTP settings.</span>
@@ -161,6 +45,104 @@
       <strong>System Report</strong>
       <span>Storage, CDR/CEL, voicemail, backups, and health.</span>
     </a>
+  </div>
+
+  <div class="settings-modal-backdrop" id="setup-details-modal" hidden>
+    <section class="settings-modal-card" role="dialog" aria-modal="true" aria-labelledby="setup-details-modal-title">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3 id="setup-details-modal-title">PBX Setup Details</h3>
+          <p>Correct setup details later without running the setup wizard again.</p>
+        </div>
+        <button type="button" class="secondary settings-modal-close" id="close-setup-details-modal" aria-label="Close setup details">×</button>
+      </div>
+      <form method="post" action="/settings/company-network" class="stack">
+        <div class="field">
+          <label for="company_name">Company name</label>
+          <input id="company_name" type="text" name="company_name" value="{{ system_settings.company_name or '' }}" required>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="country">Country</label>
+            <select id="country" name="country">
+              {% for item in countries %}
+              <option value="{{ item.value }}" {% if system_settings.country == item.value %}selected{% endif %}>{{ item.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="timezone">PBX timezone</label>
+            <select id="timezone" name="timezone">
+              {% for item in timezone_options %}
+              <option value="{{ item.value }}" {% if system_settings.timezone == item.value %}selected{% endif %}>{{ item.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="default_language">Interface language</label>
+            <select id="default_language" name="default_language">
+              {% for item in languages %}
+              <option value="{{ item.value }}" {% if system_settings.default_language == item.value %}selected{% endif %}>{{ item.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="dialing_region">Calling region code</label>
+            <input id="dialing_region" type="text" name="dialing_region" value="{{ system_settings.dialing_region or '+880' }}" required>
+          </div>
+        </div>
+        <div class="field">
+          <label for="external_host">PBX address</label>
+          <input id="external_host" type="text" name="external_host" value="{{ system_settings.external_host or '' }}" placeholder="pbx.example.com or 192.168.8.53">
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="deployment_mode">Deployment mode</label>
+            <select id="deployment_mode" name="deployment_mode">
+              {% for item in deployment_modes %}
+              <option value="{{ item.value }}" {% if system_settings.deployment_mode == item.value %}selected{% endif %}>{{ item.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="access_mode">Access mode</label>
+            <select id="access_mode" name="access_mode">
+              {% for item in access_modes %}
+              <option value="{{ item.value }}" {% if system_settings.access_mode == item.value %}selected{% endif %}>{{ item.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" name="behind_nat_raw" {% if system_settings.behind_nat %}checked{% endif %}>
+          PBX is behind a router or NAT
+        </label>
+        <div class="field-grid three">
+          <div class="field">
+            <label for="sip_port">SIP port</label>
+            <input id="sip_port" type="number" name="sip_port" value="{{ system_settings.sip_port }}">
+          </div>
+          <div class="field">
+            <label for="rtp_start">RTP start</label>
+            <input id="rtp_start" type="number" name="rtp_start" value="{{ system_settings.rtp_start }}">
+          </div>
+          <div class="field">
+            <label for="rtp_end">RTP end</label>
+            <input id="rtp_end" type="number" name="rtp_end" value="{{ system_settings.rtp_end }}">
+          </div>
+        </div>
+        <div class="field">
+          <label for="local_networks">Local networks</label>
+          <input id="local_networks" type="text" name="local_networks" value="{{ system_settings.local_networks or '' }}" placeholder="192.168.1.0/24">
+        </div>
+        <div class="button-row">
+          <button type="button" class="secondary" id="cancel-setup-details-modal">Cancel</button>
+          <button type="submit">Save setup details</button>
+        </div>
+      </form>
+    </section>
   </div>
 
   {% include "components/_updates_panel.html" %}
