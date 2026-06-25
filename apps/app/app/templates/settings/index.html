@@ -16,7 +16,7 @@
     {{ stat_card("Security Rules", security_rules|length, "Number/IP rules") }}
   </div>
 
-  <div class="panel block-spaced">
+  <div class="panel block-spaced" id="timezone">
     <div class="section-header">
       <div class="section-copy">
         <h3>Timezone</h3>
@@ -43,9 +43,9 @@
       <strong>Updates</strong>
       <span>Check for new git changes and run manual updates.</span>
     </a>
-    <a class="settings-tile panel" href="/setup">
-      <strong>Company & Network</strong>
-      <span>Company name, timezone, URL, SIP and RTP basics.</span>
+    <a class="settings-tile panel" href="#timezone">
+      <strong>Timezone</strong>
+      <span>Set the PBX local timezone for reports and CRM webhook timestamps.</span>
     </a>
     <a class="settings-tile panel" href="/admin-accounts">
       <strong>Admin Accounts & Email</strong>
