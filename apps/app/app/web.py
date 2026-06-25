@@ -24,6 +24,7 @@ NAV_SECTIONS = [
             {"href": "/reports", "label": "Reports", "icon": "▣"},
             {"href": "/settings", "label": "Settings", "icon": "⚙"},
             {"href": "/status", "label": "Advanced", "icon": "◇"},
+            {"href": "/api-push", "label": "API Push", "icon": "⇄"},
         ],
     },
 ]
@@ -93,6 +94,10 @@ def render_template(
         "/status": {
             "placeholder": "Search status...",
             "label": "Search status",
+        },
+        "/api-push": {
+            "placeholder": "Search API push...",
+            "label": "Search API push",
         },
     }
     topbar_search = context.pop(

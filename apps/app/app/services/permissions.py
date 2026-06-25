@@ -68,6 +68,7 @@ NAV_FEATURES = {
     "/reports": "reports:view",
     "/settings": "settings:view",
     "/status": "status:view",
+    "/api-push": "api_push:view",
 }
 
 
