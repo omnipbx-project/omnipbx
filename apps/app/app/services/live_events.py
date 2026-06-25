@@ -39,6 +39,7 @@ class LiveEventHub:
         self._snapshot: dict[str, object] | None = None
         self._snapshot_refreshing = False
         self._sent_call_events: dict[str, float] = {}
+        self._call_sessions: dict[str, dict[str, str]] = {}
 
     @property
     def version(self) -> int:
@@ -196,7 +197,6 @@ class LiveEventHub:
         event = _call_webhook_payload(event_name, message)
         if not event:
             return
-        event_id = str(event["event_id"])
         now = time.time()
         with self._condition:
             self._sent_call_events = {
@@ -204,10 +204,43 @@ class LiveEventHub:
                 for key, seen_at in self._sent_call_events.items()
                 if now - seen_at < 600
             }
+            self._call_sessions = {
+                key: session
+                for key, session in self._call_sessions.items()
+                if now - float(session.get("_seen_at", "0")) < 900
+            }
+            event = self._normalize_call_event(event, now)
+            event_id = str(event["event_id"])
             if event_id in self._sent_call_events:
                 return
             self._sent_call_events[event_id] = now
         dispatch_realtime_call_event(event)
+
+    def _normalize_call_event(self, event: dict[str, object], seen_at: float) -> dict[str, object]:
+        linkedid = str(event.get("linkedid") or event.get("uniqueid") or "")
+        if not linkedid:
+            return event
+
+        session = self._call_sessions.get(linkedid, {})
+        if event.get("event") in {"call.dialing", "call.ringing"} and event.get("direction") != "unknown":
+            session = {
+                **session,
+                "direction": str(event.get("direction") or ""),
+                "caller": str(event.get("caller") or ""),
+                "callee": str(event.get("callee") or ""),
+                "agent_extension": str(event.get("agent_extension") or ""),
+                "trunk": str(event.get("trunk") or ""),
+                "_seen_at": str(seen_at),
+            }
+            self._call_sessions[linkedid] = session
+            return event
+
+        if session:
+            for key in ("direction", "caller", "callee", "agent_extension", "trunk"):
+                if session.get(key):
+                    event[key] = session[key]
+            session["_seen_at"] = str(seen_at)
+        return event
 
 
 def _send_message(stream, fields: dict[str, str]) -> None:
@@ -278,9 +311,6 @@ def _call_webhook_payload(event_name: str, message: dict[str, str]) -> dict[str,
 def _call_event_type(event_name: str, message: dict[str, str]) -> str:
     if event_name == "DialBegin":
         return "call.ringing" if _call_direction(message) == "inbound" else "call.dialing"
-    if event_name in {"Newchannel", "Newstate"}:
-        status = _channel_status(message.get("ChannelStateDesc") or message.get("State"))
-        return "call.ringing" if status == "Ringing" else ""
     if event_name == "BridgeEnter":
         return "call.answered"
     if event_name == "DialEnd":
@@ -338,12 +368,15 @@ def _trunk_name(message: dict[str, str]) -> str:
 
 
 def _dialed_number(message: dict[str, str]) -> str:
+    exten = _first_present(message, "Exten", "DestExten")
+    if exten and exten.lower() != "s":
+        return exten
     dial_string = message.get("DialString", "")
     if dial_string:
-        value = dial_string.split("@", 1)[0].split("/", 1)[0].strip()
-        if value:
+        value = dial_string.split("@", 1)[0].rsplit("/", 1)[-1].strip()
+        if value and not value.startswith("PJSIP"):
             return value
-    return _first_present(message, "Exten", "DestExten", "DestCallerIDNum", "ConnectedLineNum")
+    return _first_present(message, "DestCallerIDNum", "ConnectedLineNum")
 
 
 def _first_present(message: dict[str, str], *keys: str) -> str:
