@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OmniPBX Webphone</title>
+  <link rel="stylesheet" href="softphone.css" />
+</head>
+<body class="popup-body">
+  <main class="phone-shell compact" data-mode="floating">
+    <section class="settings-panel" id="settingsPanel" aria-label="SIP account settings">
+      <label>WSS URL <input id="wsUrl" autocomplete="off" placeholder="wss://pbx.example.com/ws" /></label>
+      <label>SIP domain <input id="sipDomain" autocomplete="off" placeholder="pbx.example.com" /></label>
+      <div class="settings-grid">
+        <label>Extension <input id="sipUser" autocomplete="username" placeholder="1001" /></label>
+        <label>Auth <input id="authUser" autocomplete="off" placeholder="Optional" /></label>
+      </div>
+      <label>Password <input id="sipPass" type="password" autocomplete="current-password" placeholder="SIP password" /></label>
+      <label>Display <input id="displayName" autocomplete="off" placeholder="1001" /></label>
+      <div class="settings-actions">
+        <button id="registerBtn" type="button">Register</button>
+        <button id="unregisterBtn" type="button">Unregister</button>
+      </div>
+    </section>
+
+    <section class="phone-view" id="phoneView">
+      <div class="number-row">
+        <input id="dialNumber" class="dial-input" inputmode="tel" autocomplete="off" placeholder="Enter name or number" aria-label="Dial number" />
+        <button id="backspaceBtn" class="back-btn" type="button" title="Backspace" aria-label="Backspace">⌫</button>
+        <button id="copyNumberBtn" class="hidden-control" type="button" aria-hidden="true" tabindex="-1">Copy</button>
+      </div>
+
+      <div class="keypad" aria-label="Dial keypad">
+        <button type="button" data-key="1">1</button>
+        <button type="button" data-key="2">2</button>
+        <button type="button" data-key="3">3</button>
+        <button type="button" data-key="4">4</button>
+        <button type="button" data-key="5">5</button>
+        <button type="button" data-key="6">6</button>
+        <button type="button" data-key="7">7</button>
+        <button type="button" data-key="8">8</button>
+        <button type="button" data-key="9">9</button>
+        <button type="button" data-key="*">*</button>
+        <button type="button" data-key="0">0</button>
+        <button type="button" data-key="#">#</button>
+        <button id="transferBtn" type="button">R</button>
+        <button id="plusBtn" type="button">+</button>
+        <button id="clearBtn" type="button">C</button>
+      </div>
+
+      <div class="call-row">
+        <button id="videoCallBtn" class="icon-btn" type="button" title="Video call" aria-label="Video call">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M17 10.5V6c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v12c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-4.5l4 4v-11l-4 4z"/>
+          </svg>
+        </button>
+        <button id="callBtn" class="main-call" type="button">Call</button>
+      </div>
+
+      <div class="toggle-row">
+        <button id="dndBtn" type="button" data-toggle="false">DND</button>
+        <button id="autoAnswerBtn" type="button" data-toggle="false">Auto Ans</button>
+      </div>
+
+      <section class="media-panel" id="mediaPanel">
+        <video id="remoteVideo" autoplay playsinline></video>
+        <video id="localVideo" autoplay playsinline muted></video>
+        <audio id="remoteAudio" autoplay></audio>
+      </section>
+
+      <section class="log-panel" id="logPanel" hidden>
+        <div class="log-title">Call log</div>
+        <ol id="callLog"></ol>
+      </section>
+    </section>
+
+    <footer class="statusbar">
+      <span id="statusDot" class="status-dot"></span>
+      <span id="statusText">Not registered</span>
+      <span id="accountLabel">—</span>
+    </footer>
+
+    <button class="settings-btn" id="settingsToggle" type="button" title="Settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M19.43 12.98c.04-.32.07-.65.07-.98s-.02-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.37-.31-.6-.22l-2.49 1a7.28 7.28 0 0 0-1.69-.98L14.5 2.42C14.47 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.5.42L9.12 5.07c-.61.24-1.18.56-1.69.98l-2.49-1c-.23-.08-.48 0-.6.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.08.65-.08.98s.03.66.08.98l-2.11 1.65c-.19.15-.25.42-.12.64l2 3.46c.12.22.37.31.6.22l2.49-1c.51.4 1.08.73 1.69.98l.38 2.65c.04.24.25.42.5.42h4c.25 0 .47-.18.5-.42l.38-2.65c.61-.25 1.18-.58 1.69-.98l2.49 1c.23.09.48 0 .6-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z"/>
+      </svg>
+    </button>
+
+    <div class="hidden-control" aria-hidden="true">
+      <button id="messageBtn" type="button">Message</button>
+      <button id="speakerMuteBtn" type="button">Speaker</button>
+      <button id="micMuteBtn" type="button">Mic</button>
+      <button id="confBtn" type="button" data-toggle="false">CONF</button>
+      <button id="recordBtn" type="button" data-toggle="false">REC</button>
+      <input id="speakerVolume" type="range" min="0" max="1" step="0.05" value="1" />
+    </div>
+  </main>
+  <script src="jssip.min.js"></script>
+  <script src="softphone.js"></script>
+</body>
+</html>

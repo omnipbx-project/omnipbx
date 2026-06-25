@@ -8,6 +8,7 @@
         <h3>Softphone bootstrap</h3>
         <p>Prepare browser-phone settings, preview the generated bootstrap payload, and control extension-level DND from one feature module.</p>
       </div>
+      <a class="button-link secondary" href="/softphone/extension/download">Download browser extension</a>
     </div>
     <div class="metric-grid">
       {{ stat_card("Extensions", extensions|length, "Extensions available for bootstrap preview") }}
@@ -85,8 +86,8 @@
       {{ empty_state("No extensions available", "Create at least one extension before previewing the softphone bootstrap payload.") }}
       {% endif %}
       {% if bootstrap %}
-      <pre class="code-block" style="margin-top: 16px;">{{ bootstrap_json }}</pre>
-      <form method="post" action="/softphone/dnd/{{ bootstrap.extension }}" style="margin-top: 16px;" class="stack">
+      <pre class="code-block block-spaced">{{ bootstrap_json }}</pre>
+      <form method="post" action="/softphone/dnd/{{ bootstrap.extension }}" class="stack block-spaced">
         <label class="checkbox-row">
           <input type="checkbox" name="enabled_raw" {% if bootstrap.dnd_enabled %}checked{% endif %}>
           DND for extension {{ bootstrap.extension }}

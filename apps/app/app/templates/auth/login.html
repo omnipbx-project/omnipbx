@@ -2,11 +2,13 @@
 {% block content %}
 <section class="login-wrap">
   <div class="panel login-card">
-    <span class="eyebrow">Secure Access</span>
-    <h3>Sign in to OmniPBX</h3>
-    <p class="muted">
-      Use the admin account created during setup. Email reset, owner/admin reset, and CLI recovery are now available as fallback paths.
-    </p>
+    <div class="login-card-heading">
+      <span class="eyebrow">Secure Access</span>
+      <h3>Sign in to OmniPBX</h3>
+      <p class="muted">
+        Use your username to open your PBX workspace.
+      </p>
+    </div>
 
     {% if error %}
     <div class="notice notice-error">
@@ -29,20 +31,14 @@
         <input id="username" type="text" name="username" autocomplete="username" required>
       </div>
       <div class="field">
-        <label for="password">Password</label>
+        <div class="field-label-row">
+          <label for="password">Password</label>
+          <a class="text-link" href="/forgot-password">Forgot password?</a>
+        </div>
         <input id="password" type="password" name="password" autocomplete="current-password" required>
       </div>
-      <div class="button-row">
-        <button type="submit">Login</button>
-      </div>
+      <button type="submit" class="login-submit">Sign in</button>
     </form>
-
-    <div class="button-row">
-      <a class="button-link secondary" href="/forgot-password">Forgot password?</a>
-      {% if not smtp_ready %}
-      <span class="muted">Email reset becomes available after SMTP is configured.</span>
-      {% endif %}
-    </div>
   </div>
 </section>
 {% endblock %}

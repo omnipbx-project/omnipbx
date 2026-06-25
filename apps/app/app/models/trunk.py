@@ -1,12 +1,13 @@
 from pydantic import BaseModel, Field, model_validator
 
 
-ALLOWED_TRANSPORTS = {"transport-udp"}
+ALLOWED_TRANSPORTS = {"transport-udp", "transport-tcp", "transport-tls", "transport-wss"}
 
 
 class TrunkCreate(BaseModel):
     name: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
     provider_name: str | None = Field(default=None, max_length=120)
+    main_number: str | None = Field(default=None, max_length=80)
     host: str = Field(min_length=1, max_length=255)
     username: str | None = Field(default=None, max_length=80)
     password: str | None = Field(default=None, max_length=128)
@@ -23,13 +24,14 @@ class TrunkCreate(BaseModel):
         self.name = self.name.strip().lower()
         self.host = self.host.strip()
         self.provider_name = self.provider_name.strip() if self.provider_name else None
+        self.main_number = self.main_number.strip() if self.main_number else None
         self.username = self.username.strip() if self.username else None
         self.password = self.password.strip() if self.password else None
         self.match_ip = self.match_ip.strip() if self.match_ip else None
         self.codecs = self.codecs.strip()
 
         if self.transport not in ALLOWED_TRANSPORTS:
-            raise ValueError("Only transport-udp is supported in Phase 1.")
+            raise ValueError("Choose a supported protocol.")
         if self.register_enabled and (not self.username or not self.password):
             raise ValueError("Username and password are required when registration is enabled.")
         if self.strip_digits and not self.outbound_prefix:
@@ -41,6 +43,7 @@ class TrunkRead(BaseModel):
     id: int
     name: str
     provider_name: str | None
+    main_number: str | None = None
     host: str
     username: str | None
     password: str | None

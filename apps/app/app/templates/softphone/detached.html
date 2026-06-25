@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="webphone-detached-page">
+  {% include "components/_webphone.html" %}
+</section>
+<script id="webphone-detached-bootstrap" type="application/json">{{ bootstrap|tojson }}</script>
+{% endblock %}

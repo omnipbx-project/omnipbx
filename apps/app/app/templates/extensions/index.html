@@ -9,17 +9,24 @@
 {% endif %}
 
 <section class="users-page">
-  <div class="users-toolbar panel">
-    <div class="users-search">
-      <span aria-hidden="true">⌕</span>
-      <input type="search" id="users-search" placeholder="Search user or extension..." aria-label="Search user or extension">
+  <div class="users-page-toolbar">
+    <div class="users-tabs" role="tablist" aria-label="Users sections">
+      <button type="button" class="users-tab active" data-tab="users" role="tab" aria-selected="true">Users</button>
+      {% if current_user.role != 'user' or 'groups:view' in user_features %}
+      <button type="button" class="users-tab" data-tab="groups" role="tab" aria-selected="false">Groups</button>
+      {% endif %}
+      {% if current_user.role != 'user' or 'permissions:view' in user_features %}
+      <button type="button" class="users-tab" data-tab="permissions" role="tab" aria-selected="false">Permissions</button>
+      {% endif %}
     </div>
+    {% if current_user.role != 'user' or 'users:create' in user_features %}
     <button type="button" class="primary users-primary-action" id="users-primary-action">+ Add User</button>
+    {% endif %}
   </div>
 
   <div class="action-panel panel" id="users-action-panel" hidden>
     <div class="section-header">
-      <h3 id="action-panel-title">Add User</h3>
+      <h3 id="action-panel-title" tabindex="-1">Add User</h3>
       <button type="button" class="secondary close-action-panel" id="close-action-panel" aria-label="Close add panel">×</button>
     </div>
 
@@ -31,7 +38,7 @@
         </div>
         <div class="field">
           <label for="extension">Extension</label>
-          <input id="extension" type="number" name="extension" min="1" max="9999" step="1" placeholder="1 to 9999" required>
+          <input id="extension" type="number" name="extension" min="1" max="99999" step="1" placeholder="1 to 99999" required>
         </div>
         <div class="field">
           <label for="user_email">Email</label>
@@ -66,6 +73,18 @@
           </select>
         </div>
       </div>
+      <label class="toggle-line">
+        <input type="checkbox" name="call_recording_raw" checked>
+        Record this user's calls
+      </label>
+      <div class="field">
+        <label for="simultaneous_device_limit">Simultaneous Devices</label>
+        <select id="simultaneous_device_limit" name="simultaneous_device_limit">
+          {% for count in range(1, 11) %}
+          <option value="{{ count }}">{{ count }} device{% if count != 1 %}s{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
       <input type="hidden" name="enabled_raw" value="on">
       <div class="button-row">
         <button type="submit" class="primary">Create User</button>
@@ -81,7 +100,7 @@
         </div>
         <div class="field">
           <label for="edit_extension">Extension</label>
-          <input id="edit_extension" type="number" name="new_extension" min="1" max="9999" step="1" placeholder="1 to 9999" required>
+          <input id="edit_extension" type="number" name="new_extension" min="1" max="99999" step="1" placeholder="1 to 99999" required>
         </div>
         <div class="field">
           <label for="edit_email">Email</label>
@@ -114,6 +133,18 @@
           </select>
         </div>
       </div>
+      <label class="toggle-line">
+        <input id="edit_call_recording" type="checkbox" name="call_recording_raw">
+        Record this user's calls
+      </label>
+      <div class="field">
+        <label for="edit_simultaneous_device_limit">Simultaneous Devices</label>
+        <select id="edit_simultaneous_device_limit" name="simultaneous_device_limit">
+          {% for count in range(1, 11) %}
+          <option value="{{ count }}">{{ count }} device{% if count != 1 %}s{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
       <div class="button-row">
         <button type="submit" class="primary">Save User</button>
         <button type="button" class="secondary cancel-action">Cancel</button>
@@ -145,16 +176,72 @@
       </div>
     </form>
 
-    <form method="post" action="/extensions/permissions/create" class="action-form" data-form="permissions">
+    <form method="post" action="/extensions/permissions/create" class="action-form permission-form" data-form="permissions">
       <div class="field-grid two">
         <div class="field">
           <label for="permission_name">Permission Name</label>
           <input id="permission_name" type="text" name="permission_name" placeholder="Supervisor" required>
         </div>
         <div class="field">
-          <label for="permission_features">Features</label>
-          <input id="permission_features" type="text" name="permission_features" placeholder="Calls, Reports, Voicemail">
+          <label>Access Level</label>
+          <div class="permission-levels" role="radiogroup" aria-label="Access level">
+            <label><input type="radio" name="permission_level" value="read_only" data-permission-template="read_only"><span>Read only</span></label>
+            <label><input type="radio" name="permission_level" value="operator" data-permission-template="operator"><span>Operator</span></label>
+            <label><input type="radio" name="permission_level" value="manager" data-permission-template="manager"><span>Manager</span></label>
+            <label><input type="radio" name="permission_level" value="custom" data-permission-template="custom" checked><span>Custom</span></label>
+          </div>
         </div>
+      </div>
+      <input id="permission_features" type="hidden" name="permission_features">
+      <div class="permission-builder-title">
+        <strong>Feature Access</strong>
+        <span>Choose exactly what this permission can use across OmniPBX.</span>
+      </div>
+      <div class="permission-builder" data-permission-builder>
+        <div class="permission-builder-head">
+          <span>Feature</span>
+          <span>Access</span>
+        </div>
+        {% set permission_rows = [
+          ("users", "Users", [("view", "View"), ("create", "Create"), ("edit", "Edit"), ("delete", "Delete")]),
+          ("groups", "Groups", [("view", "View"), ("manage", "Manage")]),
+          ("permissions", "Permissions", [("view", "View"), ("manage", "Manage")]),
+          ("live_overview", "Live Overview", [("view", "View"), ("supervise", "Supervisor actions")]),
+          ("dashboard", "Dashboard", [("view", "View")]),
+          ("trunks", "Trunks", [("view", "View"), ("manage", "Manage"), ("test", "Test")]),
+          ("call_routing", "Call Routing", [("view", "View"), ("manage", "Manage")]),
+          ("inbound_routes", "Inbound Routes", [("view", "View"), ("manage", "Manage")]),
+          ("ring_groups", "Ring Groups", [("view", "View"), ("manage", "Manage")]),
+          ("queues", "Queues", [("view", "View"), ("manage", "Manage")]),
+          ("ivrs", "IVRs", [("view", "View"), ("manage", "Manage")]),
+          ("working_hours", "Working Hours", [("view", "View"), ("manage", "Manage")]),
+          ("call_logs", "Call Logs", [("view", "View"), ("export", "Export"), ("recordings", "Recordings")]),
+          ("callbacks", "Follow Up", [("view", "View"), ("take", "Take"), ("complete", "Complete")]),
+          ("call_records", "Call Records", [("view", "View"), ("download", "Download")]),
+          ("voicemail", "Voicemail", [("view", "View"), ("manage", "Manage"), ("delete", "Delete")]),
+          ("reports", "Reports", [("view", "View"), ("export", "Export")]),
+          ("softphone", "Softphone", [("view", "View"), ("configure", "Configure"), ("provision", "Provision")]),
+          ("settings", "Settings", [("view", "View"), ("manage", "Manage")]),
+          ("status", "Advanced Status", [("view", "View"), ("run_checks", "Run checks")]),
+          ("backup_restore", "Backup & Restore", [("view", "View"), ("backup", "Backup"), ("restore", "Restore")]),
+          ("api_push", "API Push", [("view", "View"), ("manage", "Manage"), ("send_test", "Send test")]),
+          ("audit_log", "Audit Log", [("view", "View")]),
+          ("admin_accounts", "Admin Accounts", [("view", "View"), ("manage", "Manage")])
+        ] %}
+        {% for key, label, actions in permission_rows %}
+        <div class="permission-row">
+          <div class="permission-feature-name">{{ label }}</div>
+          <div class="permission-actions">
+            {% for action_key, action_label in actions %}
+            {% set feature_value = key ~ ":" ~ action_key %}
+            <label class="permission-chip-toggle">
+              <input type="checkbox" value="{{ feature_value }}" data-permission-feature>
+              <span>{{ action_label }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
       </div>
       <div class="field">
         <label for="permission_description">Description</label>
@@ -165,12 +252,6 @@
         <button type="button" class="secondary cancel-action">Cancel</button>
       </div>
     </form>
-  </div>
-
-  <div class="users-tabs" role="tablist" aria-label="Users sections">
-    <button type="button" class="users-tab active" data-tab="users" role="tab" aria-selected="true">Users</button>
-    <button type="button" class="users-tab" data-tab="groups" role="tab" aria-selected="false">Groups</button>
-    <button type="button" class="users-tab" data-tab="permissions" role="tab" aria-selected="false">Permissions</button>
   </div>
 
   <section class="tab-panel active" id="users-tab-panel" data-panel="users">
@@ -194,15 +275,25 @@
     <div class="user-card-grid">
       {% for extension in extensions %}
       {% set runtime_state = status_by_extension.get(extension.extension, "Unknown") %}
-      {% set status_class = "online" if runtime_state == "Online" else "offline" if runtime_state == "Offline" else "on-call" if runtime_state == "On Call" else "unknown" %}
+      {% set status_class = "online" if runtime_state == "Online" else "offline" if runtime_state == "Offline" else "on-call" if runtime_state == "On Call" else "ringing" if runtime_state == "Ringing" else "unknown" %}
       {% set profile = profiles_by_extension.get(extension.extension, {}) %}
       {% set group_name = profile.group_name or (groups[0].name if groups else "Sales") %}
       {% set email = profile.email or "" %}
-      <article class="management-card user-management-card">
+      {% set photo_url = profile.photo_url or "" %}
+      {% set is_own_user = current_user.role == 'user' and current_user.extension == extension.extension %}
+      {% set can_edit_user = current_user.role != 'user' or 'users:edit' in user_features %}
+      {% set can_delete_user = current_user.role != 'user' or 'users:delete' in user_features %}
+      <article class="management-card user-management-card" data-extension="{{ extension.extension }}">
+        {% if is_own_user or can_edit_user or can_delete_user %}
         <details class="card-menu">
           <summary aria-label="User actions">⋯</summary>
           <div class="menu-list">
-            <button type="button" class="edit-user-action" data-extension="{{ extension.extension }}" data-name="{{ extension.display_name }}" data-email="{{ email }}" data-group="{{ group_name }}" data-transport="{{ extension.transport or 'transport-udp' }}">Edit</button>
+            {% if is_own_user and not can_edit_user %}
+            <a href="/my-profile?return_to=/extensions">Edit My Profile</a>
+            {% elif can_edit_user %}
+            <button type="button" class="edit-user-action" data-extension="{{ extension.extension }}" data-name="{{ extension.display_name }}" data-email="{{ email }}" data-group="{{ group_name }}" data-transport="{{ extension.transport or 'transport-udp' }}" data-call-recording="{{ '1' if extension.call_recording_enabled else '0' }}" data-device-limit="{{ extension.simultaneous_device_limit or 1 }}">Edit</button>
+            {% endif %}
+            {% if can_edit_user %}
             <form method="post" action="/extensions/{{ extension.extension }}/set-enabled">
               {% if extension.enabled %}
               <button type="submit">Disable User</button>
@@ -211,20 +302,32 @@
               <button type="submit">Enable User</button>
               {% endif %}
             </form>
+            {% endif %}
+            {% if can_delete_user %}
             <form method="post" action="/extensions/{{ extension.extension }}/delete" onsubmit="return confirm('Delete user {{ extension.display_name }}?');">
               <button type="submit" class="danger-menu">Delete User</button>
             </form>
+            {% endif %}
           </div>
         </details>
+        {% endif %}
         <div class="user-card-avatar-wrap">
+          {% if photo_url %}
+          <img class="user-card-avatar user-card-photo" src="{{ photo_url }}" alt="{{ extension.display_name }} photo">
+          {% else %}
           <div class="user-card-avatar">{{ (extension.display_name or extension.extension)[:1]|upper }}</div>
+          {% endif %}
           <span class="user-status-dot {{ status_class }}"></span>
         </div>
         <div class="user-card-copy">
           <strong>{{ extension.display_name }}</strong>
           <span>{{ extension.extension }}</span>
           <small>{{ group_name }}</small>
-          <em>{{ runtime_state }}</em>
+          {% if extension.call_recording_enabled %}
+          <small>Recording on</small>
+          {% endif %}
+          <small>{{ extension.simultaneous_device_limit or 1 }} device{% if (extension.simultaneous_device_limit or 1) != 1 %}s{% endif %} allowed</small>
+          <em data-user-status>{{ runtime_state }}</em>
         </div>
       </article>
       {% endfor %}
@@ -236,21 +339,24 @@
     {% endif %}
   </section>
 
+  {% if current_user.role != 'user' or 'groups:view' in user_features %}
   <section class="tab-panel" id="groups-tab-panel" data-panel="groups">
     <div class="groups-grid">
       {% for group in groups %}
       <article class="management-card group-card">
+        {% if current_user.role != 'user' or 'groups:manage' in user_features %}
         <details class="card-menu">
           <summary aria-label="Group actions">⋯</summary>
           <div class="menu-list">
             <button type="button" class="edit-group-action" data-name="{{ group.name }}" data-description="{{ group.description }}" data-permission="{{ group.permission }}">Edit</button>
             <button type="button">View Users</button>
-            <button type="button">Set Permission</button>
+            <button type="button" class="edit-group-action" data-name="{{ group.name }}" data-description="{{ group.description }}" data-permission="{{ group.permission }}">Set Permission</button>
             <form method="post" action="/extensions/groups/{{ group.name }}/delete" onsubmit="return confirm('Delete group {{ group.name }}?');">
               <button type="submit" class="danger-menu">Delete Group</button>
             </form>
           </div>
         </details>
+        {% endif %}
         <div class="card-icon">G</div>
         <div class="card-copy">
           <strong>{{ group.name }}</strong>
@@ -264,15 +370,18 @@
       {% endfor %}
     </div>
   </section>
+  {% endif %}
 
+  {% if current_user.role != 'user' or 'permissions:view' in user_features %}
   <section class="tab-panel" id="permissions-tab-panel" data-panel="permissions">
     <div class="permissions-grid">
       {% for permission in permissions %}
       <article class="management-card permission-card">
+        {% if current_user.role != 'user' or 'permissions:manage' in user_features %}
         <details class="card-menu">
           <summary aria-label="Permission actions">⋯</summary>
           <div class="menu-list">
-            <button type="button" class="edit-permission-action" data-name="{{ permission.name }}" data-description="{{ permission.description }}" data-features="{{ permission.features|join(', ') }}">Edit Permission</button>
+            <button type="button" class="edit-permission-action" data-name="{{ permission.name }}" data-description="{{ permission.description }}" data-features="{{ permission.features|join(',') }}">Edit Permission</button>
             <button type="button">Assign to Group</button>
             <button type="button">Duplicate</button>
             <form method="post" action="/extensions/permissions/{{ permission.name }}/delete" onsubmit="return confirm('Delete permission {{ permission.name }}?');">
@@ -280,6 +389,7 @@
             </form>
           </div>
         </details>
+        {% endif %}
         <div class="card-icon">P</div>
         <div class="card-copy">
           <strong>{{ permission.name }}</strong>
@@ -287,513 +397,15 @@
         </div>
         <div class="permission-chips">
           {% for feature in permission.features %}
-          <span>{{ feature }}</span>
+          <span>{{ feature|replace("_", " ")|replace(":", " · ")|title }}</span>
+          {% else %}
+          <span>No feature access selected</span>
           {% endfor %}
         </div>
       </article>
       {% endfor %}
     </div>
   </section>
+  {% endif %}
 </section>
-
-<style>
-  .users-page {
-    display: grid;
-    gap: 18px;
-  }
-
-  .users-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 16px;
-  }
-
-  .users-search {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: min(460px, 100%);
-    padding: 12px 14px;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--bg-panel-strong) 94%, transparent);
-    color: var(--text-muted);
-  }
-
-  .users-search input {
-    width: 100%;
-    border: 0;
-    outline: 0;
-    background: transparent;
-    color: var(--text);
-  }
-
-  .action-form input[type="email"],
-  .action-form input[type="file"] {
-    width: 100%;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--bg-panel-strong) 94%, transparent);
-    color: var(--text);
-  }
-
-  .action-form input[type="email"] {
-    padding: 12px 14px;
-  }
-
-  .action-form input[type="email"]:-webkit-autofill {
-    -webkit-text-fill-color: var(--text);
-    box-shadow: 0 0 0 1000px color-mix(in srgb, var(--bg-panel-strong) 94%, transparent) inset;
-    caret-color: var(--text);
-  }
-
-  .action-form input[type="file"] {
-    padding: 9px 12px;
-    color: var(--text-soft);
-  }
-
-  .action-form input[type="file"]::file-selector-button {
-    margin-right: 12px;
-    padding: 8px 12px;
-    border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
-    border-radius: 10px;
-    background: var(--bg-accent-soft);
-    color: var(--accent-strong);
-    font-weight: 700;
-    cursor: pointer;
-  }
-
-  .users-primary-action {
-    width: 164px;
-    min-height: 46px;
-    white-space: nowrap;
-  }
-
-  .action-panel {
-    display: grid;
-    gap: 16px;
-  }
-
-  .action-panel[hidden] {
-    display: none;
-  }
-
-  .close-action-panel {
-    width: 38px;
-    height: 38px;
-    padding: 0;
-    font-size: 1.2rem;
-  }
-
-  .action-form {
-    display: none;
-    gap: 16px;
-  }
-
-  .action-form.active {
-    display: grid;
-  }
-
-  .action-form textarea {
-    resize: vertical;
-  }
-
-  .users-tabs {
-    display: flex;
-    gap: 8px;
-    padding: 6px;
-    width: fit-content;
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    background: var(--bg-panel);
-    box-shadow: var(--shadow-card);
-  }
-
-  .users-tab {
-    min-width: 116px;
-    border-radius: 12px;
-    background: transparent;
-    color: var(--text-soft);
-  }
-
-  .users-tab.active {
-    background: var(--bg-accent-soft);
-    border-color: color-mix(in srgb, var(--accent) 28%, transparent);
-    color: var(--accent-strong);
-  }
-
-  .tab-panel {
-    display: none;
-  }
-
-  .tab-panel.active {
-    display: grid;
-    gap: 18px;
-  }
-
-  .users-filters {
-    display: flex;
-    gap: 12px;
-    padding: 14px;
-  }
-
-  .users-filters select {
-    min-width: 160px;
-    padding: 11px 14px;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--bg-panel-strong) 94%, transparent);
-    color: var(--text);
-  }
-
-  .user-card-grid {
-    display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 16px;
-  }
-
-  .groups-grid,
-  .permissions-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 16px;
-  }
-
-  .management-card {
-    position: relative;
-    display: grid;
-    gap: 14px;
-    min-width: 0;
-    padding: 18px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-lg);
-    background: var(--bg-panel);
-    box-shadow: var(--shadow-card);
-  }
-
-  .user-management-card {
-    justify-items: center;
-    text-align: center;
-  }
-
-  .card-menu {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-  }
-
-  .card-menu summary {
-    display: grid;
-    place-items: center;
-    width: 34px;
-    height: 34px;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    color: var(--text-soft);
-    cursor: pointer;
-    list-style: none;
-    background: color-mix(in srgb, var(--bg-panel-strong) 94%, transparent);
-  }
-
-  .card-menu summary::-webkit-details-marker {
-    display: none;
-  }
-
-  .menu-list {
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
-    z-index: 20;
-    display: grid;
-    min-width: 178px;
-    padding: 8px;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    background: var(--bg-panel-strong);
-    box-shadow: var(--shadow-soft);
-  }
-
-  .menu-list button {
-    justify-content: flex-start;
-    width: 100%;
-    padding: 9px 10px;
-    border: 0;
-    border-radius: 10px;
-    background: transparent;
-    color: var(--text-soft);
-    font-size: 0.9rem;
-    box-shadow: none;
-  }
-
-  .menu-list button:hover {
-    background: var(--bg-subtle);
-    color: var(--text);
-  }
-
-  .menu-list .danger-menu {
-    color: var(--danger);
-  }
-
-  .user-card-avatar-wrap {
-    position: relative;
-    margin-top: 8px;
-  }
-
-  .user-card-avatar {
-    display: grid;
-    place-items: center;
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--accent-strong), var(--accent));
-    color: white;
-    font-size: 1.3rem;
-    font-weight: 800;
-    box-shadow: 0 12px 22px color-mix(in srgb, var(--accent) 20%, transparent);
-  }
-
-  .user-status-dot {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    width: 14px;
-    height: 14px;
-    border: 2px solid var(--bg-panel);
-    border-radius: 50%;
-  }
-
-  .user-status-dot.online { background: var(--success); }
-  .user-status-dot.offline { background: var(--danger); }
-  .user-status-dot.on-call { background: var(--warning); }
-  .user-status-dot.unknown { background: var(--text-muted); }
-
-  .user-card-copy,
-  .card-copy,
-  .card-meta {
-    display: grid;
-    gap: 5px;
-    min-width: 0;
-  }
-
-  .user-card-copy strong,
-  .user-card-copy span,
-  .user-card-copy small,
-  .user-card-copy em {
-    overflow: hidden;
-    max-width: 100%;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .user-card-copy strong,
-  .card-copy strong {
-    color: var(--text);
-    font-size: 1rem;
-  }
-
-  .user-card-copy span,
-  .card-meta span {
-    color: var(--text-muted);
-    font-family: var(--font-mono);
-    font-size: 0.86rem;
-  }
-
-  .user-card-copy small,
-  .user-card-copy em,
-  .card-copy p,
-  .card-meta em {
-    margin: 0;
-    color: var(--text-soft);
-    font-style: normal;
-    line-height: 1.45;
-  }
-
-  .card-icon {
-    display: grid;
-    place-items: center;
-    width: 46px;
-    height: 46px;
-    border-radius: 16px;
-    background: var(--bg-accent-soft);
-    color: var(--accent-strong);
-    font-weight: 800;
-  }
-
-  .permission-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .permission-chips span {
-    padding: 6px 9px;
-    border-radius: 999px;
-    background: var(--bg-subtle);
-    color: var(--text-soft);
-    font-size: 0.78rem;
-    font-weight: 700;
-  }
-
-  @media (max-width: 1500px) {
-    .user-card-grid {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-  }
-
-  @media (max-width: 1120px) {
-    .user-card-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-  }
-
-  @media (max-width: 900px) {
-    .user-card-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-
-  @media (max-width: 760px) {
-    .users-toolbar {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
-    .users-primary-action,
-    .users-search {
-      width: 100%;
-    }
-
-    .users-tabs,
-    .users-filters {
-      width: 100%;
-      overflow-x: auto;
-    }
-
-    .users-tab {
-      min-width: 108px;
-    }
-
-    .users-filters {
-      flex-direction: column;
-    }
-
-    .user-card-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-</style>
-
-<script>
-  document.addEventListener("DOMContentLoaded", function () {
-    const labels = {
-      users: "+ Add User",
-      groups: "+ Add Group",
-      permissions: "+ Add Permission",
-    };
-    const tabs = document.querySelectorAll(".users-tab");
-    const panels = document.querySelectorAll(".tab-panel");
-    const action = document.getElementById("users-primary-action");
-    const actionPanel = document.getElementById("users-action-panel");
-    const actionPanelTitle = document.getElementById("action-panel-title");
-    const closeActionPanel = document.getElementById("close-action-panel");
-    const actionForms = document.querySelectorAll(".action-form");
-    const editUserForm = document.getElementById("edit-user-form");
-    let activeTab = "users";
-
-    function setActiveForm(target, title) {
-      actionForms.forEach((form) => {
-        form.classList.toggle("active", form.dataset.form === target);
-      });
-      if (actionPanelTitle) {
-        actionPanelTitle.textContent = title || labels[target].replace("+ ", "");
-      }
-    }
-
-    function openPanel(target, title) {
-      setActiveForm(target, title);
-      if (actionPanel) {
-        actionPanel.hidden = false;
-        actionPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }
-    }
-
-    function closePanel() {
-      if (actionPanel) {
-        actionPanel.hidden = true;
-      }
-    }
-
-    tabs.forEach((tab) => {
-      tab.addEventListener("click", function () {
-        const target = tab.dataset.tab;
-        activeTab = target;
-        tabs.forEach((item) => {
-          const selected = item === tab;
-          item.classList.toggle("active", selected);
-          item.setAttribute("aria-selected", String(selected));
-        });
-        panels.forEach((panel) => {
-          panel.classList.toggle("active", panel.dataset.panel === target);
-        });
-        if (action) {
-          action.textContent = labels[target] || labels.users;
-        }
-        setActiveForm(target);
-      });
-    });
-
-    if (action) {
-      action.addEventListener("click", function () {
-        openPanel(activeTab);
-      });
-    }
-
-    if (closeActionPanel) {
-      closeActionPanel.addEventListener("click", closePanel);
-    }
-
-    document.querySelectorAll(".cancel-action").forEach((button) => {
-      button.addEventListener("click", closePanel);
-    });
-
-    document.querySelectorAll(".edit-user-action").forEach((button) => {
-      button.addEventListener("click", function () {
-        const extension = button.dataset.extension;
-        if (editUserForm) {
-          editUserForm.action = `/extensions/${extension}/update`;
-          document.getElementById("edit_display_name").value = button.dataset.name || "";
-          document.getElementById("edit_extension").value = extension || "";
-          document.getElementById("edit_email").value = button.dataset.email || "";
-          document.getElementById("edit_secret").value = "";
-          document.getElementById("edit_photo").value = "";
-          document.getElementById("edit_group").value = button.dataset.group || document.getElementById("edit_group").value;
-          document.getElementById("edit_transport").value = button.dataset.transport || "transport-udp";
-        }
-        openPanel("edit-user", "Edit User");
-      });
-    });
-
-    document.querySelectorAll(".edit-group-action").forEach((button) => {
-      button.addEventListener("click", function () {
-        document.getElementById("group_name").value = button.dataset.name || "";
-        document.getElementById("group_description").value = button.dataset.description || "";
-        document.getElementById("group_permission").value = button.dataset.permission || document.getElementById("group_permission").value;
-        activeTab = "groups";
-        openPanel("groups", "Edit Group");
-      });
-    });
-
-    document.querySelectorAll(".edit-permission-action").forEach((button) => {
-      button.addEventListener("click", function () {
-        document.getElementById("permission_name").value = button.dataset.name || "";
-        document.getElementById("permission_description").value = button.dataset.description || "";
-        document.getElementById("permission_features").value = button.dataset.features || "";
-        activeTab = "permissions";
-        openPanel("permissions", "Edit Permission");
-      });
-    });
-  });
-</script>
 {% endblock %}

@@ -18,6 +18,7 @@ PASSWORD_RESET_TTL_MINUTES = 30
 ROLE_OWNER = "owner"
 ROLE_ADMIN = "admin"
 ROLE_READ_ONLY = "read_only"
+ROLE_USER = "user"
 
 
 def authenticate_admin(connection: psycopg.Connection, username: str, password: str) -> dict | None:
@@ -38,6 +39,45 @@ def authenticate_admin(connection: psycopg.Connection, username: str, password: 
     return dict(admin)
 
 
+def authenticate_principal(connection: psycopg.Connection, username: str, password: str) -> dict | None:
+    admin = authenticate_admin(connection, username, password)
+    if admin:
+        admin["principal_type"] = "admin"
+        return admin
+    return authenticate_extension_user(connection, username, password)
+
+
+def authenticate_extension_user(connection: psycopg.Connection, username: str, password: str) -> dict | None:
+    login = username.strip()
+    if not login:
+        return None
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            SELECT id, extension, display_name, secret, enabled
+            FROM extensions
+            WHERE lower(extension) = lower(%(login)s)
+               OR lower(display_name) = lower(%(login)s)
+            ORDER BY CASE WHEN lower(extension) = lower(%(login)s) THEN 0 ELSE 1 END, extension
+            LIMIT 1
+            """,
+            {"login": login},
+        )
+        row = cursor.fetchone()
+    if not row or not row["enabled"] or not hmac.compare_digest(password, row["secret"]):
+        return None
+    return {
+        "id": int(row["id"]),
+        "username": row["extension"],
+        "extension": row["extension"],
+        "display_name": row["display_name"],
+        "role": ROLE_USER,
+        "is_owner": False,
+        "principal_type": "extension",
+        "password_hash": row["secret"],
+    }
+
+
 def get_admin_by_id(connection: psycopg.Connection, admin_id: int) -> dict | None:
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
@@ -50,6 +90,31 @@ def get_admin_by_id(connection: psycopg.Connection, admin_id: int) -> dict | Non
         )
         admin = cursor.fetchone()
     return dict(admin) if admin else None
+
+
+def get_extension_user_by_id(connection: psycopg.Connection, extension_id: int) -> dict | None:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            SELECT id, extension, display_name, secret, enabled
+            FROM extensions
+            WHERE id = %(extension_id)s
+            """,
+            {"extension_id": extension_id},
+        )
+        row = cursor.fetchone()
+    if not row or not row["enabled"]:
+        return None
+    return {
+        "id": int(row["id"]),
+        "username": row["extension"],
+        "extension": row["extension"],
+        "display_name": row["display_name"],
+        "role": ROLE_USER,
+        "is_owner": False,
+        "principal_type": "extension",
+        "password_hash": row["secret"],
+    }
 
 
 def has_admin_users(connection: psycopg.Connection) -> bool:
@@ -83,10 +148,14 @@ def verify_password(password: str, password_hash: str) -> bool:
 def issue_session_cookie(connection: psycopg.Connection, admin: dict) -> str:
     secret = _get_or_create_secret(connection, "app_secret_key")
     now = int(time.time())
+    principal_type = admin.get("principal_type") or "admin"
     payload = {
-        "admin_id": admin["id"],
+        "principal_type": principal_type,
+        "admin_id": admin["id"] if principal_type == "admin" else None,
+        "extension_id": admin["id"] if principal_type == "extension" else None,
         "username": admin["username"],
         "role": admin.get("role") or ("owner" if admin.get("is_owner") else "admin"),
+        "extension": admin.get("extension") or "",
         "issued_at": now,
         "expires_at": now + SESSION_TTL_SECONDS,
         "password_marker": _password_marker(admin["password_hash"]),
@@ -117,14 +186,20 @@ def resolve_session(connection: psycopg.Connection, cookie_value: str | None) ->
     if int(payload.get("expires_at", 0)) < int(time.time()):
         return None
 
-    admin = get_admin_by_id(connection, int(payload.get("admin_id", 0)))
-    if not admin:
+    principal_type = payload.get("principal_type") or "admin"
+    if principal_type == "extension":
+        principal = get_extension_user_by_id(connection, int(payload.get("extension_id", 0)))
+    else:
+        principal = get_admin_by_id(connection, int(payload.get("admin_id", 0)))
+        if principal:
+            principal["principal_type"] = "admin"
+    if not principal:
         return None
-    if payload.get("password_marker") != _password_marker(admin["password_hash"]):
+    if payload.get("password_marker") != _password_marker(principal["password_hash"]):
         return None
-    if payload.get("role") != (admin.get("role") or ("owner" if admin.get("is_owner") else "admin")):
+    if payload.get("role") != (principal.get("role") or ("owner" if principal.get("is_owner") else "admin")):
         return None
-    return admin
+    return principal
 
 
 def clear_session_cookie(response) -> None:

@@ -37,15 +37,22 @@ pulled from a published Docker image instead of being built on user servers.
 
 - Install OmniPBX with:
   `curl -fsSL https://omnipbx.techseba.com | sudo bash`
-- Run `python3 scripts/omnipbxctl update --check-only` to compare the installed branch with its tracked upstream branch.
-- Run `sudo omnipbxctl update` to do a fast-forward `git pull`, pull the configured Docker images, and restart the stack manually.
+- Run `omnipbx check-update` to compare the installed branch with its tracked upstream branch.
+- Run `sudo omnipbx update` to do a fast-forward `git pull`, pull the configured Docker images, and restart the stack manually.
+- Run `omnipbx unlock` if an admin locks themselves out after too many failed login attempts.
 - In the web GUI, the dashboard now shows when the tracked upstream branch has newer commits and exposes a manual `Check now` and `Update OmniPBX` action for writable admin roles.
 
 For local development, use `deploy/compose.dev.yaml` together with
 `deploy/compose.yaml` to build the app image from `apps/app`.
 
 Restart the active stack with:
-`./scripts/omnipbxctl restart`
+`omnipbx restart`
+
+## Testing
+
+Install the app dependencies, then run the regression suite from the repo root:
+
+`python3 -m unittest discover -s tests -v`
 
 See `docs/release.md` for Docker Hub and GitHub Actions release setup.
 
@@ -53,11 +60,19 @@ See `docs/release.md` for Docker Hub and GitHub Actions release setup.
 
 OmniPBX keeps Asterisk lean by storing product data in PostgreSQL and
 generating only the Asterisk files needed for the current feature set.
+Call history is written by Asterisk directly into PostgreSQL through ODBC:
+`cdr_adaptive_odbc` stores final call records in `cdr_raw`, while `cel_odbc`
+stores event-level call flow history in `cel_raw`. The older CSV CDR importer
+remains in the app as a fallback for legacy data, but ODBC is the primary
+runtime path.
 
 Phase 1 keeps the runtime focused on these core files:
 
 - `asterisk.conf`
 - `modules.conf`
+- `res_odbc.conf`
+- `cdr_adaptive_odbc.conf`
+- `cel_odbc.conf`
 - `pjsip.conf`
 - `extensions.conf`
 - `rtp.conf`

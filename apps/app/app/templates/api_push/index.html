@@ -26,7 +26,7 @@
       {{ stat_card("SSL verify", "On" if settings.verify_ssl else "Off", "Outbound TLS verification mode", "warning") }}
     </div>
     {% if run_output %}
-    <pre class="code-block" style="margin-top: 16px;">{{ run_output }}</pre>
+    <pre class="code-block block-spaced">{{ run_output }}</pre>
     {% endif %}
   </div>
 
@@ -46,6 +46,10 @@
         <div class="field">
           <label for="callbacks_url">Callbacks URL</label>
           <input id="callbacks_url" type="text" name="callbacks_url" value="{{ settings.callbacks_url or '' }}" placeholder="https://remote.example.com/api/callbacks">
+        </div>
+        <div class="field">
+          <label for="realtime_events_url">Realtime call events URL</label>
+          <input id="realtime_events_url" type="text" name="realtime_events_url" value="{{ settings.realtime_events_url or '' }}" placeholder="https://crm.example.com/api/pbx-events">
         </div>
         <div class="field">
           <label for="public_base_url">Public base URL</label>
@@ -93,6 +97,7 @@
       <ul class="bullet-list">
         <li><span class="mono">{{ test_urls.call_logs_url }}</span></li>
         <li><span class="mono">{{ test_urls.callbacks_url }}</span></li>
+        <li><span class="mono">{{ test_urls.realtime_events_url }}</span></li>
       </ul>
     </div>
   </section>

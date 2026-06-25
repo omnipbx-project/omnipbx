@@ -5,106 +5,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ page_title }} · {{ app_name }}</title>
   <link rel="stylesheet" href="/static/app.css">
+  {% if show_shell and current_user and (current_user.role != 'user' or 'softphone:view' in user_features) %}
+  <link rel="stylesheet" href="/static/css/webphone.css">
+  {% endif %}
+  {% for stylesheet in page_css|default([]) %}
+  <link rel="stylesheet" href="{{ stylesheet }}">
+  {% endfor %}
   <script src="/static/app.js" defer></script>
+  {% if show_shell and current_user and (current_user.role != 'user' or 'softphone:view' in user_features) %}
+  <script src="/static/vendor/sip-simple-user.min.js" defer></script>
+  <script src="/static/vendor/jssip.min.js" defer></script>
+  <script src="/static/js/webphone.js" defer></script>
+  {% endif %}
+  {% for script in page_js|default([]) %}
+  <script src="{{ script }}" defer></script>
+  {% endfor %}
 </head>
 <body>
   {% if show_shell %}
   <div class="app-shell">
-    <aside class="sidebar">
-      <section class="brand">
-        <div class="brand-mark">O</div>
-        <div class="brand-copy">
-          <h1>{{ app_name }}</h1>
-        </div>
-      </section>
-
-      <nav class="nav" aria-label="Primary">
-        {% for section in nav_sections %}
-        <section class="nav-section">
-          <div class="nav-section-title">{{ section["title"] }}</div>
-          <div class="nav-section-links">
-            {% for item in section["items"] %}
-            <a href="{{ item["href"] }}" class="nav-link {% if active_nav == item["href"] %}active{% endif %}">
-              <span class="nav-icon">{{ item["icon"] }}</span>
-              <span class="nav-label">{{ item["label"] }}</span>
-            </a>
-            {% endfor %}
-          </div>
-        </section>
-        {% endfor %}
-      </nav>
-
-      <div class="sidebar-footer">
-        {% if current_user %}
-        <div class="sidebar-user">
-          <div class="user-avatar">{{ current_user.username[:1]|upper }}</div>
-          <div>
-            <div class="user-name">{{ current_user.username }}</div>
-            <div class="user-role">{{ current_user.role|replace('_', ' ')|title if current_user.role else 'Authenticated admin' }}</div>
-          </div>
-        </div>
-        {% else %}
-        <div class="sidebar-status">
-          <span class="status-dot"></span>
-          <span>System running</span>
-        </div>
-        {% endif %}
-      </div>
-    </aside>
+    {% include "components/_sidebar.html" %}
 
     <div class="shell-main">
-      <header class="topbar">
-        <div class="topbar-copy">
-          <h2>{{ page_title }}</h2>
-          {% if page_description %}
-          <p>{{ page_description }}</p>
-          {% endif %}
-        </div>
-        <div class="topbar-actions">
-          {% if active_nav == '/dashboard' %}
-          <div class="dashboard-search">
-            <span aria-hidden="true">⌕</span>
-            <input type="search" placeholder="Search user, extension, call..." aria-label="Search user, extension, call">
-          </div>
-          <div class="notification-menu">
-            <button type="button" class="icon-button notification-trigger" id="dashboard-notifications" aria-label="Important messages" aria-expanded="false">
-              <span aria-hidden="true">🔔</span>
-              {% if dashboard_notifications %}
-              <span class="notification-badge">{{ dashboard_notifications|length }}</span>
-              {% endif %}
-            </button>
-            <div class="notification-panel" id="dashboard-notification-panel" aria-labelledby="dashboard-notifications">
-              <div class="notification-panel-title">Important Messages</div>
-              {% for item in dashboard_notifications %}
-              <div class="notification-item">
-                <span class="notification-severity {{ item.severity }}"></span>
-                <div>
-                  <strong>{{ item.title }}</strong>
-                  <span>{{ item.description }}</span>
-                  <small>{{ item.time }}</small>
-                </div>
-              </div>
-              {% else %}
-              <div class="notification-empty">No important messages</div>
-              {% endfor %}
-            </div>
-          </div>
-          {% endif %}
-          <button type="button" class="icon-button" id="theme-toggle" aria-label="Toggle light and dark mode" title="Toggle theme">
-            <span class="theme-toggle-sun">Light</span>
-            <span class="theme-toggle-moon">Dark</span>
-          </button>
-          {% if current_user %}
-          {% if active_nav == '/dashboard' %}
-          <a href="/logout" class="topbar-profile" aria-label="Logged in as {{ current_user.username }}">
-            <span class="profile-photo">{{ current_user.username[:1]|upper }}</span>
-          </a>
-          {% else %}
-          <a href="/logout" class="button-link secondary">Logout</a>
-          {% endif %}
-          {% endif %}
-        </div>
-      </header>
+      {% include "components/_topbar.html" %}
   {% endif %}
 
   <main class="{% if show_shell %}content{% else %}guest-shell {% if active_nav == '/login' %}login-shell{% endif %}{% endif %}">
@@ -128,14 +51,16 @@
         </div>
       </div>
       <button type="button" class="icon-button" id="theme-toggle" aria-label="Toggle light and dark mode" title="Toggle theme">
-        <span class="theme-toggle-sun">Light</span>
-        <span class="theme-toggle-moon">Dark</span>
+        <span class="theme-toggle-sun" aria-hidden="true">☼</span>
+        <span class="theme-toggle-moon" aria-hidden="true">◐</span>
       </button>
     </div>
     <section class="guest-header">
       <span class="eyebrow">OmniPBX</span>
       <h2>{{ page_title }}</h2>
+      {% if page_description %}
       <p>{{ page_description }}</p>
+      {% endif %}
     </section>
     {% endif %}
 
@@ -145,6 +70,10 @@
   {% if show_shell %}
     </div>
   </div>
+  <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
+  {% if current_user and (current_user.role != 'user' or 'softphone:view' in user_features) %}
+  {% include "components/_webphone.html" %}
+  {% endif %}
   {% endif %}
 </body>
 </html>

@@ -1,0 +1,88 @@
+<header class="topbar">
+  <div class="topbar-copy">
+    <div class="topbar-title-row">
+      <h2>{{ page_title }}</h2>
+    </div>
+    {% if page_description %}
+    <p>{{ page_description }}</p>
+    {% endif %}
+  </div>
+  <div class="topbar-actions">
+    {% if topbar_search %}
+    <div class="topbar-search">
+      <span aria-hidden="true">⌕</span>
+      <input type="search" placeholder="{{ topbar_search.placeholder }}" aria-label="{{ topbar_search.label }}">
+    </div>
+    {% endif %}
+    {% if topbar_action %}
+    <button type="button" class="primary topbar-primary-action" id="{{ topbar_action.id }}">{{ topbar_action.label }}</button>
+    {% endif %}
+    {% if show_notifications %}
+    <div class="notification-menu">
+      <button type="button" class="icon-button notification-trigger" id="dashboard-notifications" aria-label="Important messages" aria-controls="dashboard-notification-panel" aria-expanded="false" title="Notifications">
+        <svg class="notification-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        {% if dashboard_notifications %}
+        <span class="notification-badge">{{ dashboard_notifications|length }}</span>
+        {% endif %}
+      </button>
+      <div class="notification-panel" id="dashboard-notification-panel" aria-labelledby="dashboard-notifications">
+        {% if dashboard_notifications %}
+        <div class="notification-panel-title">Important Messages</div>
+        {% endif %}
+        {% for item in dashboard_notifications %}
+        <div class="notification-item">
+          <span class="notification-severity {{ item.severity }}"></span>
+          <div>
+            <strong>{{ item.title }}</strong>
+            <span>{{ item.description }}</span>
+            <small>{{ item.time }}</small>
+          </div>
+        </div>
+        {% else %}
+        <div class="notification-empty">No important messages</div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% if current_user and (current_user.role != 'user' or 'softphone:view' in user_features) %}
+    {% if current_user.role != 'user' or 'softphone:provision' in user_features %}
+    <button type="button" class="button-link secondary webphone-provision" id="webphone-provision" title="Provision web extension">Provision</button>
+    {% endif %}
+    <button type="button" class="icon-button webphone-trigger" id="webphone-trigger" aria-label="Open webphone" title="Webphone">
+      <span aria-hidden="true">☎</span>
+      <span class="webphone-trigger-dot" id="webphone-trigger-dot"></span>
+    </button>
+    {% endif %}
+    <button type="button" class="icon-button" id="theme-toggle" aria-label="Toggle light and dark mode" title="Toggle theme">
+      <span class="theme-toggle-sun" aria-hidden="true">☼</span>
+      <span class="theme-toggle-moon" aria-hidden="true">◐</span>
+    </button>
+    {% if current_user %}
+    {% if show_profile_avatar %}
+    <div class="profile-menu">
+    <button type="button" class="topbar-profile" id="profile-menu-trigger" aria-label="Logged in as {{ current_user.username }}" aria-expanded="false">
+      <span class="profile-photo">{{ current_user.username[:1]|upper }}</span>
+    </button>
+    <div class="profile-panel" id="profile-menu-panel" aria-labelledby="profile-menu-trigger">
+      <div class="profile-panel-user">
+        <span class="profile-photo small">{{ current_user.username[:1]|upper }}</span>
+        <div>
+          <strong>{{ current_user.username }}</strong>
+          <small>{{ current_user.role|replace('_', ' ')|title if current_user.role else 'Authenticated admin' }}</small>
+        </div>
+      </div>
+      {% if current_user.role == 'user' %}
+      <a href="/my-profile?return_to={{ request.url.path|urlencode }}" class="button-link secondary">My Profile</a>
+      {% endif %}
+      <a href="/logout" class="button-link secondary" data-logout>Logout</a>
+    </div>
+    </div>
+    {% else %}
+    <a href="/logout" class="button-link secondary" data-logout>Logout</a>
+    {% endif %}
+    {% endif %}
+  </div>
+</header>

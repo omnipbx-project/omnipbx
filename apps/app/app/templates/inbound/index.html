@@ -28,22 +28,22 @@
     <div class="panel">
       <div class="section-header">
         <div class="section-copy">
-          <h3>Create inbound route</h3>
+          <h3>{{ "Edit inbound route" if edit_route else "Create inbound route" }}</h3>
           <p>Choose a trunk, optional DID pattern, and the PBX destination that should handle the call.</p>
         </div>
       </div>
-      <form method="post" action="/inbound-routes/create" class="stack">
+      <form method="post" action="{{ '/inbound-routes/' ~ edit_route.name ~ '/update' if edit_route else '/inbound-routes/create' }}" class="stack">
         <div class="field-grid two">
           <div class="field">
             <label for="name">Route name</label>
-            <input id="name" type="text" name="name" placeholder="main" required>
+            <input id="name" type="text" name="{{ 'new_name' if edit_route else 'name' }}" value="{{ edit_route.name if edit_route else '' }}" placeholder="main" required>
           </div>
           <div class="field">
             <label for="trunk_name">Trunk</label>
             <select id="trunk_name" name="trunk_name" required>
               <option value="">Select trunk</option>
               {% for trunk in trunks %}
-              <option value="{{ trunk.name }}">{{ trunk.name }}</option>
+              <option value="{{ trunk.name }}" {% if edit_route and edit_route.trunk_name == trunk.name %}selected{% endif %}>{{ trunk.name }}</option>
               {% endfor %}
             </select>
           </div>
@@ -51,29 +51,93 @@
         <div class="field-grid two">
           <div class="field">
             <label for="did_pattern">DID pattern</label>
-            <input id="did_pattern" type="text" name="did_pattern" placeholder="_X. or 8801234567">
+            <input id="did_pattern" type="text" name="did_pattern" value="{{ edit_route.did_pattern if edit_route and edit_route.did_pattern else '' }}" placeholder="_X. or 8801234567">
           </div>
           <div class="field">
             <label for="destination_type">Destination type</label>
-            <select id="destination_type" name="destination_type" required>
-              <option value="extension">extension</option>
-              <option value="queue">queue</option>
-              <option value="ring_group">ring_group</option>
-              <option value="ivr">ivr</option>
-              <option value="trunk">trunk</option>
+            <select id="destination_type" name="destination_type" data-inbound-destination-type required>
+              <option value="extension" {% if edit_route and edit_route.destination_type == "extension" %}selected{% endif %}>extension</option>
+              <option value="queue" {% if edit_route and edit_route.destination_type == "queue" %}selected{% endif %}>queue</option>
+              <option value="ring_group" {% if edit_route and edit_route.destination_type == "ring_group" %}selected{% endif %}>ring_group</option>
+              <option value="ivr" {% if edit_route and edit_route.destination_type == "ivr" %}selected{% endif %}>ivr</option>
+              <option value="trunk" {% if edit_route and edit_route.destination_type == "trunk" %}selected{% endif %}>trunk</option>
             </select>
           </div>
         </div>
         <div class="field">
-          <label for="destination_value">Destination value</label>
-          <input id="destination_value" type="text" name="destination_value" placeholder="1001 or backuptrunk" required>
+          <label>Destination value</label>
+          <div class="routing-target-picker" data-inbound-destination-picker>
+            <button type="button" class="routing-target-trigger" data-inbound-destination-trigger aria-expanded="false">
+              <span data-inbound-destination-label>Select destination</span>
+              <strong>⌄</strong>
+            </button>
+            <div class="routing-target-menu" data-inbound-destination-menu hidden>
+              <div class="routing-target-options" data-destination-kind="extension">
+                {% for item in extensions %}
+                <label class="routing-target-option {% if edit_route and edit_route.destination_type == 'extension' and item.extension in edit_destination_values %}selected{% endif %}">
+                  <input type="checkbox" name="destination_value" value="{{ item.extension }}" data-label="{{ item.display_name }} ({{ item.extension }})" {% if edit_route and edit_route.destination_type == "extension" and item.extension in edit_destination_values %}checked{% endif %}>
+                  <span>{{ item.display_name }} <small>{{ item.extension }}</small></span>
+                </label>
+                {% else %}
+                <span class="muted">No extensions created yet.</span>
+                {% endfor %}
+              </div>
+              <div class="routing-target-options" data-destination-kind="queue" hidden>
+                {% for item in queues %}
+                <label class="routing-target-option {% if edit_route and edit_route.destination_type == 'queue' and item.extension in edit_destination_values %}selected{% endif %}">
+                  <input type="checkbox" name="destination_value" value="{{ item.extension }}" data-label="{{ item.name }} ({{ item.extension }})" {% if edit_route and edit_route.destination_type == "queue" and item.extension in edit_destination_values %}checked{% endif %}>
+                  <span>{{ item.name }} <small>{{ item.extension }}</small></span>
+                </label>
+                {% else %}
+                <span class="muted">No queues created yet.</span>
+                {% endfor %}
+              </div>
+              <div class="routing-target-options" data-destination-kind="ring_group" hidden>
+                {% for item in ring_groups %}
+                <label class="routing-target-option {% if edit_route and edit_route.destination_type == 'ring_group' and item.extension in edit_destination_values %}selected{% endif %}">
+                  <input type="checkbox" name="destination_value" value="{{ item.extension }}" data-label="{{ item.name }} ({{ item.extension }})" {% if edit_route and edit_route.destination_type == "ring_group" and item.extension in edit_destination_values %}checked{% endif %}>
+                  <span>{{ item.name }} <small>{{ item.extension }}</small></span>
+                </label>
+                {% else %}
+                <span class="muted">No ring groups created yet.</span>
+                {% endfor %}
+              </div>
+              <div class="routing-target-options" data-destination-kind="ivr" hidden>
+                {% for item in ivrs %}
+                <label class="routing-target-option {% if edit_route and edit_route.destination_type == 'ivr' and item.extension in edit_destination_values %}selected{% endif %}">
+                  <input type="checkbox" name="destination_value" value="{{ item.extension }}" data-label="{{ item.name }} ({{ item.extension }})" {% if edit_route and edit_route.destination_type == "ivr" and item.extension in edit_destination_values %}checked{% endif %}>
+                  <span>{{ item.name }} <small>{{ item.extension }}</small></span>
+                </label>
+                {% else %}
+                <span class="muted">No IVRs created yet.</span>
+                {% endfor %}
+              </div>
+              <div class="routing-target-options" data-destination-kind="trunk" hidden>
+                {% for trunk in trunks %}
+                <label class="routing-target-option {% if edit_route and edit_route.destination_type == 'trunk' and trunk.name in edit_destination_values %}selected{% endif %}">
+                  <input type="checkbox" name="destination_value" value="{{ trunk.name }}" data-label="{{ trunk.name }}{% if trunk.provider_name %} - {{ trunk.provider_name }}{% endif %}" {% if edit_route and edit_route.destination_type == "trunk" and trunk.name in edit_destination_values %}checked{% endif %}>
+                  <span>{{ trunk.name }}{% if trunk.provider_name %} <small>{{ trunk.provider_name }}</small>{% endif %}</span>
+                </label>
+                {% else %}
+                <span class="muted">No trunks created yet.</span>
+                {% endfor %}
+              </div>
+              <div class="routing-target-actions">
+                <button type="button" class="secondary" data-inbound-destination-clear>Clear</button>
+                <button type="button" data-inbound-destination-ok>OK</button>
+              </div>
+            </div>
+          </div>
         </div>
         <label class="checkbox-row">
-          <input type="checkbox" name="enabled_raw" checked>
+          <input type="checkbox" name="enabled_raw" {% if not edit_route or edit_route.enabled %}checked{% endif %}>
           Enabled
         </label>
         <div class="button-row">
-          <button type="submit">Create inbound route</button>
+          <button type="submit">{{ "Update inbound route" if edit_route else "Create inbound route" }}</button>
+          {% if edit_route %}
+          <a class="button-link secondary" href="/inbound-routes">Cancel edit</a>
+          {% endif %}
         </div>
       </form>
     </div>
@@ -134,9 +198,12 @@
           <td class="mono">{{ route.destination_type }}:{{ route.destination_value }}</td>
           <td>{{ "Yes" if route.enabled else "No" }}</td>
           <td>
-            <form method="post" action="/inbound-routes/{{ route.name }}/delete" onsubmit="return confirm('Delete inbound route {{ route.name }}?');">
-              <button type="submit" class="danger">Delete</button>
-            </form>
+            <div class="button-row compact-actions">
+              <a class="button-link secondary" href="/inbound-routes?edit={{ route.name }}">Edit</a>
+              <form method="post" action="/inbound-routes/{{ route.name }}/delete" onsubmit="return confirm('Delete inbound route {{ route.name }}?');">
+                <button type="submit" class="danger">Delete</button>
+              </form>
+            </div>
           </td>
         </tr>
         {% endfor %}

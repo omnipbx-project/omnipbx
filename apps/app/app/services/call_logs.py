@@ -9,9 +9,22 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.core.settings import get_settings
+from app.services.call_classification import (
+    MISSED_DISPOSITIONS,
+    abandoned_call_condition,
+    callback_candidate_condition,
+    customer_missed_call_condition,
+)
+from app.services.date_ranges import parse_date_bound
 
 
-MISSED_DISPOSITIONS = {"NO ANSWER", "CANCEL", "BUSY", "FAILED", "CONGESTION"}
+CALL_LOG_CATEGORIES = {
+    "all": "All Calls",
+    "missed": "Missed Calls",
+    "abandoned": "Abandoned Calls",
+    "incoming": "Incoming Calls",
+    "outgoing": "Outgoing Calls",
+}
 CDR_COLUMNS = [
     "calldate",
     "uniqueid",
@@ -114,13 +127,15 @@ def list_call_logs(
     *,
     search: str = "",
     direction: str = "all",
+    category: str = "all",
     date_from: str | None = None,
     date_to: str | None = None,
+    timezone_name: str = "UTC",
     limit: int = 250,
 ) -> dict[str, object]:
     sync_cdr_from_asterisk(connection)
     where = ["1=1"]
-    params: dict[str, object] = {"limit": limit}
+    params: dict[str, object] = {"limit": limit, "missed": list(MISSED_DISPOSITIONS)}
     search = search.strip()
     if search:
         params["search"] = f"%{search}%"
@@ -139,14 +154,35 @@ def list_call_logs(
         params["direction"] = direction
         where.append("COALESCE(direction, 'unknown') = %(direction)s")
     if date_from:
-        params["date_from"] = f"{date_from} 00:00:00"
+        params["date_from"] = _date_bound(date_from, end_of_day=False, timezone_name=timezone_name)
         where.append("calldate >= %(date_from)s::timestamptz")
     if date_to:
-        params["date_to"] = f"{date_to} 23:59:59"
+        params["date_to"] = _date_bound(date_to, end_of_day=True, timezone_name=timezone_name)
         where.append("calldate <= %(date_to)s::timestamptz")
 
-    where_sql = " AND ".join(where)
+    category = category if category in CALL_LOG_CATEGORIES else "all"
+    base_where_sql = " AND ".join(where)
+    category_where = _call_log_category_condition(category)
+    row_where = list(where)
+    if category_where:
+        row_where.append(category_where)
+    where_sql = " AND ".join(row_where)
     with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            f"""
+            SELECT
+                COUNT(*) AS all_calls,
+                COALESCE(SUM(CASE WHEN {customer_missed_call_condition()} THEN 1 ELSE 0 END), 0) AS missed,
+                COALESCE(SUM(CASE WHEN {abandoned_call_condition()} THEN 1 ELSE 0 END), 0) AS abandoned,
+                COALESCE(SUM(CASE WHEN COALESCE(direction, 'unknown') = 'inbound' THEN 1 ELSE 0 END), 0) AS incoming,
+                COALESCE(SUM(CASE WHEN COALESCE(direction, 'unknown') = 'outbound' THEN 1 ELSE 0 END), 0) AS outgoing
+            FROM cdr_raw
+            WHERE {base_where_sql}
+            """,
+            {k: v for k, v in params.items() if k != "limit"},
+        )
+        category_counts = dict(cursor.fetchone())
+        category_counts["all"] = category_counts.pop("all_calls", 0)
         cursor.execute(
             f"""
             SELECT
@@ -164,6 +200,13 @@ def list_call_logs(
                 duration,
                 billsec,
                 disposition,
+                CASE
+                    WHEN {abandoned_call_condition()} THEN 'Abandoned'
+                    WHEN {customer_missed_call_condition()} THEN 'Missed'
+                    WHEN COALESCE(direction, 'unknown') = 'inbound' THEN 'Incoming'
+                    WHEN COALESCE(direction, 'unknown') = 'outbound' THEN 'Outgoing'
+                    ELSE INITCAP(COALESCE(direction, 'unknown'))
+                END AS call_type,
                 recordingfile,
                 caller_extension,
                 callee_extension
@@ -183,7 +226,7 @@ def list_call_logs(
                 COALESCE(SUM(CASE WHEN COALESCE(direction, 'unknown') = 'outbound' THEN 1 ELSE 0 END), 0) AS total_outbound,
                 COALESCE(SUM(CASE WHEN COALESCE(direction, 'unknown') = 'internal' THEN 1 ELSE 0 END), 0) AS total_internal,
                 COALESCE(SUM(CASE WHEN disposition = 'ANSWERED' THEN 1 ELSE 0 END), 0) AS total_answered,
-                COALESCE(SUM(CASE WHEN disposition <> 'ANSWERED' THEN 1 ELSE 0 END), 0) AS total_missed,
+                COALESCE(SUM(CASE WHEN {customer_missed_call_condition()} THEN 1 ELSE 0 END), 0) AS total_missed,
                 COALESCE(SUM(duration), 0) AS total_duration,
                 COALESCE(SUM(billsec), 0) AS total_billsec
             FROM cdr_raw
@@ -195,7 +238,25 @@ def list_call_logs(
     return {
         "rows": [_with_recording_metadata(dict(row)) for row in rows],
         "summary": dict(summary),
+        "category_counts": category_counts,
+        "category": category,
+        "categories": [
+            {"key": key, "label": label, "count": category_counts.get(key, 0)}
+            for key, label in CALL_LOG_CATEGORIES.items()
+        ],
     }
+
+
+def _call_log_category_condition(category: str) -> str | None:
+    if category == "missed":
+        return customer_missed_call_condition()
+    if category == "abandoned":
+        return abandoned_call_condition()
+    if category == "incoming":
+        return "COALESCE(direction, 'unknown') = 'inbound'"
+    if category == "outgoing":
+        return "COALESCE(direction, 'unknown') = 'outbound'"
+    return None
 
 
 def list_callback_worklist(
@@ -203,22 +264,31 @@ def list_callback_worklist(
     *,
     search: str = "",
     open_only: bool = True,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    timezone_name: str = "UTC",
     limit: int = 500,
 ) -> dict[str, object]:
     sync_cdr_from_asterisk(connection)
     base_where = [
-        "COALESCE(direction, 'unknown') = 'inbound'",
-        "(disposition = ANY(%(missed)s) OR (disposition = 'ANSWERED' AND COALESCE(NULLIF(callee_extension, ''), '') = ''))",
-        "COALESCE(NULLIF(src, ''), NULLIF(clid, ''), '') <> ''",
+        callback_candidate_condition("c"),
+        "COALESCE(NULLIF(c.src, ''), NULLIF(c.clid, ''), '') <> ''",
     ]
     params: dict[str, object] = {"missed": list(MISSED_DISPOSITIONS), "limit": limit}
     search = search.strip()
     if search:
         params["search"] = f"%{search}%"
-        base_where.append("COALESCE(NULLIF(src, ''), NULLIF(clid, ''), '') ILIKE %(search)s")
+        base_where.append("COALESCE(NULLIF(c.src, ''), NULLIF(c.clid, ''), '') ILIKE %(search)s")
+    if date_from:
+        params["date_from"] = _date_bound(date_from, end_of_day=False, timezone_name=timezone_name)
+        base_where.append("c.calldate >= %(date_from)s::timestamptz")
+    if date_to:
+        params["date_to"] = _date_bound(date_to, end_of_day=True, timezone_name=timezone_name)
+        base_where.append("c.calldate <= %(date_to)s::timestamptz")
     row_where = list(base_where)
     if open_only:
         row_where.append("COALESCE(cf.completed, FALSE) = FALSE")
+        row_where.append(f"NOT EXISTS ({_later_answered_inbound_sql()})")
     row_where_sql = " AND ".join(row_where)
     summary_where_sql = " AND ".join(base_where)
     with connection.cursor(row_factory=dict_row) as cursor:
@@ -232,14 +302,24 @@ def list_callback_worklist(
                 c.route_name,
                 c.queue_name,
                 c.ivr_name,
+                EXISTS ({_later_answered_inbound_sql()}) AS auto_resolved,
                 CASE
                     WHEN COALESCE(NULLIF(c.queue_name, ''), '') <> '' AND c.disposition <> 'ANSWERED' THEN 'Queue Abandoned'
                     WHEN COALESCE(NULLIF(c.ivr_name, ''), '') <> '' AND COALESCE(NULLIF(c.callee_extension, ''), '') = '' THEN 'IVR Abandoned'
                     WHEN COALESCE(NULLIF(c.callee_extension, ''), '') <> '' AND c.disposition <> 'ANSWERED' THEN 'Missed Extension'
                     ELSE 'Missed Inbound'
                 END AS callback_reason,
+                CASE
+                    WHEN COALESCE(cf.completed, FALSE) THEN 'done'
+                    WHEN EXISTS ({_later_answered_inbound_sql()}) THEN 'answered_later'
+                    WHEN COALESCE(NULLIF(cf.assigned_to, ''), '') <> '' THEN 'in_progress'
+                    ELSE 'needs_callback'
+                END AS followup_status,
                 COALESCE(cf.completed, FALSE) AS completed,
                 TO_CHAR(cf.completed_at, 'YYYY-MM-DD HH24:MI:SS') AS completed_at,
+                cf.assigned_to,
+                TO_CHAR(cf.assigned_at, 'YYYY-MM-DD HH24:MI:SS') AS assigned_at,
+                cf.completed_by,
                 cf.callback_number,
                 cf.note
             FROM cdr_raw c
@@ -260,7 +340,9 @@ def list_callback_worklist(
                 SELECT DISTINCT ON (COALESCE(NULLIF(c.linkedid, ''), c.uniqueid))
                     COALESCE(NULLIF(c.linkedid, ''), c.uniqueid) AS linkedid,
                     COALESCE(cf.completed, FALSE) AS completed,
-                    cf.completed_at
+                    cf.completed_at,
+                    COALESCE(NULLIF(cf.assigned_to, ''), '') AS assigned_to,
+                    EXISTS ({_later_answered_inbound_sql()}) AS auto_resolved
                 FROM cdr_raw c
                 LEFT JOIN callback_followups cf
                   ON cf.linkedid = COALESCE(NULLIF(c.linkedid, ''), c.uniqueid)
@@ -270,8 +352,10 @@ def list_callback_worklist(
                          c.id DESC
             )
             SELECT
-                COALESCE(SUM(CASE WHEN completed = FALSE THEN 1 ELSE 0 END), 0) AS open_callbacks,
-                COALESCE(SUM(CASE WHEN completed = TRUE AND completed_at::date = CURRENT_DATE THEN 1 ELSE 0 END), 0) AS done_today
+                COALESCE(SUM(CASE WHEN completed = FALSE AND auto_resolved = FALSE THEN 1 ELSE 0 END), 0) AS open_callbacks,
+                COALESCE(SUM(CASE WHEN completed = FALSE AND auto_resolved = FALSE AND assigned_to <> '' THEN 1 ELSE 0 END), 0) AS in_progress,
+                COALESCE(SUM(CASE WHEN completed = TRUE AND completed_at::date = CURRENT_DATE THEN 1 ELSE 0 END), 0) AS done_today,
+                COALESCE(SUM(CASE WHEN completed = FALSE AND auto_resolved = TRUE THEN 1 ELSE 0 END), 0) AS answered_later
             FROM callback_base
             """,
             {k: v for k, v in params.items() if k != "limit"},
@@ -281,6 +365,17 @@ def list_callback_worklist(
         "rows": rows,
         "summary": followup_summary,
     }
+
+
+def _later_answered_inbound_sql() -> str:
+    return """
+    SELECT 1
+    FROM cdr_raw later
+    WHERE COALESCE(later.direction, 'unknown') = 'inbound'
+      AND later.disposition = 'ANSWERED'
+      AND later.calldate > c.calldate
+      AND COALESCE(NULLIF(later.src, ''), NULLIF(later.clid, ''), '') = COALESCE(NULLIF(c.src, ''), NULLIF(c.clid, ''), '')
+    """
 
 
 def update_callback_followup(
@@ -294,10 +389,11 @@ def update_callback_followup(
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            INSERT INTO callback_followups (linkedid, callback_number, completed, completed_at, note)
+            INSERT INTO callback_followups (linkedid, callback_number, status, completed, completed_at, note)
             VALUES (
                 %(linkedid)s,
                 %(callback_number)s,
+                CASE WHEN %(completed)s THEN 'done' ELSE 'open' END,
                 %(completed)s,
                 CASE WHEN %(completed)s THEN NOW() ELSE NULL END,
                 %(note)s
@@ -305,6 +401,7 @@ def update_callback_followup(
             ON CONFLICT (linkedid) DO UPDATE
             SET
                 callback_number = EXCLUDED.callback_number,
+                status = EXCLUDED.status,
                 completed = EXCLUDED.completed,
                 completed_at = CASE WHEN EXCLUDED.completed THEN NOW() ELSE NULL END,
                 note = EXCLUDED.note,
@@ -314,6 +411,72 @@ def update_callback_followup(
                 "linkedid": linkedid,
                 "callback_number": (callback_number or "").strip() or None,
                 "completed": completed,
+                "note": (note or "").strip() or None,
+            },
+        )
+
+
+def take_callback_followup(
+    connection: psycopg.Connection,
+    linkedid: str,
+    *,
+    actor_username: str,
+    callback_number: str | None = None,
+) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO callback_followups (linkedid, callback_number, status, assigned_to, assigned_at, completed)
+            VALUES (%(linkedid)s, %(callback_number)s, 'in_progress', %(actor_username)s, NOW(), FALSE)
+            ON CONFLICT (linkedid) DO UPDATE
+            SET
+                callback_number = COALESCE(callback_followups.callback_number, EXCLUDED.callback_number),
+                status = CASE WHEN callback_followups.completed THEN 'done' ELSE 'in_progress' END,
+                assigned_to = CASE WHEN callback_followups.completed THEN callback_followups.assigned_to ELSE EXCLUDED.assigned_to END,
+                assigned_at = CASE WHEN callback_followups.completed THEN callback_followups.assigned_at ELSE NOW() END,
+                updated_at = NOW()
+            """,
+            {
+                "linkedid": linkedid,
+                "callback_number": (callback_number or "").strip() or None,
+                "actor_username": actor_username,
+            },
+        )
+
+
+def complete_callback_followup(
+    connection: psycopg.Connection,
+    linkedid: str,
+    *,
+    actor_username: str,
+    note: str | None = None,
+    callback_number: str | None = None,
+) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO callback_followups (
+                linkedid, callback_number, status, assigned_to, assigned_at, completed, completed_by, completed_at, note
+            )
+            VALUES (
+                %(linkedid)s, %(callback_number)s, 'done', %(actor_username)s, NOW(), TRUE, %(actor_username)s, NOW(), %(note)s
+            )
+            ON CONFLICT (linkedid) DO UPDATE
+            SET
+                callback_number = COALESCE(EXCLUDED.callback_number, callback_followups.callback_number),
+                status = 'done',
+                completed = TRUE,
+                completed_by = EXCLUDED.completed_by,
+                completed_at = NOW(),
+                note = COALESCE(EXCLUDED.note, callback_followups.note),
+                assigned_to = COALESCE(callback_followups.assigned_to, EXCLUDED.assigned_to),
+                assigned_at = COALESCE(callback_followups.assigned_at, EXCLUDED.assigned_at),
+                updated_at = NOW()
+            """,
+            {
+                "linkedid": linkedid,
+                "callback_number": (callback_number or "").strip() or None,
+                "actor_username": actor_username,
                 "note": (note or "").strip() or None,
             },
         )
@@ -356,6 +519,10 @@ def _parse_datetime(value: str | None) -> datetime | None:
         except ValueError:
             continue
     return None
+
+
+def _date_bound(value: str, *, end_of_day: bool, timezone_name: str = "UTC") -> datetime | None:
+    return parse_date_bound(value, end_of_day=end_of_day, timezone_name=timezone_name)
 
 
 def _parse_int(value: str | None) -> int | None:

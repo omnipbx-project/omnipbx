@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 import psycopg
 
 from app.core.db import get_connection
-from app.services.call_logs import list_callback_worklist, update_callback_followup
+from app.services.call_logs import complete_callback_followup, list_callback_worklist, take_callback_followup, update_callback_followup
 from app.web import render_template
 
 
@@ -23,14 +23,37 @@ def callbacks_page(
     return render_template(
         request,
         "callbacks/index.html",
-        page_title="Callbacks",
-        page_description="Callback follow-up is separated from call logs, with one worklist for missed and abandoned inbound calls.",
+        page_title="Follow Up",
+        page_description="A simple team list for missed and abandoned calls that still need a callback.",
         active_nav="/callbacks",
         rows=report["rows"],
         summary=report["summary"],
         search=search,
         open_only=open_only,
+        page_js=["/static/js/callbacks.js"],
     )
+
+
+@router.post("/callbacks/{linkedid}/take")
+def take_callback_from_ui(
+    request: Request,
+    linkedid: str,
+    connection: psycopg.Connection = Depends(get_connection),
+) -> RedirectResponse:
+    current_user = getattr(request.state, "current_user", None) or {}
+    take_callback_followup(connection, linkedid, actor_username=current_user.get("username") or "Team member")
+    return RedirectResponse(url="/callbacks?open_only=1", status_code=303)
+
+
+@router.post("/callbacks/{linkedid}/done")
+def complete_callback_from_ui(
+    request: Request,
+    linkedid: str,
+    connection: psycopg.Connection = Depends(get_connection),
+) -> RedirectResponse:
+    current_user = getattr(request.state, "current_user", None) or {}
+    complete_callback_followup(connection, linkedid, actor_username=current_user.get("username") or "Team member")
+    return RedirectResponse(url="/callbacks?open_only=1", status_code=303)
 
 
 @router.post("/callbacks/{linkedid}/update")

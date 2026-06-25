@@ -19,6 +19,7 @@ ENV_FILE="${DEPLOY_DIR}/.env"
 ENV_EXAMPLE="${REPO_ROOT}/deploy/.env.example"
 SYSTEMD_UNIT="/etc/systemd/system/${SERVICE_NAME}.service"
 CLI_LINK="/usr/local/bin/omnipbxctl"
+FRIENDLY_CLI_LINK="/usr/local/bin/omnipbx"
 SOURCE_MODE="remote"
 APP_VERSION="${OMNIPBX_APP_VERSION:-0.1.0}"
 
@@ -239,6 +240,15 @@ PY
 }
 
 detect_host() {
+  local route_host=""
+  if command_exists ip; then
+    route_host="$(ip route get 1.1.1.1 2>/dev/null | awk '/src/ {for (i = 1; i <= NF; i++) if ($i == "src") print $(i+1); exit}')"
+  fi
+  if [[ -n "${route_host}" && "${route_host}" != "127.0.0.1" && "${route_host}" != "::1" ]]; then
+    DETECTED_HOST="${route_host}"
+    return 0
+  fi
+
   local first_host=""
   while IFS= read -r ip; do
     [[ -z "${ip}" ]] && continue
@@ -427,7 +437,7 @@ copy_project() {
       --exclude 'deploy/runtime' \
       "${REPO_ROOT}/" "${INSTALL_ROOT}/"
   else
-    rm -rf "${INSTALL_ROOT}/apps" "${INSTALL_ROOT}/deploy" "${INSTALL_ROOT}/docs" "${INSTALL_ROOT}/scripts" "${INSTALL_ROOT}/README.md" "${INSTALL_ROOT}/VERSION"
+    rm -rf "${INSTALL_ROOT}/apps" "${INSTALL_ROOT}/deploy" "${INSTALL_ROOT}/docs" "${INSTALL_ROOT}/scripts" "${INSTALL_ROOT}/omnipbx" "${INSTALL_ROOT}/README.md" "${INSTALL_ROOT}/VERSION"
     mkdir -p "${INSTALL_ROOT}"
     if [[ -d "${REPO_ROOT}/.git" ]]; then
       cp -a "${REPO_ROOT}/.git" "${INSTALL_ROOT}/.git"
@@ -442,6 +452,7 @@ copy_project() {
     done
     cp -a "${REPO_ROOT}/docs" "${INSTALL_ROOT}/docs"
     cp -a "${REPO_ROOT}/scripts" "${INSTALL_ROOT}/scripts"
+    cp -a "${REPO_ROOT}/omnipbx" "${INSTALL_ROOT}/omnipbx"
     cp -a "${REPO_ROOT}/README.md" "${INSTALL_ROOT}/README.md"
     cp -a "${REPO_ROOT}/VERSION" "${INSTALL_ROOT}/VERSION"
   fi
@@ -450,12 +461,14 @@ copy_project() {
 
 install_cli_helper() {
   if [[ "${DRY_RUN}" == "true" ]]; then
-    log INFO "Dry run: skipping CLI helper link at ${CLI_LINK}"
+    log INFO "Dry run: skipping CLI helper links at ${CLI_LINK} and ${FRIENDLY_CLI_LINK}"
     return 0
   fi
 
   chmod +x "${INSTALL_ROOT}/scripts/omnipbxctl"
+  chmod +x "${INSTALL_ROOT}/omnipbx"
   ln -sf "${INSTALL_ROOT}/scripts/omnipbxctl" "${CLI_LINK}"
+  ln -sf "${INSTALL_ROOT}/omnipbx" "${FRIENDLY_CLI_LINK}"
 }
 
 write_env_file() {
@@ -497,18 +510,23 @@ ports = [
 print(json.dumps(ports))
 PY
 )"
-  ips_json="$(python3 - <<'PY'
-import json, socket
-addresses = {"127.0.0.1"}
-for family in (socket.AF_INET, socket.AF_INET6):
-    try:
-        for result in socket.getaddrinfo(socket.gethostname(), None, family, socket.SOCK_STREAM):
-            ip = result[4][0]
-            if ip and ip != "::1" and not ip.startswith("127."):
-                addresses.add(ip)
-    except OSError:
-        pass
-print(json.dumps(sorted(addresses)))
+  ips_json="$(DETECTED_HOST_VALUE="${DETECTED_HOST}" DETECTED_IPS="$(detect_ip_addresses)" python3 - <<'PY'
+import json, os
+
+addresses = []
+seen = set()
+
+def add(value):
+    value = (value or "").strip()
+    if value and value not in seen:
+        seen.add(value)
+        addresses.append(value)
+
+add(os.environ.get("DETECTED_HOST_VALUE"))
+for line in os.environ.get("DETECTED_IPS", "").splitlines():
+    add(line)
+add("127.0.0.1")
+print(json.dumps(addresses))
 PY
 )"
   python3 - <<PY
@@ -671,7 +689,7 @@ print_success_banner() {
   echo -e " 2. Follow the on-screen instructions to create your admin account."
   echo -e " 3. Configure your extensions and trunks."
   echo -e "\n\033[1mMaintenance:\033[0m"
-  echo -e " Use the '\033[1momnipbxctl\033[0m' command for system management and updates."
+  echo -e " Use the '\033[1momnipbx\033[0m' command for start, stop, unlock, logs, and updates."
   echo -e "\033[1;32m================================================================\033[0m\n"
 }
 

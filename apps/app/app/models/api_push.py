@@ -5,6 +5,7 @@ class ApiPushSettingsPayload(BaseModel):
     enabled: bool = False
     call_logs_url: str | None = Field(default=None, max_length=500)
     callbacks_url: str | None = Field(default=None, max_length=500)
+    realtime_events_url: str | None = Field(default=None, max_length=500)
     public_base_url: str | None = Field(default=None, max_length=500)
     api_key: str | None = Field(default=None, max_length=255)
     timeout_seconds: int = Field(default=10, ge=3, le=120)

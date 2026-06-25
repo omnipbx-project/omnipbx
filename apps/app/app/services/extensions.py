@@ -11,13 +11,16 @@ SOFTPHONE_TRANSPORT = "transport-udp-softphone"
 WEBPHONE_TRANSPORT = "transport-wss"
 PHONE_AUDIO_CODECS = "ulaw,alaw,g722"
 PHONE_VIDEO_CODECS = ""
-SOFTPHONE_AUDIO_CODECS = "g722,ulaw,alaw"
+SOFTPHONE_AUDIO_CODECS = "ulaw,alaw"
 SOFTPHONE_VIDEO_CODECS = "h264,vp8"
-WEBPHONE_AUDIO_CODECS = "opus,g722,ulaw,alaw"
-WEBPHONE_VIDEO_CODECS = "vp8,h264"
+WEBPHONE_AUDIO_CODECS = "ulaw"
+WEBPHONE_VIDEO_CODECS = ""
+ADMIN_EXTENSION = "10000"
 
 LIST_EXTENSIONS_SQL = """
-SELECT id, extension, display_name, secret, context, transport, codecs, video_codecs, enabled
+SELECT
+    id, extension, display_name, secret, context, transport, codecs, video_codecs,
+    call_recording_enabled, auto_provision_enabled, simultaneous_device_limit, enabled
 FROM extensions
 ORDER BY extension;
 """
@@ -35,29 +38,39 @@ SET extension = %(new_extension)s,
     secret = COALESCE(%(secret)s, secret),
     transport = %(transport)s,
     codecs = %(codecs)s,
-    video_codecs = %(video_codecs)s
+    video_codecs = %(video_codecs)s,
+    call_recording_enabled = %(call_recording_enabled)s,
+    auto_provision_enabled = %(auto_provision_enabled)s,
+    simultaneous_device_limit = %(simultaneous_device_limit)s
 WHERE extension = %(extension)s
-RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, enabled;
+RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, call_recording_enabled, auto_provision_enabled, simultaneous_device_limit, enabled;
 """
 
 UPDATE_EXTENSION_SECRET_SQL = """
 UPDATE extensions
 SET secret = %(secret)s
 WHERE extension = %(extension)s
-RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, enabled;
+RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, call_recording_enabled, auto_provision_enabled, simultaneous_device_limit, enabled;
 """
 
 UPDATE_EXTENSION_ENABLED_SQL = """
 UPDATE extensions
 SET enabled = %(enabled)s
 WHERE extension = %(extension)s
-RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, enabled;
+RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, call_recording_enabled, auto_provision_enabled, simultaneous_device_limit, enabled;
 """
 
 INSERT_EXTENSION_SQL = """
-INSERT INTO extensions (extension, display_name, secret, context, transport, codecs, video_codecs, enabled)
-VALUES (%(extension)s, %(display_name)s, %(secret)s, %(context)s, %(transport)s, %(codecs)s, %(video_codecs)s, %(enabled)s)
-RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, enabled;
+INSERT INTO extensions (
+    extension, display_name, secret, context, transport, codecs, video_codecs,
+    call_recording_enabled, auto_provision_enabled, simultaneous_device_limit, enabled
+)
+VALUES (
+    %(extension)s, %(display_name)s, %(secret)s, %(context)s, %(transport)s,
+    %(codecs)s, %(video_codecs)s, %(call_recording_enabled)s,
+    %(auto_provision_enabled)s, %(simultaneous_device_limit)s, %(enabled)s
+)
+RETURNING id, extension, display_name, secret, context, transport, codecs, video_codecs, call_recording_enabled, auto_provision_enabled, simultaneous_device_limit, enabled;
 """
 
 
@@ -65,6 +78,65 @@ def list_extensions(connection: psycopg.Connection) -> list[dict]:
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(LIST_EXTENSIONS_SQL)
         return list(cursor.fetchall())
+
+
+def get_extension(connection: psycopg.Connection, extension: str) -> dict | None:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            SELECT
+                id, extension, display_name, secret, context, transport, codecs, video_codecs,
+                call_recording_enabled, auto_provision_enabled, simultaneous_device_limit, enabled
+            FROM extensions
+            WHERE extension = %(extension)s
+            """,
+            {"extension": extension},
+        )
+        row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+def update_own_extension_profile(
+    connection: psycopg.Connection,
+    extension: str,
+    *,
+    display_name: str,
+    transport: str,
+    call_recording_enabled: bool,
+    simultaneous_device_limit: int,
+    secret: str | None = None,
+) -> dict | None:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            UPDATE extensions
+            SET display_name = %(display_name)s,
+                transport = %(transport)s,
+                codecs = %(codecs)s,
+                video_codecs = %(video_codecs)s,
+                call_recording_enabled = %(call_recording_enabled)s,
+                auto_provision_enabled = %(auto_provision_enabled)s,
+                simultaneous_device_limit = %(simultaneous_device_limit)s,
+                secret = COALESCE(%(secret)s, secret)
+            WHERE extension = %(extension)s
+            RETURNING
+                id, extension, display_name, secret, context, transport, codecs, video_codecs,
+                call_recording_enabled, auto_provision_enabled, simultaneous_device_limit, enabled
+            """,
+            {
+                "extension": extension,
+                "display_name": display_name.strip(),
+                "transport": transport,
+                "codecs": audio_codecs_for_transport(transport),
+                "video_codecs": video_codecs_for_transport(transport),
+                "call_recording_enabled": call_recording_enabled,
+                "auto_provision_enabled": auto_provision_enabled_for_transport(transport),
+                "simultaneous_device_limit": normalize_simultaneous_device_limit(simultaneous_device_limit),
+                "secret": secret,
+            },
+        )
+        row = cursor.fetchone()
+    return dict(row) if row else None
 
 
 def create_extension(connection: psycopg.Connection, payload: ExtensionCreate) -> dict:
@@ -77,6 +149,9 @@ def create_extension(connection: psycopg.Connection, payload: ExtensionCreate) -
         "transport": payload.transport,
         "codecs": audio_codecs_for_transport(payload.transport),
         "video_codecs": video_codecs_for_transport(payload.transport),
+        "call_recording_enabled": payload.call_recording_enabled,
+        "auto_provision_enabled": auto_provision_enabled_for_transport(payload.transport),
+        "simultaneous_device_limit": normalize_simultaneous_device_limit(payload.simultaneous_device_limit),
         "enabled": payload.enabled,
     }
     with connection.cursor(row_factory=dict_row) as cursor:
@@ -85,6 +160,8 @@ def create_extension(connection: psycopg.Connection, payload: ExtensionCreate) -
 
 
 def delete_extension(connection: psycopg.Connection, extension: str) -> bool:
+    if extension == ADMIN_EXTENSION:
+        raise ValueError("Admin extension 10000 is permanent. You can change its phone type, but it cannot be deleted.")
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(DELETE_EXTENSION_SQL, {"extension": extension})
         deleted = cursor.fetchone()
@@ -97,8 +174,12 @@ def update_extension_user(
     new_extension: str,
     display_name: str,
     transport: str,
+    call_recording_enabled: bool,
+    simultaneous_device_limit: int,
     secret: str | None = None,
 ) -> dict | None:
+    if extension == ADMIN_EXTENSION and new_extension != ADMIN_EXTENSION:
+        raise ValueError("Admin extension 10000 is permanent. You can change its phone type, but it cannot be renumbered.")
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             UPDATE_EXTENSION_SQL,
@@ -109,6 +190,9 @@ def update_extension_user(
                 "transport": transport,
                 "codecs": audio_codecs_for_transport(transport),
                 "video_codecs": video_codecs_for_transport(transport),
+                "call_recording_enabled": call_recording_enabled,
+                "auto_provision_enabled": auto_provision_enabled_for_transport(transport),
+                "simultaneous_device_limit": normalize_simultaneous_device_limit(simultaneous_device_limit),
                 "secret": secret,
             },
         )
@@ -153,3 +237,15 @@ def pjsip_transport_for_device(transport: str) -> str:
     if transport == WEBPHONE_TRANSPORT:
         return "transport-wss"
     return "transport-udp"
+
+
+def auto_provision_enabled_for_transport(transport: str) -> bool:
+    return transport == WEBPHONE_TRANSPORT
+
+
+def normalize_simultaneous_device_limit(value: int | str) -> int:
+    try:
+        limit = int(value)
+    except (TypeError, ValueError):
+        limit = 1
+    return min(10, max(1, limit))

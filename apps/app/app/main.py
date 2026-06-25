@@ -15,8 +15,11 @@ from app.features.backup_restore.ui import router as backup_restore_ui_router
 from app.features.auth.ui import router as auth_ui_router
 from app.features.callbacks.api import router as callbacks_api_router
 from app.features.callbacks.ui import router as callbacks_ui_router
+from app.features.call_records.ui import router as call_records_ui_router
+from app.features.call_routing.ui import router as call_routing_ui_router
 from app.features.call_logs.api import router as call_logs_api_router
 from app.features.call_logs.ui import router as call_logs_ui_router
+from app.features.crm_api.api import router as crm_api_router
 from app.features.dashboard.ui import router as dashboard_ui_router
 from app.features.extensions.api import router as extensions_api_router
 from app.features.extensions.ui import router as extensions_ui_router
@@ -24,11 +27,14 @@ from app.features.inbound.api import router as inbound_api_router
 from app.features.inbound.ui import router as inbound_ui_router
 from app.features.ivrs.api import router as ivrs_api_router
 from app.features.ivrs.ui import router as ivrs_ui_router
+from app.features.live_overview.service import collect_live_overview
+from app.features.live_overview.ui import router as live_overview_ui_router
 from app.features.queues.api import router as queues_api_router
 from app.features.queues.ui import router as queues_ui_router
 from app.features.ring_groups.api import router as ring_groups_api_router
 from app.features.ring_groups.ui import router as ring_groups_ui_router
 from app.features.setup.ui import router as setup_ui_router
+from app.features.settings.ui import router as settings_ui_router
 from app.features.softphone.api import router as softphone_api_router
 from app.features.softphone.ui import router as softphone_ui_router
 from app.features.status.ui import router as status_ui_router
@@ -41,7 +47,12 @@ from app.features.working_hours.ui import router as working_hours_ui_router
 from app.services.asterisk import sync_asterisk_config
 from app.services.api_push import start_api_push_worker
 from app.services.auth import AUTH_COOKIE_NAME, has_admin_users, resolve_session
+from app.services.crm_api import is_valid_crm_api_key
+from app.services.live_events import live_event_hub
+from app.services.permissions import features_for_principal, first_allowed_path, has_feature, required_feature
+from app.services.security import request_security_decision
 from app.services.setup import get_system_settings, is_setup_complete, render_caddyfile, write_caddyfile
+from app.services.user_management import PHOTO_DIR
 import psycopg
 
 
@@ -55,7 +66,11 @@ async def lifespan(_: FastAPI):
         sync_asterisk_config(connection, reload_config=True)
         write_caddyfile(render_caddyfile(get_system_settings(connection)))
     start_api_push_worker()
+    live_event_hub.set_snapshot_loader(_collect_live_snapshot)
+    live_event_hub.refresh_snapshot_async("startup")
+    live_event_hub.start()
     yield
+    live_event_hub.stop()
 
 app = FastAPI(
     title="OmniPBX",
@@ -64,9 +79,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+def _collect_live_snapshot() -> dict[str, object]:
+    with psycopg.connect(settings.db_dsn, autocommit=True) as connection:
+        return collect_live_overview(connection)
+
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/user-photos", StaticFiles(directory=str(PHOTO_DIR), check_dir=False), name="user_photos")
 
 app.include_router(setup_ui_router)
+app.include_router(settings_ui_router)
 app.include_router(auth_ui_router)
 app.include_router(admin_accounts_ui_router)
 app.include_router(api_push_api_router)
@@ -74,8 +96,11 @@ app.include_router(api_push_ui_router)
 app.include_router(audit_log_ui_router)
 app.include_router(callbacks_api_router)
 app.include_router(callbacks_ui_router)
+app.include_router(call_records_ui_router)
+app.include_router(call_routing_ui_router)
 app.include_router(call_logs_api_router)
 app.include_router(call_logs_ui_router)
+app.include_router(crm_api_router)
 app.include_router(dashboard_ui_router)
 app.include_router(extensions_api_router)
 app.include_router(extensions_ui_router)
@@ -83,6 +108,7 @@ app.include_router(inbound_api_router)
 app.include_router(inbound_ui_router)
 app.include_router(ivrs_api_router)
 app.include_router(ivrs_ui_router)
+app.include_router(live_overview_ui_router)
 app.include_router(queues_api_router)
 app.include_router(queues_ui_router)
 app.include_router(ring_groups_api_router)
@@ -105,11 +131,20 @@ async def setup_guard(request: Request, call_next):
     path = request.url.path
     public_prefixes = ("/static", "/health", "/login", "/forgot-password", "/reset-password")
 
+    if path.startswith(("/static", "/health")) or path == "/favicon.ico":
+        return await call_next(request)
+
     with psycopg.connect(settings.db_dsn, autocommit=True) as connection:
         setup_complete = is_setup_complete(connection)
         admin_ready = has_admin_users(connection)
+        if setup_complete and admin_ready:
+            security = request_security_decision(connection, request)
+            if not security.allowed:
+                return PlainTextResponse(security.reason or "Access blocked by OmniPBX security.", status_code=403)
         current_user = resolve_session(connection, request.cookies.get(AUTH_COOKIE_NAME))
         request.state.current_user = current_user
+        user_features = features_for_principal(connection, current_user)
+        request.state.user_features = user_features
 
         if not setup_complete or not admin_ready:
             # On a fresh install, only allow setup wizard, static assets, and health checks.
@@ -123,10 +158,24 @@ async def setup_guard(request: Request, call_next):
                 return await call_next(request)
             return RedirectResponse(url=f"/login?next={path}", status_code=303)
 
+        if path.startswith("/crm-api"):
+            if is_valid_crm_api_key(connection, request.headers.get("X-API-Key")):
+                request.state.current_user = {"role": "system", "username": "CRM API"}
+                return await call_next(request)
+            return PlainTextResponse(
+                "Invalid or missing CRM API key.",
+                status_code=401,
+                headers={"WWW-Authenticate": "ApiKey"},
+            )
+
         if path.startswith(public_prefixes):
             return await call_next(request)
 
         if current_user:
+            if current_user.get("role") == "user":
+                required = required_feature(request.method, path)
+                if required == "" or (required and not has_feature(user_features, required)):
+                    return PlainTextResponse("You do not have permission to access this feature.", status_code=403)
             if current_user.get("role") == "read_only" and request.method not in {"GET", "HEAD", "OPTIONS"}:
                 if path not in {"/admin-accounts/change-password"}:
                     return PlainTextResponse("Read-only accounts cannot modify OmniPBX.", status_code=403)
@@ -140,8 +189,12 @@ async def root(request: Request) -> RedirectResponse:
     with psycopg.connect(settings.db_dsn, autocommit=True) as connection:
         if not is_setup_complete(connection) or not has_admin_users(connection):
             target = "/setup"
-        elif resolve_session(connection, request.cookies.get(AUTH_COOKIE_NAME)):
-            target = "/dashboard"
+        elif principal := resolve_session(connection, request.cookies.get(AUTH_COOKIE_NAME)):
+            target = (
+                first_allowed_path(features_for_principal(connection, principal))
+                if principal.get("role") == "user"
+                else "/dashboard"
+            )
         else:
             target = "/login"
     return RedirectResponse(url=target, status_code=307)

@@ -1,128 +1,121 @@
-{% from "_ui_macros.html" import empty_state, stat_card %}
+{% from "_ui_macros.html" import empty_state, date_range_filter %}
 {% extends "base.html" %}
 {% block content %}
-<section class="page-grid">
-  <div class="panel">
-    <div class="section-header">
-      <div class="section-copy">
-        <h3>Call log analytics</h3>
-        <p>Filter imported CDR rows, resync from Asterisk, and inspect dispositions and recordings without leaving the PBX UI.</p>
+<section class="page-grid call-log-page">
+  <div class="panel call-log-shell">
+    <aside class="call-log-rail" aria-label="Call log folders">
+      <div class="call-log-rail-title">
+        <span>Call Log</span>
+        <strong>{{ rows|length }}</strong>
       </div>
-      <form method="post" action="/call-logs/sync">
-        <button type="submit" class="secondary">Sync from Asterisk</button>
-      </form>
-    </div>
-    <div class="metric-grid">
-      {{ stat_card("Imported", sync_result.imported, "New rows added during the latest sync", "success") }}
-      {{ stat_card("Updated", sync_result.updated, "Existing rows refreshed from Asterisk", "warning") }}
-      {{ stat_card("Total calls", summary.total_calls, "Rows matching current filters") }}
-      {{ stat_card("Answered", summary.total_answered, "Completed or answered call records", "success") }}
-    </div>
-  </div>
-
-  <section class="page-grid two-column">
-    <div class="panel">
-      <div class="section-header">
-        <div class="section-copy">
-          <h3>Filter call logs</h3>
-          <p>Search by extension, trunk, route, linked ID, or narrow the time window for review.</p>
-        </div>
-      </div>
-      <form method="get" action="/call-logs" class="stack">
-        <div class="field">
-          <label for="search">Search</label>
-          <input id="search" type="text" name="search" value="{{ search }}" placeholder="1001, trunk, route, linked ID">
-        </div>
-        <div class="field-grid two">
-          <div class="field">
-            <label for="direction">Direction</label>
-            <select id="direction" name="direction">
-              {% for option in ["all", "inbound", "outbound", "internal", "unknown"] %}
-              <option value="{{ option }}" {% if direction == option %}selected{% endif %}>{{ option }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="field">
-            <label for="limit">Row limit</label>
-            <input id="limit" type="text" name="limit" value="{{ limit }}">
-          </div>
-        </div>
-        <div class="field-grid two">
-          <div class="field">
-            <label for="date_from">Date from</label>
-            <input id="date_from" type="text" name="date_from" value="{{ date_from }}" placeholder="2026-04-19">
-          </div>
-          <div class="field">
-            <label for="date_to">Date to</label>
-            <input id="date_to" type="text" name="date_to" value="{{ date_to }}" placeholder="2026-04-19">
-          </div>
-        </div>
-        <div class="button-row">
-          <button type="submit">Apply filters</button>
-        </div>
-      </form>
-    </div>
-
-    <div class="panel">
-      <div class="section-header">
-        <div class="section-copy">
-          <h3>Operational note</h3>
-          <p>Recordings only show a play action when OmniPBX can confirm the file is actually available from storage.</p>
-        </div>
-      </div>
-      <ul class="bullet-list">
-        <li>Use sync after test calls to pull in new CDR exports quickly.</li>
-        <li>Search supports route names, linked IDs, caller numbers, and extension values.</li>
-        <li>Recording links only appear when the media file exists.</li>
-      </ul>
-    </div>
-  </section>
-
-  <div class="panel">
-    <div class="section-header">
-      <div class="section-copy">
-        <h3>Call logs</h3>
-        <p>Review caller, callee, route context, disposition, and any recording attachment in one place.</p>
-      </div>
-    </div>
-    {% if rows %}
-    <table>
-      <thead>
-        <tr>
-          <th>Time</th>
-          <th>Caller</th>
-          <th>Callee</th>
-          <th>Direction</th>
-          <th>Route</th>
-          <th>Queue / IVR</th>
-          <th>Disposition</th>
-          <th>Recording</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in rows %}
-        <tr>
-          <td class="mono">{{ row.call_time or "-" }}</td>
-          <td class="mono">{{ row.caller }}</td>
-          <td class="mono">{{ row.callee }}</td>
-          <td class="mono">{{ row.direction }}</td>
-          <td class="mono">{{ row.route_name or row.trunk_name or "-" }}</td>
-          <td class="mono">{{ row.queue_name or row.ivr_name or "-" }}</td>
-          <td>{{ row.disposition or "-" }}</td>
-          <td>
-            {% if row.recording_available %}
-            <a class="button-link secondary" href="{{ row.recording_url }}">Play</a>
-            {% else %}
-            <span class="muted">No</span>
+      <nav class="call-log-folder-list">
+        {% for item in categories %}
+        <a class="call-log-folder {% if category == item.key %}active{% endif %}" href="/call-logs?category={{ item.key }}&search={{ search|urlencode }}&direction={{ direction }}&range={{ range }}&date_from={{ date_from|urlencode }}&date_to={{ date_to|urlencode }}&limit={{ limit }}">
+          <span class="call-log-folder-icon" aria-hidden="true">
+            {% if item.key == "missed" %}!
+            {% elif item.key == "abandoned" %}×
+            {% elif item.key == "incoming" %}↙
+            {% elif item.key == "outgoing" %}↗
+            {% else %}☰
             {% endif %}
-          </td>
-        </tr>
+          </span>
+          <span>{{ item.label }}</span>
+          <strong>{{ item.count }}</strong>
+        </a>
         {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    {{ empty_state("No call logs yet", "After Asterisk writes CDR rows and OmniPBX syncs them, the filtered call history will appear here.") }}
-    {% endif %}
+      </nav>
+    </aside>
+
+    <main class="call-log-main">
+      <div class="call-log-topline">
+        <div>
+          <h3>{{ categories|selectattr("key", "equalto", category)|map(attribute="label")|first }}</h3>
+          <span>{{ rows|length }} visible</span>
+        </div>
+        <a class="button-link secondary" href="/call-logs/export?category={{ category }}&search={{ search|urlencode }}&direction={{ direction }}&range={{ range }}&date_from={{ date_from|urlencode }}&date_to={{ date_to|urlencode }}">Export CSV</a>
+      </div>
+
+      <form method="get" action="/call-logs" class="call-log-searchbar">
+        <input type="hidden" name="category" value="{{ category }}">
+        <label class="call-log-search-field" for="search">
+          <span>Search</span>
+          <input id="search" type="text" name="search" value="{{ search }}" placeholder="Name, number, extension, trunk">
+        </label>
+        {{ date_range_filter(date_range.options, date_range.active, date_range.date_from, date_range.date_to) }}
+        <label class="call-log-rows" for="limit">
+          <span>Rows</span>
+          <input id="limit" type="text" name="limit" value="{{ limit }}">
+        </label>
+        <button type="submit">Apply</button>
+      </form>
+
+      {% if rows %}
+      <div class="call-log-table-wrap">
+        <table class="call-log-table">
+          <thead>
+            <tr>
+              <th>Call</th>
+              <th>From</th>
+              <th>To</th>
+              <th>Status</th>
+              <th>Duration</th>
+              <th>Route</th>
+              <th>Recording</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr>
+              <td>
+                <div class="call-log-callcell">
+                  <span class="call-log-direction {{ row.call_type|lower }}">{{ "↗" if row.call_type == "Outgoing" else "↙" if row.call_type == "Incoming" else "!" if row.call_type == "Missed" else "×" if row.call_type == "Abandoned" else "•" }}</span>
+                  <div>
+                    <strong>{{ row.call_type }}</strong>
+                    <small>{{ row.call_time or "-" }}</small>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="call-log-party">
+                  <span>{{ row.caller }}</span>
+                  <small>{{ row.caller_extension or "Caller" }}</small>
+                </div>
+              </td>
+              <td>
+                <div class="call-log-party">
+                  <span>{{ row.callee }}</span>
+                  <small>{{ row.callee_extension or "Destination" }}</small>
+                </div>
+              </td>
+              <td>
+                {% if row.disposition == "ANSWERED" %}
+                <span class="call-log-status answered">Answered</span>
+                {% elif row.call_type == "Abandoned" %}
+                <span class="call-log-status abandoned">Abandoned</span>
+                {% else %}
+                <span class="call-log-status missed">{{ row.disposition or "Missed" }}</span>
+                {% endif %}
+              </td>
+              <td class="mono">{{ row.duration or 0 }}s</td>
+              <td class="mono">{{ row.route_name or row.queue_name or row.ivr_name or row.trunk_name or "-" }}</td>
+              <td>
+                {% if row.recording_available %}
+                <a class="call-log-recording" href="{{ row.recording_url }}">Play</a>
+                {% else %}
+                <span class="muted">-</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="call-log-empty">
+        {{ empty_state("No calls", "Calls will appear here after Asterisk writes CDR rows and OmniPBX syncs them.") }}
+      </div>
+      {% endif %}
+    </main>
   </div>
 </section>
 {% endblock %}

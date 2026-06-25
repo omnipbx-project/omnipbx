@@ -86,7 +86,8 @@ parse_args() {
 }
 
 ensure_privileges() {
-  if [[ "${CHECK_ONLY}" == "true" ]]; then
+  local runtime_dir="${OMNIPBX_RUNTIME_DIR:-${PROJECT_ROOT}/deploy/runtime}"
+  if [[ "${CHECK_ONLY}" == "true" && -w "${runtime_dir}" ]]; then
     return 0
   fi
   if [[ "${EUID}" -ne 0 ]]; then
@@ -419,7 +420,7 @@ detect_app_rebuild_needed() {
 
   local changed_files
   changed_files="$(git_output diff --name-only "${START_COMMIT}..HEAD" || true)"
-  if grep -Eq '^(apps/app/|deploy/compose\.dev\.yaml|deploy/compose\.yaml)$' <<< "${changed_files}"; then
+  if grep -Eq '^(apps/app/|deploy/(compose\.dev\.yaml|compose\.yaml)$)' <<< "${changed_files}"; then
     APP_REBUILD_NEEDED="true"
   fi
 }

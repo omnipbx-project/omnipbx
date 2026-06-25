@@ -1,0 +1,189 @@
+  .live-overview-page {
+    display: grid;
+    gap: 18px;
+  }
+
+  .live-tabs {
+    display: flex;
+    gap: 8px;
+    width: fit-content;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--bg-panel);
+    box-shadow: var(--shadow-card);
+  }
+
+  .live-tab {
+    min-width: 132px;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--text-soft);
+  }
+
+  .live-tab.active {
+    background: var(--bg-accent-soft);
+    border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+    color: var(--accent-strong);
+  }
+
+  .live-tab-panel {
+    display: none;
+  }
+
+  .live-tab-panel.active {
+    display: grid;
+    gap: 18px;
+  }
+
+  .table-scroll {
+    overflow-x: auto;
+  }
+
+  .live-call-tools {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .supervisor-extension-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-soft);
+    font-size: 0.86rem;
+    font-weight: 600;
+  }
+
+  .supervisor-extension-field strong {
+    min-width: 72px;
+    padding: 9px 11px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--bg-panel-strong) 94%, transparent);
+    color: var(--text);
+    text-align: center;
+  }
+
+  .live-action-message {
+    min-height: 22px;
+    margin-bottom: 10px;
+    color: var(--text-soft);
+    font-size: 0.9rem;
+  }
+
+  .live-action-message.success {
+    color: var(--success);
+  }
+
+  .live-action-message.error {
+    color: var(--danger);
+  }
+
+  .supervisor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 430px;
+  }
+
+  .supervisor-actions button {
+    min-height: 38px;
+    white-space: nowrap;
+  }
+
+  .active-user-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+  }
+
+  .live-user-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 14px;
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--bg-panel);
+    box-shadow: var(--shadow-card);
+  }
+
+  .live-user-avatar-wrap {
+    position: relative;
+  }
+
+  .live-user-avatar {
+    display: grid;
+    place-items: center;
+    width: 54px;
+    height: 54px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+    color: white;
+    font-weight: 800;
+  }
+
+  .live-status-dot {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 15px;
+    height: 15px;
+    border: 2px solid var(--bg-panel-strong);
+    border-radius: 50%;
+    background: var(--text-muted);
+  }
+
+  .live-status-dot.online { background: var(--success); }
+  .live-status-dot.on-call { background: var(--warning); }
+  .live-status-dot.ringing { background: var(--warning); box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 18%, transparent); }
+  .live-status-dot.offline { background: var(--danger); }
+  .live-status-dot.unknown { background: var(--text-muted); }
+
+  .live-user-copy {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .live-user-copy strong {
+    overflow: hidden;
+    color: var(--text);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .live-user-copy span,
+  .live-user-copy small {
+    color: var(--text-soft);
+  }
+
+  .live-user-copy em {
+    width: fit-content;
+    padding: 5px 9px;
+    border-radius: 999px;
+    background: var(--bg-subtle);
+    color: var(--text-soft);
+    font-size: 0.78rem;
+    font-style: normal;
+    font-weight: 700;
+  }
+
+  @media (max-width: 760px) {
+    .live-tabs,
+    .live-tab {
+      width: 100%;
+    }
+
+    .live-tabs {
+      flex-direction: column;
+    }
+
+    .supervisor-actions {
+      min-width: 260px;
+    }
+  }

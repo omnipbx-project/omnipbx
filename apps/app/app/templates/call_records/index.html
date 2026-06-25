@@ -1,0 +1,87 @@
+{% from "_ui_macros.html" import empty_state, stat_card, date_range_filter %}
+{% extends "base.html" %}
+{% block content %}
+<section class="call-records-page">
+  <div class="metric-grid">
+    {{ stat_card("Recordings", summary.total, "Recorded calls found") }}
+    {{ stat_card("Inbound", summary.inbound, "Customer calls") }}
+    {{ stat_card("Outbound", summary.outbound, "Team calls") }}
+    {{ stat_card("Talk Time", summary.talk_time_label, "Recorded talk time", "success") }}
+  </div>
+
+  <div class="panel">
+    <form class="call-records-filter" method="get" action="/call-records">
+      <label>
+        Search
+        <input type="search" name="search" value="{{ search }}" placeholder="Number, extension, file">
+      </label>
+      <label>
+        Direction
+        <select name="direction">
+          <option value="all" {% if direction == "all" %}selected{% endif %}>All</option>
+          <option value="inbound" {% if direction == "inbound" %}selected{% endif %}>Inbound</option>
+          <option value="outbound" {% if direction == "outbound" %}selected{% endif %}>Outbound</option>
+          <option value="internal" {% if direction == "internal" %}selected{% endif %}>Internal</option>
+        </select>
+      </label>
+      <label>
+        User
+        <select name="user">
+          <option value="all" {% if user == "all" %}selected{% endif %}>All users</option>
+          {% for item in users %}
+          <option value="{{ item.extension }}" {% if user == item.extension %}selected{% endif %}>{{ item.extension }} - {{ item.display_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {{ date_range_filter(date_range.options, date_range.active, date_range.date_from, date_range.date_to) }}
+      <label>
+        Rows
+        <input type="number" name="limit" value="{{ limit }}" min="25" max="1000" step="25">
+      </label>
+      <button type="submit" class="button-link">Filter</button>
+    </form>
+  </div>
+
+  <div class="panel call-records-table-wrap">
+    {% if rows %}
+    <table class="call-records-table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Direction</th>
+          <th>Caller</th>
+          <th>To</th>
+          <th>User</th>
+          <th>Status</th>
+          <th>Talk</th>
+          <th>Record</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="mono">{{ row.call_time }}</td>
+          <td>{{ row.direction|title }}</td>
+          <td>{{ row.caller }}</td>
+          <td>{{ row.callee }}</td>
+          <td class="mono">{{ row.caller_extension }} → {{ row.callee_extension }}</td>
+          <td><span class="status-pill {{ 'success' if row.disposition == 'ANSWERED' else 'warning' }}">{{ row.disposition or "Unknown" }}</span></td>
+          <td class="mono">{{ row.talk_time_label }}</td>
+          <td>
+            {% if row.recording_available %}
+            <audio controls preload="none" src="{{ row.recording_url }}"></audio>
+            <a class="button-link secondary" href="{{ row.recording_url }}">Download</a>
+            {% else %}
+            <span class="status-pill warning">Missing file</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    {{ empty_state("No call records", "Enable call recording for a user, then completed calls will appear here.") }}
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

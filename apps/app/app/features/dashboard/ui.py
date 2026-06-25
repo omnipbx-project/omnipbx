@@ -3,8 +3,8 @@ from fastapi.responses import HTMLResponse
 import psycopg
 
 from app.core.db import get_connection
-from app.features.status.service import collect_status_snapshot
 from app.services.extensions import list_extensions
+from app.services.system_tools import collect_system_usage, read_logs
 from app.web import render_template
 
 def get_ongoing_calls():
@@ -16,11 +16,14 @@ def get_trunk_status():
 
 
 def get_system_metrics():
-    return {"cpu": 25, "ram": 45, "disk": 60}
+    return collect_system_usage()
 
 
 def get_recent_logs():
-    return []
+    return [
+        {"time": "Now", "message": line.strip()[-120:], "severity": "INFO"}
+        for line in read_logs(limit=4)["lines"][-4:]
+    ]
 
 
 def get_recent_call_logs():
@@ -81,9 +84,12 @@ def dashboard_page(
     connection: psycopg.Connection = Depends(get_connection),
 ) -> HTMLResponse:
     extensions = list_extensions(connection)
-    status_snapshot = collect_status_snapshot(connection)
-    extension_statuses = {
-        row["extension"]: row["status"] for row in status_snapshot["extensions"]
+    extension_statuses = {row["extension"]: "Unknown" for row in extensions}
+    status_snapshot = {
+        "summary": {
+            "extensions_offline": 0,
+            "extensions_unknown": len(extensions),
+        }
     }
 
     return render_template(
@@ -101,4 +107,6 @@ def dashboard_page(
         logs=get_recent_logs(),
         recent_call_logs=get_recent_call_logs(),
         dashboard_notifications=get_dashboard_notifications(status_snapshot),
+        page_css=["/static/css/dashboard.css"],
+        page_js=["/static/js/dashboard.js"],
     )

@@ -1,0 +1,131 @@
+{% from "_ui_macros.html" import empty_state, stat_card %}
+{% extends "base.html" %}
+{% block content %}
+<section class="live-overview-page" data-live-overview>
+  <div class="metric-grid live-summary">
+    {{ stat_card("Active Calls", overview.summary.active_calls, "Calls happening right now", "success") }}
+    {{ stat_card("Active Users", overview.summary.active_users, "Users online or on a call", "success") }}
+    {{ stat_card("Trunks Online", overview.summary.trunks_online, "Provider lines ready now", "success") }}
+    {{ stat_card("System Status", overview.summary.system_status, overview.system_status.message, overview.system_status["class"]) }}
+  </div>
+
+  <div class="live-tabs" role="tablist" aria-label="Live Overview sections">
+    <button type="button" class="live-tab active" data-tab="calls" role="tab" aria-selected="true">Active Calls</button>
+    <button type="button" class="live-tab" data-tab="users" role="tab" aria-selected="false">Active Users</button>
+    <button type="button" class="live-tab" data-tab="trunks" role="tab" aria-selected="false">Trunks</button>
+  </div>
+
+  <section class="live-tab-panel active" data-panel="calls">
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Active Calls</h3>
+        </div>
+        <div class="live-call-tools">
+          <span class="supervisor-extension-field">
+            <span>Your webphone</span>
+            <strong id="supervisor-extension" data-extension="{{ supervisor_extension }}">{{ supervisor_extension or "Not available" }}</strong>
+          </span>
+          <span class="status-pill available" id="live-refresh-label">Live</span>
+        </div>
+      </div>
+      <div class="live-action-message" id="live-action-message" aria-live="polite"></div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>From</th>
+              <th>To</th>
+              <th>Direction</th>
+              <th>Duration</th>
+              <th>Status</th>
+              <th>Trunk</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="active-calls-body">
+            {% for call in overview.active_calls %}
+            <tr>
+              <td class="mono">{{ call["from"] }}</td>
+              <td class="mono">{{ call["to"] }}</td>
+              <td>{{ call.direction }}</td>
+              <td class="mono">{{ call.duration }}</td>
+              <td><span class="status-pill {{ call.status_class }}">{{ call.status }}</span></td>
+              <td>{{ call.trunk }}</td>
+              <td>
+                <div class="supervisor-actions">
+                  <button type="button" class="secondary supervisor-action" data-action="listen" data-channel="{{ call.id }}">Listen Quietly</button>
+                  <button type="button" class="secondary supervisor-action" data-action="guide" data-channel="{{ call.id }}">Guide Agent</button>
+                  <button type="button" class="secondary supervisor-action" data-action="join" data-channel="{{ call.id }}">Join Conversation</button>
+                </div>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7">{{ empty_state("No active calls", "Current calls will appear here as soon as they start.") }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="live-tab-panel" data-panel="users">
+    <div class="active-user-grid" id="active-users-grid">
+      {% for user in overview.active_users %}
+      <article class="live-user-card">
+        <div class="live-user-avatar-wrap">
+          <div class="live-user-avatar">{{ user.initial }}</div>
+          <span class="live-status-dot {{ user.status_class }}"></span>
+        </div>
+        <div class="live-user-copy">
+          <strong>{{ user.name }}</strong>
+          <span>Extension {{ user.extension }}</span>
+          <small>{{ user.group }}</small>
+          <em>{{ user.status }}</em>
+        </div>
+      </article>
+      {% else %}
+      <div class="panel">{{ empty_state("No users configured", "Add users first, then live presence will appear here.") }}</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="live-tab-panel" data-panel="trunks">
+    <div class="panel">
+      <div class="section-header">
+        <div class="section-copy">
+          <h3>Trunks</h3>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Trunk</th>
+              <th>Provider</th>
+              <th>Status</th>
+              <th>Active Calls</th>
+              <th>Last Registered</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody id="trunks-body">
+            {% for trunk in overview.trunks %}
+            <tr>
+              <td class="mono">{{ trunk.name }}</td>
+              <td>{{ trunk.provider }}</td>
+              <td><span class="status-pill {{ trunk.status_class }}">{{ trunk.status }}</span></td>
+              <td>{{ trunk.active_calls }}</td>
+              <td>{{ trunk.last_registered }}</td>
+              <td>{{ trunk.message }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6">{{ empty_state("No trunks configured", "Provider trunks will appear here after they are added.") }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</section>
+{% endblock %}

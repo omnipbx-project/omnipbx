@@ -12,7 +12,7 @@ from app.services.admin_accounts import get_smtp_settings
 from app.services.audit import log_admin_event
 from app.services.auth import (
     AUTH_COOKIE_NAME,
-    authenticate_admin,
+    authenticate_principal,
     clear_session_cookie,
     consume_password_reset_token,
     generate_password_reset_token,
@@ -22,6 +22,8 @@ from app.services.auth import (
     issue_session_cookie,
 )
 from app.services.mailer import send_password_reset_email, smtp_is_ready
+from app.services.permissions import features_for_principal, first_allowed_path, required_feature
+from app.services.security import record_login_failure, record_login_success, username_security_decision
 from app.services.setup import get_system_settings, is_setup_complete
 from app.web import render_template
 
@@ -48,7 +50,7 @@ def login_page(
         request,
         "auth/login.html",
         page_title="Login",
-        page_description="Sign in to OmniPBX with the owner or admin account you created during setup.",
+        page_description="",
         active_nav="/login",
         show_shell=False,
         error=error,
@@ -70,20 +72,36 @@ def login_submit(
     if not is_setup_complete(connection):
         return RedirectResponse(url="/setup", status_code=307)
 
-    admin = authenticate_admin(connection, username.strip(), password)
+    username_decision = username_security_decision(connection, username)
+    if not username_decision.allowed:
+        params = urlencode({"error": username_decision.reason, "next": next_url})
+        return RedirectResponse(url=f"/login?{params}", status_code=303)
+
+    admin = authenticate_principal(connection, username.strip(), password)
     if not admin:
+        failure = record_login_failure(connection, request=request, username=username)
         log_admin_event(
             connection,
             event_type="auth.login_failed",
             actor_username=username.strip() or None,
             target_kind="login",
             target_value=username.strip() or None,
-            message="Invalid login attempt",
+            message="Invalid login attempt" + ("; temporary ban applied" if failure.get("banned") else ""),
         )
-        params = urlencode({"error": "Invalid username or password.", "next": next_url})
+        error = "Invalid username or password."
+        if failure.get("banned"):
+            error = "Too many failed attempts. This login is temporarily blocked."
+        params = urlencode({"error": error, "next": next_url})
         return RedirectResponse(url=f"/login?{params}", status_code=303)
 
-    response = RedirectResponse(url=_safe_next_path(next_url), status_code=303)
+    record_login_success(connection, request=request, username=username)
+    target_url = _safe_next_path(next_url)
+    if admin.get("role") == "user":
+        features = features_for_principal(connection, admin)
+        required = required_feature("GET", target_url)
+        if required == "" or (required and required not in features):
+            target_url = first_allowed_path(features)
+    response = RedirectResponse(url=target_url, status_code=303)
     session_cookie = issue_session_cookie(connection, admin)
     response.set_cookie(
         AUTH_COOKIE_NAME,

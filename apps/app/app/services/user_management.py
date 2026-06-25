@@ -8,6 +8,7 @@ from psycopg.rows import dict_row
 
 
 PHOTO_DIR = Path("/var/lib/omnipbx/user-photos")
+PHOTO_URL_PREFIX = "/user-photos"
 
 
 def list_permissions(connection: psycopg.Connection) -> list[dict]:
@@ -55,7 +56,10 @@ def profiles_by_extension(connection: psycopg.Connection) -> dict[str, dict]:
             LEFT JOIN user_permissions group_permission ON group_permission.id = group_row.permission_id
             """
         )
-        return {row["extension"]: row for row in cursor.fetchall()}
+        rows = list(cursor.fetchall())
+    for row in rows:
+        row["photo_url"] = photo_url_from_path(row.get("photo_path"))
+    return {row["extension"]: row for row in rows}
 
 
 def ensure_profile(
@@ -83,6 +87,31 @@ def ensure_profile(
                 "email": email.strip() or None,
                 "photo_path": photo_path.strip(),
                 "group_id": group_id,
+            },
+        )
+
+
+def update_own_profile(
+    connection: psycopg.Connection,
+    *,
+    extension: str,
+    email: str,
+    photo_path: str = "",
+) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO user_profiles (extension, email, photo_path)
+            VALUES (%(extension)s, %(email)s, %(photo_path)s)
+            ON CONFLICT (extension) DO UPDATE
+            SET email = EXCLUDED.email,
+                photo_path = COALESCE(NULLIF(EXCLUDED.photo_path, ''), user_profiles.photo_path),
+                updated_at = NOW()
+            """,
+            {
+                "extension": extension,
+                "email": email.strip() or None,
+                "photo_path": photo_path.strip(),
             },
         )
 
@@ -147,7 +176,17 @@ def save_user_photo(extension: str, upload_file) -> str:
     file_obj.seek(0)
     with destination.open("wb") as output:
         shutil.copyfileobj(file_obj, output)
-    return str(destination)
+    return photo_url_from_path(destination.name)
+
+
+def photo_url_from_path(photo_path: str | None) -> str:
+    value = (photo_path or "").strip()
+    if not value:
+        return ""
+    if value.startswith(f"{PHOTO_URL_PREFIX}/"):
+        return value
+    filename = Path(value).name
+    return f"{PHOTO_URL_PREFIX}/{filename}" if filename else ""
 
 
 def _lookup_id(cursor: psycopg.Cursor, table: str, name: str) -> int | None:

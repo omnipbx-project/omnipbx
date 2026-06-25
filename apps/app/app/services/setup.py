@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import os
 import secrets
 import socket
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import BinaryIO
 
 import psycopg
 from psycopg.rows import dict_row
@@ -13,9 +16,11 @@ from app.core.settings import get_settings
 from app.models.setup import SetupWizardPayload
 from app.services.auth import hash_password
 from app.services.asterisk import sync_asterisk_config
+from app.services.extensions import WEBPHONE_AUDIO_CODECS, WEBPHONE_TRANSPORT, WEBPHONE_VIDEO_CODECS
 
 
 SETTINGS_ID = 1
+MAX_CERT_UPLOAD_BYTES = 256 * 1024
 
 
 def get_system_settings(connection: psycopg.Connection) -> dict:
@@ -39,6 +44,113 @@ def is_setup_complete(connection: psycopg.Connection) -> bool:
     return bool(get_system_settings(connection).get("setup_completed"))
 
 
+def save_ssl_settings(
+    connection: psycopg.Connection,
+    *,
+    access_mode: str,
+    ssl_mode: str,
+    external_host: str,
+    ssl_contact_email: str = "",
+) -> dict[str, object]:
+    access_mode = (access_mode or "").strip()
+    ssl_mode = (ssl_mode or "").strip()
+    external_host = (external_host or "").strip()
+    ssl_contact_email = (ssl_contact_email or "").strip()
+    if access_mode not in {"local_network", "public_domain", "public_ip", "private_self_hosted", "http_only"}:
+        raise ValueError("Choose a valid access type.")
+    if ssl_mode not in {"http", "public_domain", "public_ip", "internal_local", "custom_certificate"}:
+        raise ValueError("Choose a valid SSL mode.")
+    if access_mode == "http_only":
+        ssl_mode = "http"
+    if ssl_mode != "http" and not external_host:
+        raise ValueError("Enter the LAN IP address or domain users will open.")
+    if ssl_mode == "public_domain" and external_host and _is_ip_address(external_host):
+        raise ValueError("Public domain HTTPS needs a domain name, not an IP address.")
+    if ssl_mode == "public_ip" and external_host and not _is_ip_address(external_host):
+        raise ValueError("Public IP HTTPS needs an IP address.")
+    if ssl_mode in {"public_domain", "public_ip"} and ssl_contact_email and "@" not in ssl_contact_email:
+        raise ValueError("Enter a valid email address for certificate renewal notices.")
+
+    public_base_url = _build_public_base_url(ssl_mode, external_host)
+    caddy_enabled = ssl_mode in {"public_domain", "public_ip", "internal_local", "custom_certificate"}
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE system_settings
+            SET access_mode = %(access_mode)s,
+                external_host = %(external_host)s,
+                ssl_mode = %(ssl_mode)s,
+                ssl_contact_email = %(ssl_contact_email)s,
+                public_base_url = %(public_base_url)s,
+                caddy_enabled = %(caddy_enabled)s,
+                updated_at = NOW()
+            WHERE id = %(id)s
+            """,
+            {
+                "id": SETTINGS_ID,
+                "access_mode": access_mode,
+                "external_host": external_host or None,
+                "ssl_mode": ssl_mode,
+                "ssl_contact_email": ssl_contact_email or None,
+                "public_base_url": public_base_url,
+                "caddy_enabled": caddy_enabled,
+            },
+        )
+    return refresh_caddy_config(connection)
+
+
+def custom_certificate_paths() -> tuple[Path, Path]:
+    cert_dir = Path(get_settings().caddyfile_path).parent.parent / "certs"
+    return cert_dir / "fullchain.pem", cert_dir / "privkey.pem"
+
+
+def custom_certificate_ready() -> bool:
+    cert_path, key_path = custom_certificate_paths()
+    return cert_path.is_file() and key_path.is_file()
+
+
+def save_custom_certificate_files(cert_file: BinaryIO, key_file: BinaryIO) -> None:
+    cert_text = _read_certificate_upload(cert_file, "certificate")
+    key_text = _read_certificate_upload(key_file, "private key")
+    if "-----BEGIN CERTIFICATE-----" not in cert_text or "-----END CERTIFICATE-----" not in cert_text:
+        raise ValueError("Upload a PEM certificate file that starts with BEGIN CERTIFICATE.")
+    if "-----BEGIN " not in key_text or "PRIVATE KEY-----" not in key_text or "-----END " not in key_text:
+        raise ValueError("Upload a PEM private key file.")
+
+    cert_path, key_path = custom_certificate_paths()
+    cert_path.parent.mkdir(parents=True, exist_ok=True)
+    cert_path.write_text(cert_text.rstrip() + "\n", encoding="utf-8")
+    key_path.write_text(key_text.rstrip() + "\n", encoding="utf-8")
+    os.chmod(cert_path, 0o644)
+    os.chmod(key_path, 0o600)
+
+
+def _read_certificate_upload(file_obj: BinaryIO, label: str) -> str:
+    file_obj.seek(0)
+    data = file_obj.read(MAX_CERT_UPLOAD_BYTES + 1)
+    if len(data) > MAX_CERT_UPLOAD_BYTES:
+        raise ValueError(f"The {label} file is too large. Upload a PEM file under 256 KB.")
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"The {label} file must be a text PEM file.") from exc
+    if not text.strip():
+        raise ValueError(f"Upload the {label} file.")
+    return text
+
+
+def refresh_caddy_config(connection: psycopg.Connection) -> dict[str, object]:
+    settings_snapshot = get_system_settings(connection)
+    caddyfile = render_caddyfile(settings_snapshot)
+    write_caddyfile(caddyfile)
+    return {
+        "settings": settings_snapshot,
+        "caddyfile_path": get_settings().caddyfile_path,
+        "public_base_url": settings_snapshot.get("public_base_url"),
+        "refreshed_at": datetime.now(UTC).isoformat(timespec="seconds"),
+    }
+
+
 def save_setup_wizard(connection: psycopg.Connection, payload: SetupWizardPayload) -> dict[str, object]:
     ssl_mode = payload.ssl_mode
     host = payload.external_host
@@ -49,6 +161,8 @@ def save_setup_wizard(connection: psycopg.Connection, payload: SetupWizardPayloa
         raise ValueError("Public domain HTTPS needs a domain name, not an IP address.")
     if ssl_mode == "public_ip" and host and not _is_ip_address(host):
         raise ValueError("Public IP HTTPS needs a public IP address, not a domain name.")
+    if ssl_mode == "custom_certificate" and not custom_certificate_ready():
+        raise ValueError("Upload the certificate and private key before using Bring Your Own Certificate.")
 
     with connection.cursor() as cursor:
         cursor.execute(
@@ -104,12 +218,10 @@ def save_setup_wizard(connection: psycopg.Connection, payload: SetupWizardPayloa
         _create_first_extension_if_needed(cursor, payload)
 
     sync_asterisk_config(connection, reload_config=True)
-    settings_snapshot = get_system_settings(connection)
-    caddyfile = render_caddyfile(settings_snapshot)
-    write_caddyfile(caddyfile)
+    refresh_result = refresh_caddy_config(connection)
     return {
-        "settings": settings_snapshot,
-        "caddyfile_path": get_settings().caddyfile_path,
+        "settings": refresh_result["settings"],
+        "caddyfile_path": refresh_result["caddyfile_path"],
     }
 
 
@@ -127,6 +239,7 @@ def render_caddyfile(system_settings: dict) -> str:
         global_lines.append(f"  email {contact_email}")
 
     if ssl_mode in {"public_domain", "public_ip"} and host:
+        global_lines.append(f"  default_sni {host}")
         site_address = _https_site_address(host, settings.public_https_port)
         global_lines.append("  auto_https disable_redirects")
         return (
@@ -141,8 +254,17 @@ def render_caddyfile(system_settings: dict) -> str:
         )
 
     if ssl_mode in {"internal_local", "custom_certificate"} and host:
+        global_lines.append(f"  default_sni {host}")
         site_address = _https_site_address(host, settings.public_https_port)
-        tls_block = "  tls internal\n" if ssl_mode == "internal_local" else "  tls /srv/omnipbx/certs/fullchain.pem /srv/omnipbx/certs/privkey.pem\n"
+        tls_block = (
+            "  tls {\n"
+            "    issuer internal {\n"
+            "      lifetime 6d\n"
+            "    }\n"
+            "  }\n"
+            if ssl_mode == "internal_local"
+            else "  tls /srv/omnipbx/certs/fullchain.pem /srv/omnipbx/certs/privkey.pem\n"
+        )
         global_lines.append("  auto_https disable_redirects")
         return (
             "{\n"
@@ -263,16 +385,16 @@ def _https_site_address(host: str, port: int) -> str:
 
 
 def _render_http_redirect_block(host: str, public_base_url: str | None, port: int) -> str:
-    target = public_base_url or f"https://{host}"
     return (
         f"\nhttp://{host}:{port} {{\n"
-        f"  redir {target}{{uri}}\n"
+        f"{_render_webphone_proxy_block()}"
+        "  reverse_proxy app:18000\n"
         "}\n"
     )
 
 
 def _create_first_extension_if_needed(cursor: psycopg.Cursor, payload: SetupWizardPayload) -> None:
-    extension = payload.first_extension
+    extension = payload.first_extension or "10000"
     if not extension:
         return
     cursor.execute("SELECT 1 FROM extensions WHERE extension = %(extension)s", {"extension": extension})
@@ -280,13 +402,16 @@ def _create_first_extension_if_needed(cursor: psycopg.Cursor, payload: SetupWiza
         return
     cursor.execute(
         """
-        INSERT INTO extensions (extension, display_name, secret, context, enabled)
-        VALUES (%(extension)s, %(display_name)s, %(secret)s, 'omnipbx-internal', TRUE)
+        INSERT INTO extensions (extension, display_name, secret, context, transport, codecs, video_codecs, enabled)
+        VALUES (%(extension)s, %(display_name)s, %(secret)s, 'omnipbx-internal', %(transport)s, %(codecs)s, %(video_codecs)s, TRUE)
         """,
         {
             "extension": extension,
-            "display_name": payload.first_extension_name or f"Extension {extension}",
+            "display_name": payload.first_extension_name or "Admin",
             "secret": payload.first_extension_secret or f"pass{extension}",
+            "transport": WEBPHONE_TRANSPORT,
+            "codecs": WEBPHONE_AUDIO_CODECS,
+            "video_codecs": WEBPHONE_VIDEO_CODECS,
         },
     )
 

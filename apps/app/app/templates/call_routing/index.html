@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="routing-layout">
+  <div class="routing-intro panel">
+    <div>
+      <span class="routing-kicker">Simple call setup</span>
+      <h3>Choose the type of call, then choose what should happen.</h3>
+    </div>
+    <p>Incoming calls are calls from customers, outgoing calls are calls your team makes, and internal calls stay inside your company.</p>
+  </div>
+
+  <section class="routing-section" data-routing-section>
+    <div class="routing-card-grid routing-type-grid">
+      {% for section in sections %}
+      <a class="routing-card routing-type-card" href="{{ section.href }}" data-routing-card>
+        <div class="routing-card-top">
+          <span class="routing-icon">{{ section.title[:1] }}</span>
+          <span class="routing-status {% if section.saved_count %}saved{% else %}basic{% endif %}">{{ section.status }}</span>
+        </div>
+        <div>
+          <h4>{{ section.title }}</h4>
+          <p>{{ section.summary }}</p>
+        </div>
+        <small>{{ section["items"]|length }} routing options</small>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+</section>
+{% endblock %}

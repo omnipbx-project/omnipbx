@@ -1,98 +1,285 @@
-{% from "_ui_macros.html" import stat_card %}
+{% from "_ui_macros.html" import stat_card, empty_state %}
 {% extends "base.html" %}
 {% block content %}
-<section class="page-grid">
-  <div class="panel">
-    <div class="section-header">
-      <div class="section-copy">
-        <h3>Realtime SIP status</h3>
-        <p>This page refreshes automatically so operators can spot registration issues without digging through a CLI.</p>
-      </div>
-      <span class="status-pill available">Refreshing every 4 seconds</span>
+<section class="advanced-page">
+  {% if result %}
+  <div class="notice notice-{{ result }}">
+    <strong>{{ result|capitalize }}</strong>
+    <span>{{ detail }}</span>
+  </div>
+  {% endif %}
+
+  <div class="advanced-tabs" role="tablist">
+    <button type="button" class="advanced-tab active" data-tab="monitor">System Monitor</button>
+    <button type="button" class="advanced-tab" data-tab="logs">Logs</button>
+    <button type="button" class="advanced-tab" data-tab="asterisk">Asterisk CLI</button>
+    <button type="button" class="advanced-tab" data-tab="ssl">SSL</button>
+    <button type="button" class="advanced-tab" data-tab="network">Network</button>
+    <button type="button" class="advanced-tab" data-tab="updates">Updates</button>
+    <button type="button" class="advanced-tab" data-tab="security">Security</button>
+    <button type="button" class="advanced-tab" data-tab="custom">Custom Config</button>
+  </div>
+
+  <section class="advanced-panel active" data-panel="monitor">
+    <div class="metric-grid" id="advanced-usage">
+      {{ stat_card("CPU", snapshot.usage.cpu ~ "%", "Realtime processor use") }}
+      {{ stat_card("RAM", snapshot.usage.ram ~ "%", snapshot.usage.ram_used ~ " / " ~ snapshot.usage.ram_total) }}
+      {{ stat_card("Disk", snapshot.usage.disk ~ "%", snapshot.usage.disk_free ~ " free") }}
+      {{ stat_card("Uptime", snapshot.usage.uptime, "System " ~ snapshot.usage.system_pressure, "success") }}
     </div>
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>Protection status</h3><p>Built-in OmniPBX web protection. No outside host agent required.</p></div></div>
+      <div class="notice notice-success">
+        <strong>{{ snapshot.app_security.mode }}</strong>
+        <span>{{ snapshot.app_security.output }}</span>
+      </div>
+      <pre class="code-block">Safe unlock from Docker: docker exec -it omnipbx-app python3 -m app.cli security-unblock --ip YOUR_IP</pre>
+      <div class="advanced-service-grid">
+        <div>
+          <div class="advanced-service-title">
+            <strong>Auto ban</strong>
+            <span class="status-pill success">Active</span>
+          </div>
+          <pre class="code-block">{{ snapshot.app_security.login_failure_limit }} failed logins in {{ snapshot.app_security.login_window_minutes }} minutes blocks the IP/user for {{ snapshot.app_security.ban_minutes }} minutes.</pre>
+        </div>
+        <div>
+          <div class="advanced-service-title">
+            <strong>App firewall</strong>
+            <span class="status-pill success">Active</span>
+          </div>
+          <pre class="code-block">{{ snapshot.services.firewall.output }}</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="advanced-panel" data-panel="logs">
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>Debug logs</h3><p>Read recent Asterisk, app, or security log lines.</p></div></div>
+      <form class="advanced-inline-form" id="log-filter">
+        <select name="source">
+          <option value="asterisk">Asterisk full</option>
+          <option value="asterisk_messages">Asterisk messages</option>
+          <option value="security">Security</option>
+          <option value="app">App</option>
+        </select>
+        <input type="search" name="keyword" placeholder="Filter keyword">
+        <button type="submit" class="button-link">Load</button>
+      </form>
+      <div class="advanced-log-table">
+        <table>
+          <thead><tr><th>Time</th><th>Level</th><th>Message</th></tr></thead>
+          <tbody id="log-output">
+            {% for entry in snapshot.logs.entries %}
+            <tr>
+              <td class="mono">{{ entry.time }}</td>
+              <td><span class="severity-badge {{ entry.level|lower }}">{{ entry.level }}</span></td>
+              <td>{{ entry.message }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" class="muted">No log lines available.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="advanced-panel" data-panel="asterisk">
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>Asterisk CLI</h3><p>Run safe Asterisk show and reload commands.</p></div></div>
+      <form class="advanced-inline-form" id="asterisk-cli-form">
+        <input type="text" name="command" list="asterisk-command-list" placeholder="pjsip show endpoints">
+        <datalist id="asterisk-command-list">
+          {% for command in snapshot.asterisk.suggested_commands %}
+          <option value="{{ command }}"></option>
+          {% endfor %}
+        </datalist>
+        <button type="submit" class="button-link">Run</button>
+      </form>
+      <pre class="code-block" id="asterisk-cli-output">Command output appears here.</pre>
+    </div>
+  </section>
+
+  <section class="advanced-panel" data-panel="ssl">
+    {% set ssl_settings = snapshot.ssl.settings %}
     <div class="metric-grid">
-      {{ stat_card("Total endpoints", snapshot.summary.extensions_total, "Provisioned extensions known to OmniPBX", "default") }}
-      {{ stat_card("Online", snapshot.summary.extensions_online, "Responding and registered now", "success") }}
-      {{ stat_card("Offline", snapshot.summary.extensions_offline, "Expected but unavailable", "warning") }}
-      {{ stat_card("Unknown", snapshot.summary.extensions_unknown, "No usable state reported", "danger") }}
+      {{ stat_card("SSL Mode", snapshot.ssl.mode_label, snapshot.ssl.detail) }}
+      {{ stat_card("PBX Address", snapshot.ssl.external_host or "-", snapshot.ssl.public_base_url or "Not set") }}
+      {{ stat_card("Renewal", snapshot.ssl.auto_renewal, "HTTPS port " ~ snapshot.ssl.https_port) }}
     </div>
-    <p class="muted" style="margin-top: 14px;">Last refresh: <span id="generated-at" class="mono">{{ snapshot.generated_at }}</span></p>
-  </div>
-
-  <div class="panel">
-    <div class="section-header">
-      <div class="section-copy">
-        <h3>Endpoint status board</h3>
-        <p>Live endpoint state, contact details, and transport visibility for quick troubleshooting.</p>
+    <div class="reports-two-column">
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>Browser phone SSL</h3><p>Set the LAN IP or domain users open in the browser.</p></div></div>
+        <form method="post" action="/status/ssl-settings" enctype="multipart/form-data" class="stack">
+          <label>Access type
+            <select name="access_mode" id="advanced-access-mode">
+              <option value="local_network" {% if ssl_settings.access_mode == "local_network" %}selected{% endif %}>LAN IP or local domain</option>
+              <option value="public_domain" {% if ssl_settings.access_mode == "public_domain" %}selected{% endif %}>Public domain</option>
+              <option value="public_ip" {% if ssl_settings.access_mode == "public_ip" %}selected{% endif %}>Public IP</option>
+              <option value="private_self_hosted" {% if ssl_settings.access_mode == "private_self_hosted" %}selected{% endif %}>Custom certificate</option>
+              <option value="http_only" {% if ssl_settings.access_mode == "http_only" %}selected{% endif %}>HTTP only</option>
+            </select>
+          </label>
+          <label>SSL method
+            <select name="ssl_mode" id="advanced-ssl-mode">
+              <option value="internal_local" {% if ssl_settings.ssl_mode == "internal_local" %}selected{% endif %}>LAN SSL certificate</option>
+              <option value="public_domain" {% if ssl_settings.ssl_mode == "public_domain" %}selected{% endif %}>Auto public domain SSL</option>
+              <option value="public_ip" {% if ssl_settings.ssl_mode == "public_ip" %}selected{% endif %}>Auto public IP SSL</option>
+              <option value="custom_certificate" {% if ssl_settings.ssl_mode == "custom_certificate" %}selected{% endif %}>Use custom certificate files</option>
+              <option value="http" {% if ssl_settings.ssl_mode == "http" %}selected{% endif %}>No SSL</option>
+            </select>
+          </label>
+          <label>LAN IP or domain
+            <input type="text" name="external_host" value="{{ ssl_settings.external_host or '' }}" placeholder="192.168.1.10 or pbx.example.com">
+          </label>
+          <label>Certificate email
+            <input type="email" name="ssl_contact_email" value="{{ ssl_settings.ssl_contact_email or ssl_settings.admin_email or '' }}" placeholder="admin@example.com">
+          </label>
+          <div id="advanced-custom-certificate-upload" class="custom-certificate-upload">
+            <div class="field-grid two">
+              <label>Certificate file
+                <input type="file" name="custom_certificate_file" accept=".pem,.crt,.cer">
+              </label>
+              <label>Private key file
+                <input type="file" name="custom_private_key_file" accept=".pem,.key">
+              </label>
+            </div>
+            <p class="muted">Required only when using custom certificate files. Upload the certificate/full chain and the matching private key.</p>
+          </div>
+          <div class="button-row">
+            <button type="submit" name="action" value="save">Save SSL</button>
+            <button type="submit" name="action" value="refresh" class="secondary">Redo SSL</button>
+          </div>
+        </form>
+      </div>
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>What users open</h3><p>Use this address for OmniPBX and Webphone.</p></div></div>
+        <pre class="code-block">{{ snapshot.ssl.public_base_url or "HTTPS is not set yet." }}</pre>
+        {% if snapshot.ssl.root_ca_available %}
+        <a class="button-link secondary" href="/setup/internal-ca.crt">Download LAN certificate</a>
+        {% endif %}
+        <div class="notice notice-info">
+          <strong>Auto renewal</strong>
+          <span>Public domain certificates renew automatically. LAN certificates are short-lived and renewed automatically by Caddy.</span>
+        </div>
+        <pre class="code-block">Caddy config: {{ snapshot.ssl.caddyfile_path }}
+Status: {{ "Ready" if snapshot.ssl.caddyfile_exists else "Waiting for first save" }}</pre>
       </div>
     </div>
-    <table>
-      <thead>
-        <tr>
-          <th>Extension</th>
-          <th>Name</th>
-          <th>Status</th>
-          <th>Endpoint state</th>
-          <th>Contact</th>
-          <th>RTT</th>
-          <th>Transport</th>
-        </tr>
-      </thead>
-      <tbody id="status-rows">
-        {% for row in snapshot.extensions %}
-        <tr>
-          <td class="mono">{{ row.extension }}</td>
-          <td>{{ row.display_name }}</td>
-          <td><span class="status-pill {{ row.status|lower }}">{{ row.status }}</span></td>
-          <td>{{ row.endpoint_state }}</td>
-          <td class="mono">{{ row.contact_uri or "Not registered" }}</td>
-          <td class="mono">{{ row.contact_rtt or "-" }}</td>
-          <td class="mono">{{ row.transport }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  </section>
+
+  <section class="advanced-panel" data-panel="network">
+    <div class="metric-grid">
+      {{ stat_card("Hostname", snapshot.network.hostname, "Server name") }}
+      {{ stat_card("Local IP", snapshot.network.local_ip, snapshot.network.local_ip_note) }}
+      {{ stat_card("Ports", snapshot.network.settings.open_ports or "-", "Planned open ports") }}
+    </div>
+    <div class="reports-two-column">
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>Network check</h3><p>DNS lookup or TCP port reachability test.</p></div></div>
+        <form class="advanced-inline-form" id="network-check-form">
+          <input type="text" name="host" placeholder="example.com or 192.168.1.10">
+          <input type="number" name="port" placeholder="Port">
+          <button type="submit" class="button-link">Check</button>
+        </form>
+        <pre class="code-block" id="network-check-output">Network result appears here.</pre>
+      </div>
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>Port settings</h3><p>Store planned open ports and network notes. IP allow/block lists are in Security.</p></div></div>
+        <form method="post" action="/status/network-settings" class="stack">
+          <input type="hidden" name="trusted_ips" value="">
+          <input type="hidden" name="blocked_ips" value="">
+          <label>Open ports<textarea name="open_ports" rows="2">{{ snapshot.network.settings.open_ports }}</textarea></label>
+          <label>Note<textarea name="note" rows="2">{{ snapshot.network.settings.note }}</textarea></label>
+          <button type="submit">Save Port Settings</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section class="advanced-panel" data-panel="updates">
+    {% include "components/_updates_panel.html" %}
+  </section>
+
+  <section class="advanced-panel" data-panel="security">
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>Blocklist and whitelist</h3><p>Simple app-level rules for numbers, IPs, admin usernames, and MAC notes.</p></div></div>
+      <form method="post" action="/status/security-rules" class="advanced-inline-form">
+        <select name="rule_type">
+          <option value="number_block">Block phone number</option>
+          <option value="ip_whitelist">Whitelist IP</option>
+          <option value="ip_blocklist">Block IP</option>
+          <option value="admin_user_block">Block admin username</option>
+          <option value="mac_block">Block MAC address note</option>
+        </select>
+        <input type="text" name="value" placeholder="Number, IP, username, or MAC">
+        <input type="text" name="note" placeholder="Reason">
+        <label class="toggle-line"><input type="checkbox" name="enabled_raw" checked> Enabled</label>
+        <button type="submit" class="button-link">Save</button>
+      </form>
+      {% if snapshot.security_rules %}
+      <table>
+        <thead><tr><th>Type</th><th>Value</th><th>Note</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {% for rule in snapshot.security_rules %}
+          <tr>
+            <td>{{ rule.rule_type|replace('_', ' ')|title }}</td>
+            <td class="mono">{{ rule.value }}</td>
+            <td>{{ rule.note or "-" }}</td>
+            <td><span class="status-pill {{ 'success' if rule.enabled else 'warning' }}">{{ "Enabled" if rule.enabled else "Disabled" }}</span></td>
+            <td>
+              <div class="button-row">
+                <form method="post" action="/status/security-rules/{{ rule.id }}/delete"><button type="submit" class="secondary">Delete</button></form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      {{ empty_state("No security rules", "Add number blocklist or IP whitelist/blocklist entries here.") }}
+      {% endif %}
+    </div>
+    <div class="panel">
+      <div class="section-header"><div class="section-copy"><h3>Auto blocked</h3><p>OmniPBX temporarily blocks repeated failed admin logins.</p></div></div>
+      {% if snapshot.security_bans %}
+      <table>
+        <thead><tr><th>Type</th><th>Value</th><th>Reason</th><th>Until</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {% for ban in snapshot.security_bans %}
+          <tr>
+            <td>{{ ban.subject_type|title }}</td>
+            <td class="mono">{{ ban.subject_value }}</td>
+            <td>{{ ban.reason or "-" }}</td>
+            <td>{{ ban.banned_until }}</td>
+            <td><span class="status-pill {{ 'warning' if ban.active and ban.enabled else 'success' }}">{{ "Blocked" if ban.active and ban.enabled else "Cleared" }}</span></td>
+            <td><form method="post" action="/status/security-bans/{{ ban.id }}/unblock"><button type="submit" class="secondary">Unblock</button></form></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      {{ empty_state("No automatic blocks", "Failed-login protection is active, but nobody is blocked right now.") }}
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="advanced-panel" data-panel="custom">
+    <div class="reports-two-column">
+      {% for key, title in [("pjsip", "Custom PJSIP"), ("dialplan", "Custom Dialplan")] %}
+      {% set config = snapshot.custom_config.get(key, {}) %}
+      <div class="panel">
+        <div class="section-header"><div class="section-copy"><h3>{{ title }}</h3><p>Appended to generated {{ key }} config when enabled.</p></div></div>
+        <form method="post" action="/status/custom-config" class="stack">
+          <input type="hidden" name="config_key" value="{{ key }}">
+          <label class="toggle-line"><input type="checkbox" name="enabled_raw" {% if config.enabled %}checked{% endif %}> Enable custom {{ key }}</label>
+          <textarea name="content" rows="14" spellcheck="false" class="advanced-code-input">{{ config.content or "" }}</textarea>
+          <button type="submit">Save and Reload</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
 </section>
-
-<script>
-async function refreshStatus() {
-  const response = await fetch('/status/data', { cache: 'no-store' });
-  if (!response.ok) {
-    return;
-  }
-
-  const snapshot = await response.json();
-  document.getElementById('generated-at').textContent = snapshot.generated_at;
-
-  const metricValues = {
-    "Total endpoints": snapshot.summary.extensions_total,
-    "Online": snapshot.summary.extensions_online,
-    "Offline": snapshot.summary.extensions_offline,
-    "Unknown": snapshot.summary.extensions_unknown,
-  };
-
-  document.querySelectorAll('.metric-card').forEach((card) => {
-    const label = card.querySelector('strong')?.textContent?.trim();
-    if (label && metricValues[label] !== undefined) {
-      card.querySelector('span').textContent = metricValues[label];
-    }
-  });
-
-  const tbody = document.getElementById('status-rows');
-  tbody.innerHTML = snapshot.extensions.map((row) => `
-    <tr>
-      <td class="mono">${row.extension}</td>
-      <td>${row.display_name}</td>
-      <td><span class="status-pill ${row.status.toLowerCase()}">${row.status}</span></td>
-      <td>${row.endpoint_state}</td>
-      <td class="mono">${row.contact_uri || 'Not registered'}</td>
-      <td class="mono">${row.contact_rtt || '-'}</td>
-      <td class="mono">${row.transport}</td>
-    </tr>
-  `).join('');
-}
-
-setInterval(refreshStatus, 4000);
-</script>
 {% endblock %}

@@ -1,0 +1,45 @@
+{% from "_ui_macros.html" import stat_card %}
+{% extends "base.html" %}
+{% block content %}
+<section class="settings-page">
+  <div class="metric-grid">
+    {{ stat_card("Company", system_settings.company_name or "OmniPBX", system_settings.timezone or "UTC") }}
+    {{ stat_card("Admins", admins|length, "Owner and admin accounts") }}
+    {{ stat_card("Email", "Ready" if smtp_settings.enabled else "Not ready", "Password reset email", "success" if smtp_settings.enabled else "warning") }}
+    {{ stat_card("Security Rules", security_rules|length, "Number/IP rules") }}
+  </div>
+
+  <div class="settings-grid">
+    <a class="settings-tile panel" href="#updates">
+      <strong>Updates</strong>
+      <span>Check for new git changes and run manual updates.</span>
+    </a>
+    <a class="settings-tile panel" href="/setup">
+      <strong>Company & Network</strong>
+      <span>Company name, timezone, URL, SIP and RTP basics.</span>
+    </a>
+    <a class="settings-tile panel" href="/admin-accounts">
+      <strong>Admin Accounts & Email</strong>
+      <span>Owners, admins, password reset, and SMTP settings.</span>
+    </a>
+    <a class="settings-tile panel" href="/backup-restore">
+      <strong>Backup & Restore</strong>
+      <span>{{ backups|length }} backup snapshots available.</span>
+    </a>
+    <a class="settings-tile panel" href="/status">
+      <strong>Security Rules</strong>
+      <span>Number blocklist, IP whitelist, and IP blocklist.</span>
+    </a>
+    <a class="settings-tile panel" href="/call-records">
+      <strong>Call Recording</strong>
+      <span>View recordings. Per-user recording is managed from Users.</span>
+    </a>
+    <a class="settings-tile panel" href="/reports?section=system">
+      <strong>System Report</strong>
+      <span>Storage, CDR/CEL, voicemail, backups, and health.</span>
+    </a>
+  </div>
+
+  {% include "components/_updates_panel.html" %}
+</section>
+{% endblock %}

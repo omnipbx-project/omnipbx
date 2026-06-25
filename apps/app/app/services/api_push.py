@@ -28,7 +28,7 @@ def get_api_push_settings(connection: psycopg.Connection) -> dict:
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             """
-            SELECT enabled, call_logs_url, callbacks_url, public_base_url, api_key,
+            SELECT enabled, call_logs_url, callbacks_url, realtime_events_url, public_base_url, api_key,
                    timeout_seconds, poll_interval_seconds, verify_ssl, batch_limit
             FROM api_push_settings
             WHERE id = 1
@@ -47,6 +47,7 @@ def save_api_push_settings(connection: psycopg.Connection, payload: ApiPushSetti
                 enabled = %(enabled)s,
                 call_logs_url = %(call_logs_url)s,
                 callbacks_url = %(callbacks_url)s,
+                realtime_events_url = %(realtime_events_url)s,
                 public_base_url = %(public_base_url)s,
                 api_key = %(api_key)s,
                 timeout_seconds = %(timeout_seconds)s,
@@ -164,6 +165,16 @@ def run_push_cycle(connection: psycopg.Connection) -> dict[str, object]:
     return results
 
 
+def dispatch_realtime_call_event(event: dict[str, object]) -> None:
+    thread = threading.Thread(
+        target=_deliver_realtime_call_event,
+        args=(event,),
+        daemon=True,
+        name="omnipbx-realtime-call-webhook",
+    )
+    thread.start()
+
+
 def start_api_push_worker() -> None:
     global _worker_started
     with _worker_lock:
@@ -179,6 +190,7 @@ def get_test_receiver_urls(base_url: str) -> dict[str, str]:
     return {
         "call_logs_url": f"{normalized}/api-push/test-receiver/call_logs",
         "callbacks_url": f"{normalized}/api-push/test-receiver/callbacks",
+        "realtime_events_url": f"{normalized}/api-push/test-receiver/call_events",
     }
 
 
@@ -206,6 +218,43 @@ def _build_records(connection: psycopg.Connection, entity_type: str, limit: int,
 def _build_payload_hash(record: dict) -> str:
     payload = {key: value for key, value in record.items() if key != "recording_url"}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+
+def _deliver_realtime_call_event(event: dict[str, object]) -> None:
+    settings = get_settings()
+    try:
+        with psycopg.connect(settings.db_dsn, autocommit=True) as connection:
+            push_settings = get_api_push_settings(connection)
+            target_url = push_settings.get("realtime_events_url")
+            if not push_settings.get("enabled") or not target_url:
+                return
+
+            payload = {
+                "source": "omnipbx",
+                "hostname": HOSTNAME,
+                **event,
+            }
+            ok, detail = _post_json(
+                target_url=str(target_url),
+                api_key=push_settings.get("api_key"),
+                timeout_seconds=int(push_settings["timeout_seconds"]),
+                verify_ssl=bool(push_settings["verify_ssl"]),
+                payload=payload,
+            )
+            if ok:
+                return
+            entity_key = str(payload.get("event_id") or payload.get("linkedid") or payload.get("uniqueid") or time.time())
+            payload_hash = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+            _record_dead_letters(
+                connection,
+                "call_events",
+                str(target_url),
+                [{"_entity_key": entity_key, "_payload_hash": payload_hash, **payload}],
+                detail,
+                retry_count=1,
+            )
+    except Exception:
+        return
 
 
 def _select_pending_records(connection: psycopg.Connection, entity_type: str, records: list[dict]) -> list[dict]:
@@ -260,6 +309,23 @@ def _push_records(
         "count": len(records),
         "records": [{k: v for k, v in row.items() if not k.startswith("_")} for row in records],
     }
+    return _post_json(
+        target_url=target_url,
+        api_key=api_key,
+        timeout_seconds=timeout_seconds,
+        verify_ssl=verify_ssl,
+        payload=payload,
+    )
+
+
+def _post_json(
+    *,
+    target_url: str,
+    api_key: str | None,
+    timeout_seconds: int,
+    verify_ssl: bool,
+    payload: dict[str, object],
+) -> tuple[bool, str]:
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["X-API-Key"] = api_key
