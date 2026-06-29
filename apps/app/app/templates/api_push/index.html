@@ -110,7 +110,7 @@
         <tbody>
           {% for row in delivery_logs %}
           <tr>
-            <td class="mono">{{ row.created_at }}</td>
+            <td class="mono">{{ row.created_at }} {{ row.timezone or "" }}</td>
             <td>
               <span class="status-pill {{ 'success' if row.status == 'success' else 'danger' }}">
                 {{ row.status|capitalize }}

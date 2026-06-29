@@ -18,6 +18,7 @@ from psycopg.rows import dict_row
 from app.core.settings import get_settings
 from app.models.api_push import ApiPushSettingsPayload
 from app.services.call_logs import list_call_logs, list_callback_worklist
+from app.services.setup import get_system_settings
 
 
 HOSTNAME = socket.gethostname()
@@ -99,6 +100,7 @@ def list_test_payloads(connection: psycopg.Connection) -> list[dict]:
 
 
 def list_delivery_logs(connection: psycopg.Connection) -> list[dict]:
+    timezone_name = _system_timezone(connection)
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             """
@@ -115,7 +117,7 @@ def list_delivery_logs(connection: psycopg.Connection) -> list[dict]:
                     payload_json->>'caller' AS caller,
                     payload_json->>'callee' AS callee,
                     payload_json->>'direction' AS direction,
-                    TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
+                    TO_CHAR(created_at AT TIME ZONE %(timezone)s, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
                     created_at AS sort_at
                 FROM api_push_delivery_logs
                 UNION ALL
@@ -130,7 +132,7 @@ def list_delivery_logs(connection: psycopg.Connection) -> list[dict]:
                     dead.payload_json->>'caller' AS caller,
                     dead.payload_json->>'callee' AS callee,
                     dead.payload_json->>'direction' AS direction,
-                    TO_CHAR(COALESCE(dead.last_attempt_at, dead.created_at), 'YYYY-MM-DD HH24:MI:SS') AS created_at,
+                    TO_CHAR(COALESCE(dead.last_attempt_at, dead.created_at) AT TIME ZONE %(timezone)s, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
                     COALESCE(dead.last_attempt_at, dead.created_at) AS sort_at
                 FROM api_push_dead_letters dead
                 WHERE dead.resolved = FALSE
@@ -143,9 +145,10 @@ def list_delivery_logs(connection: psycopg.Connection) -> list[dict]:
             ) logs
             ORDER BY sort_at DESC
             LIMIT 10
-            """
+            """,
+            {"timezone": timezone_name},
         )
-        return _format_delivery_log_rows(list(cursor.fetchall()))
+        return _format_delivery_log_rows(list(cursor.fetchall()), timezone_name)
 
 
 def record_test_payload(
@@ -207,13 +210,21 @@ def record_delivery_log(
         )
 
 
-def _format_delivery_log_rows(rows: list[dict]) -> list[dict]:
+def _format_delivery_log_rows(rows: list[dict], timezone_name: str) -> list[dict]:
     formatted = []
     for row in rows:
         clean = dict(row)
         clean["status_detail"] = _summarize_delivery_detail(str(clean.get("status_detail") or ""), str(clean.get("status") or ""))
+        clean["timezone"] = timezone_name
         formatted.append(clean)
     return formatted
+
+
+def _system_timezone(connection: psycopg.Connection) -> str:
+    try:
+        return str(get_system_settings(connection).get("timezone") or "UTC")
+    except Exception:
+        return "UTC"
 
 
 def _summarize_delivery_detail(detail: str, status: str) -> str:
