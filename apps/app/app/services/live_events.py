@@ -224,6 +224,9 @@ class LiveEventHub:
             return event
 
         session = self._call_sessions.get(linkedid, {})
+        event_name = str(event.get("event") or "")
+        event_time = str(event.get("timestamp") or datetime.now(UTC).isoformat())
+        session = self._update_call_timeline(session, event_name, event_time)
         if event.get("event") in {"call.dialing", "call.ringing"} and event.get("direction") != "unknown":
             session = {
                 **session,
@@ -235,14 +238,28 @@ class LiveEventHub:
                 "_seen_at": str(seen_at),
             }
             self._call_sessions[linkedid] = session
-            return event
+            return _apply_call_summary(event, session)
 
         if session:
             for key in ("direction", "caller", "callee", "agent_extension", "trunk"):
                 if session.get(key):
                     event[key] = session[key]
             session["_seen_at"] = str(seen_at)
-        return event
+            self._call_sessions[linkedid] = session
+        return _apply_call_summary(event, session)
+
+    def _update_call_timeline(self, session: dict[str, str], event_name: str, event_time: str) -> dict[str, str]:
+        updated = dict(session)
+        if event_name in {"call.dialing", "call.ringing"}:
+            updated.setdefault("call_started_at", event_time)
+        elif event_name == "call.answered":
+            updated.setdefault("call_started_at", event_time)
+            updated.setdefault("call_answered_at", event_time)
+        elif event_name in {"call.hangup", "call.dial_ended"}:
+            updated.setdefault("call_started_at", event_time)
+            if event_name == "call.hangup":
+                updated["call_ended_at"] = event_time
+        return updated
 
 
 def _send_message(stream, fields: dict[str, str]) -> None:
@@ -331,6 +348,39 @@ def _with_local_timestamp(event: dict[str, object]) -> dict[str, object]:
     event_time = _event_datetime(event)
     enriched["timezone"] = timezone_name
     enriched["local_timestamp"] = event_time.astimezone(local_tz).isoformat()
+    for source_key, target_key in (
+        ("call_started_at", "call_started_local_at"),
+        ("call_answered_at", "call_answered_local_at"),
+        ("call_ended_at", "call_ended_local_at"),
+    ):
+        value = str(enriched.get(source_key) or "")
+        if not value:
+            continue
+        try:
+            enriched[target_key] = datetime.fromisoformat(value).astimezone(local_tz).isoformat()
+        except ValueError:
+            continue
+    return enriched
+
+
+def _apply_call_summary(event: dict[str, object], session: dict[str, str]) -> dict[str, object]:
+    if not session:
+        return event
+    enriched = dict(event)
+    for key in ("call_started_at", "call_answered_at", "call_ended_at"):
+        if session.get(key):
+            enriched[key] = session[key]
+
+    started_at = _parse_iso_datetime(str(session.get("call_started_at") or ""))
+    answered_at = _parse_iso_datetime(str(session.get("call_answered_at") or ""))
+    ended_at = _parse_iso_datetime(str(session.get("call_ended_at") or "")) or _event_datetime(event)
+    if started_at:
+        enriched["duration_seconds"] = max(0, int((ended_at - started_at).total_seconds()))
+    if answered_at:
+        enriched["talk_seconds"] = max(0, int((ended_at - answered_at).total_seconds()))
+    else:
+        enriched["talk_seconds"] = 0
+    enriched["call_result"] = _call_result(enriched)
     return enriched
 
 
@@ -342,6 +392,29 @@ def _event_datetime(event: dict[str, object]) -> datetime:
         except ValueError:
             pass
     return datetime.now(UTC)
+
+
+def _parse_iso_datetime(value: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value).astimezone(UTC)
+    except ValueError:
+        return None
+
+
+def _call_result(event: dict[str, object]) -> str:
+    if event.get("call_answered_at"):
+        return "answered"
+    dial_status = str(event.get("dial_status") or "").upper()
+    hangup_cause = str(event.get("hangup_cause") or "")
+    if dial_status in {"NOANSWER", "CANCEL"} or hangup_cause in {"19", "26"}:
+        return "missed"
+    if dial_status in {"BUSY", "CHANUNAVAIL", "CONGESTION"}:
+        return "failed"
+    if str(event.get("event") or "") == "call.hangup":
+        return "ended"
+    return "in_progress"
 
 
 def _call_event_type(event_name: str, message: dict[str, str]) -> str:

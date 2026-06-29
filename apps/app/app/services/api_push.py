@@ -121,6 +121,9 @@ def list_delivery_logs(connection: psycopg.Connection) -> list[dict]:
                     payload_json->>'uniqueid' AS uniqueid,
                     payload_json->>'trunk' AS trunk,
                     COALESCE(payload_json->>'local_timestamp', payload_json->>'timestamp') AS call_time,
+                    payload_json->>'duration_seconds' AS duration_seconds,
+                    payload_json->>'talk_seconds' AS talk_seconds,
+                    payload_json->>'call_result' AS call_result,
                     TO_CHAR(created_at AT TIME ZONE %(timezone)s, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
                     created_at AS sort_at
                 FROM api_push_delivery_logs
@@ -140,6 +143,9 @@ def list_delivery_logs(connection: psycopg.Connection) -> list[dict]:
                     dead.payload_json->>'uniqueid' AS uniqueid,
                     dead.payload_json->>'trunk' AS trunk,
                     COALESCE(dead.payload_json->>'local_timestamp', dead.payload_json->>'timestamp') AS call_time,
+                    dead.payload_json->>'duration_seconds' AS duration_seconds,
+                    dead.payload_json->>'talk_seconds' AS talk_seconds,
+                    dead.payload_json->>'call_result' AS call_result,
                     TO_CHAR(COALESCE(dead.last_attempt_at, dead.created_at) AT TIME ZONE %(timezone)s, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
                     COALESCE(dead.last_attempt_at, dead.created_at) AS sort_at
                 FROM api_push_dead_letters dead

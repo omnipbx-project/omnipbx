@@ -105,6 +105,9 @@
             <th>Callee</th>
             <th>Direction</th>
             <th>Trunk</th>
+            <th>Duration</th>
+            <th>Talk</th>
+            <th>Result</th>
             <th>Linked ID</th>
             <th>Detail</th>
           </tr>
@@ -124,6 +127,9 @@
             <td class="mono">{{ row.callee or "-" }}</td>
             <td>{{ row.direction or "-" }}</td>
             <td class="mono">{{ row.trunk or "-" }}</td>
+            <td class="mono">{{ row.duration_seconds or "-" }}</td>
+            <td class="mono">{{ row.talk_seconds or "-" }}</td>
+            <td>{{ row.call_result or "-" }}</td>
             <td class="mono">{{ row.linkedid or row.uniqueid or row.entity_key or "-" }}</td>
             <td>{{ row.status_detail or "-" }}</td>
           </tr>
