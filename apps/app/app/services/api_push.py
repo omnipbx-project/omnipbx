@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
+import re
 import socket
 import ssl
 import threading
@@ -74,7 +76,12 @@ def list_dead_letters(connection: psycopg.Connection) -> list[dict]:
             LIMIT 100
             """
         )
-        return list(cursor.fetchall())
+        rows = []
+        for row in cursor.fetchall():
+            clean = dict(row)
+            clean["error_message"] = _summarize_delivery_detail(str(clean.get("error_message") or ""), "error")
+            rows.append(clean)
+        return rows
 
 
 def list_test_payloads(connection: psycopg.Connection) -> list[dict]:
@@ -104,7 +111,7 @@ def list_delivery_logs(connection: psycopg.Connection) -> list[dict]:
                     event_name,
                     target_url,
                     status,
-                    LEFT(COALESCE(status_detail, ''), 500) AS status_detail,
+                    COALESCE(status_detail, '') AS status_detail,
                     payload_json->>'caller' AS caller,
                     payload_json->>'callee' AS callee,
                     payload_json->>'direction' AS direction,
@@ -119,7 +126,7 @@ def list_delivery_logs(connection: psycopg.Connection) -> list[dict]:
                     dead.payload_json->>'event' AS event_name,
                     dead.target_url,
                     'error' AS status,
-                    LEFT(COALESCE(dead.error_message, ''), 500) AS status_detail,
+                    COALESCE(dead.error_message, '') AS status_detail,
                     dead.payload_json->>'caller' AS caller,
                     dead.payload_json->>'callee' AS callee,
                     dead.payload_json->>'direction' AS direction,
@@ -135,10 +142,10 @@ def list_delivery_logs(connection: psycopg.Connection) -> list[dict]:
                   )
             ) logs
             ORDER BY sort_at DESC
-            LIMIT 20
+            LIMIT 10
             """
         )
-        return list(cursor.fetchall())
+        return _format_delivery_log_rows(list(cursor.fetchall()))
 
 
 def record_test_payload(
@@ -198,6 +205,42 @@ def record_delivery_log(
                 "payload_json": json.dumps(payload_json or {}),
             },
         )
+
+
+def _format_delivery_log_rows(rows: list[dict]) -> list[dict]:
+    formatted = []
+    for row in rows:
+        clean = dict(row)
+        clean["status_detail"] = _summarize_delivery_detail(str(clean.get("status_detail") or ""), str(clean.get("status") or ""))
+        formatted.append(clean)
+    return formatted
+
+
+def _summarize_delivery_detail(detail: str, status: str) -> str:
+    if not detail:
+        return "Delivered successfully." if status == "success" else "No response detail returned."
+
+    text = html.unescape(detail).strip()
+    http_match = re.search(r"\bHTTP\s+(\d{3})\b", text, flags=re.IGNORECASE)
+    http_prefix = f"HTTP {http_match.group(1)}: " if http_match else ""
+
+    if "Unauthorized" in text:
+        return f"{http_prefix or 'HTTP 401: '}Unauthorized - CRM rejected the API key or webhook secret."
+
+    if "SQLSTATE[42S02]" in text or "Base table or view not found" in text:
+        table_match = re.search(r"Table '([^']+)' doesn't exist", text)
+        table_detail = f" Missing table: {table_match.group(1)}." if table_match else ""
+        return f"{http_prefix or 'HTTP 500: '}Laravel database table missing.{table_detail}"
+
+    comment_match = re.search(r"<!--\s*(.*?)\s*-->", text, flags=re.DOTALL)
+    if comment_match:
+        text = comment_match.group(1)
+
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return http_prefix.rstrip(": ") or "No response detail returned."
+    return text[:220] + ("..." if len(text) > 220 else "")
 
 
 def run_push_cycle(connection: psycopg.Connection) -> dict[str, object]:
@@ -433,9 +476,10 @@ def _post_json(
     try:
         with urllib_request.urlopen(request, timeout=timeout_seconds, context=context) as response:
             body = response.read().decode("utf-8", errors="replace")
-            return 200 <= response.status < 300, body or f"HTTP {response.status}"
+            return 200 <= response.status < 300, f"HTTP {response.status}: {body or 'OK'}"
     except urllib_error.HTTPError as exc:
-        return False, exc.read().decode("utf-8", errors="replace") or f"HTTP {exc.code}"
+        body = exc.read().decode("utf-8", errors="replace")
+        return False, f"HTTP {exc.code}: {body or exc.reason}"
     except Exception as exc:
         return False, str(exc)
 
