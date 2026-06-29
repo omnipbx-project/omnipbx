@@ -91,6 +91,56 @@ def list_test_payloads(connection: psycopg.Connection) -> list[dict]:
         return list(cursor.fetchall())
 
 
+def list_delivery_logs(connection: psycopg.Connection) -> list[dict]:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            SELECT *
+            FROM (
+                SELECT
+                    'delivery' AS source,
+                    entity_type,
+                    entity_key,
+                    event_name,
+                    target_url,
+                    status,
+                    LEFT(COALESCE(status_detail, ''), 500) AS status_detail,
+                    payload_json->>'caller' AS caller,
+                    payload_json->>'callee' AS callee,
+                    payload_json->>'direction' AS direction,
+                    TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
+                    created_at AS sort_at
+                FROM api_push_delivery_logs
+                UNION ALL
+                SELECT
+                    'dead_letter' AS source,
+                    dead.entity_type,
+                    dead.entity_key,
+                    dead.payload_json->>'event' AS event_name,
+                    dead.target_url,
+                    'error' AS status,
+                    LEFT(COALESCE(dead.error_message, ''), 500) AS status_detail,
+                    dead.payload_json->>'caller' AS caller,
+                    dead.payload_json->>'callee' AS callee,
+                    dead.payload_json->>'direction' AS direction,
+                    TO_CHAR(COALESCE(dead.last_attempt_at, dead.created_at), 'YYYY-MM-DD HH24:MI:SS') AS created_at,
+                    COALESCE(dead.last_attempt_at, dead.created_at) AS sort_at
+                FROM api_push_dead_letters dead
+                WHERE dead.resolved = FALSE
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM api_push_delivery_logs log
+                      WHERE log.entity_type = dead.entity_type
+                        AND log.entity_key = dead.entity_key
+                  )
+            ) logs
+            ORDER BY sort_at DESC
+            LIMIT 20
+            """
+        )
+        return list(cursor.fetchall())
+
+
 def record_test_payload(
     connection: psycopg.Connection,
     *,
@@ -112,6 +162,40 @@ def record_test_payload(
                 "api_key": api_key,
                 "headers_json": json.dumps(headers_json),
                 "payload_json": json.dumps(payload_json),
+            },
+        )
+
+
+def record_delivery_log(
+    connection: psycopg.Connection,
+    *,
+    entity_type: str,
+    entity_key: str | None,
+    event_name: str | None,
+    target_url: str | None,
+    status: str,
+    status_detail: str | None,
+    payload_json: dict[str, object] | None,
+) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO api_push_delivery_logs (
+                entity_type, entity_key, event_name, target_url, status, status_detail, payload_json
+            )
+            VALUES (
+                %(entity_type)s, %(entity_key)s, %(event_name)s, %(target_url)s, %(status)s,
+                %(status_detail)s, %(payload_json)s::jsonb
+            )
+            """,
+            {
+                "entity_type": entity_type,
+                "entity_key": entity_key,
+                "event_name": event_name,
+                "target_url": target_url,
+                "status": status,
+                "status_detail": status_detail,
+                "payload_json": json.dumps(payload_json or {}),
             },
         )
 
@@ -241,9 +325,19 @@ def _deliver_realtime_call_event(event: dict[str, object]) -> None:
                 verify_ssl=bool(push_settings["verify_ssl"]),
                 payload=payload,
             )
+            entity_key = str(payload.get("event_id") or payload.get("linkedid") or payload.get("uniqueid") or time.time())
+            record_delivery_log(
+                connection,
+                entity_type="call_events",
+                entity_key=entity_key,
+                event_name=str(payload.get("event") or ""),
+                target_url=str(target_url),
+                status="success" if ok else "error",
+                status_detail=detail,
+                payload_json=payload,
+            )
             if ok:
                 return
-            entity_key = str(payload.get("event_id") or payload.get("linkedid") or payload.get("uniqueid") or time.time())
             payload_hash = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
             _record_dead_letters(
                 connection,

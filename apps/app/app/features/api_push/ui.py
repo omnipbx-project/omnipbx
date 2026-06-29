@@ -10,6 +10,7 @@ from app.models.api_push import ApiPushSettingsPayload
 from app.services.api_push import (
     get_api_push_settings,
     get_test_receiver_urls,
+    list_delivery_logs,
     list_dead_letters,
     list_test_payloads,
     run_push_cycle,
@@ -40,6 +41,7 @@ def api_push_page(
         result=result,
         detail=detail,
         run_output=run_output,
+        delivery_logs=list_delivery_logs(connection),
         dead_letters=list_dead_letters(connection),
         test_payloads=list_test_payloads(connection),
         test_urls=get_test_receiver_urls(str(request.base_url).rstrip("/")),

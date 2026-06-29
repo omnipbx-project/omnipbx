@@ -88,6 +88,53 @@
   <div class="panel">
     <div class="section-header">
       <div class="section-copy">
+        <h3>Recent API push log</h3>
+        <p>Latest realtime webhook attempts sent to the configured CRM URL.</p>
+      </div>
+    </div>
+    {% if delivery_logs %}
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Status</th>
+            <th>Event</th>
+            <th>Caller</th>
+            <th>Callee</th>
+            <th>Direction</th>
+            <th>Target</th>
+            <th>Detail</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in delivery_logs %}
+          <tr>
+            <td class="mono">{{ row.created_at }}</td>
+            <td>
+              <span class="status-pill {{ 'success' if row.status == 'success' else 'danger' }}">
+                {{ row.status|capitalize }}
+              </span>
+            </td>
+            <td class="mono">{{ row.event_name or row.entity_type }}</td>
+            <td class="mono">{{ row.caller or "-" }}</td>
+            <td class="mono">{{ row.callee or "-" }}</td>
+            <td>{{ row.direction or "-" }}</td>
+            <td class="mono">{{ row.target_url or "-" }}</td>
+            <td>{{ row.status_detail or "-" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    {{ empty_state("No API push attempts yet", "Make a call after enabling API Push and delivery attempts will appear here.") }}
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <div class="section-header">
+      <div class="section-copy">
         <h3>Dead letters</h3>
         <p>Failed payload deliveries stay visible here instead of silently disappearing.</p>
       </div>

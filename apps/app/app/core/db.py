@@ -347,6 +347,20 @@ def initialize_schema() -> None:
         UNIQUE (entity_type, entity_key)
     );
 
+    CREATE TABLE IF NOT EXISTS api_push_delivery_logs (
+        id BIGSERIAL PRIMARY KEY,
+        entity_type VARCHAR(20) NOT NULL,
+        entity_key VARCHAR(150),
+        event_name VARCHAR(80),
+        target_url VARCHAR(500),
+        status VARCHAR(20) NOT NULL,
+        status_detail TEXT,
+        payload_json JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_api_push_delivery_logs_created_at ON api_push_delivery_logs (created_at DESC);
+
     CREATE TABLE IF NOT EXISTS api_push_test_payloads (
         id BIGSERIAL PRIMARY KEY,
         entity_type VARCHAR(20) NOT NULL,
@@ -533,6 +547,22 @@ def initialize_schema() -> None:
             cursor.execute("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'admin'")
             cursor.execute("ALTER TABLE api_push_settings ADD COLUMN IF NOT EXISTS realtime_events_url VARCHAR(500)")
             cursor.execute("UPDATE api_push_settings SET api_key = 'omnipbx-test-key' WHERE api_key IS NULL OR api_key = ''")
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS api_push_delivery_logs (
+                    id BIGSERIAL PRIMARY KEY,
+                    entity_type VARCHAR(20) NOT NULL,
+                    entity_key VARCHAR(150),
+                    event_name VARCHAR(80),
+                    target_url VARCHAR(500),
+                    status VARCHAR(20) NOT NULL,
+                    status_detail TEXT,
+                    payload_json JSONB,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_push_delivery_logs_created_at ON api_push_delivery_logs (created_at DESC)")
             cursor.execute(
                 """
                 INSERT INTO softphone_settings (id, enabled, websocket_url, sip_domain, display_name_prefix, public_host, note)
