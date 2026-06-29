@@ -85,6 +85,20 @@ def list_dead_letters(connection: psycopg.Connection) -> list[dict]:
         return rows
 
 
+def resolve_dead_letters(connection: psycopg.Connection) -> int:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            UPDATE api_push_dead_letters
+            SET resolved = TRUE,
+                updated_at = NOW()
+            WHERE resolved = FALSE
+            RETURNING id
+            """
+        )
+        return len(cursor.fetchall())
+
+
 def list_test_payloads(connection: psycopg.Connection) -> list[dict]:
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(

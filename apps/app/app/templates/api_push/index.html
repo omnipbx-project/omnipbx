@@ -148,6 +148,11 @@
         <h3>Dead letters</h3>
         <p>Failed payload deliveries stay visible here instead of silently disappearing.</p>
       </div>
+      {% if dead_letters %}
+      <form method="post" action="/api-push/dead-letters/resolve">
+        <button type="submit" class="secondary">Clear old dead letters</button>
+      </form>
+      {% endif %}
     </div>
     {% if dead_letters %}
     <table>

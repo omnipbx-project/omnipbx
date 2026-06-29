@@ -13,6 +13,7 @@ from app.services.api_push import (
     list_delivery_logs,
     list_dead_letters,
     list_test_payloads,
+    resolve_dead_letters,
     run_push_cycle,
     save_api_push_settings,
 )
@@ -90,6 +91,20 @@ def run_api_push_from_ui(
             "result": "success",
             "detail": "Push cycle finished.",
             "run_output": json.dumps(result, indent=2),
+        }
+    )
+    return RedirectResponse(url=f"/api-push?{params}", status_code=303)
+
+
+@router.post("/api-push/dead-letters/resolve")
+def resolve_dead_letters_from_ui(
+    connection: psycopg.Connection = Depends(get_connection),
+) -> RedirectResponse:
+    resolved_count = resolve_dead_letters(connection)
+    params = urlencode(
+        {
+            "result": "success",
+            "detail": f"Marked {resolved_count} dead letter{'s' if resolved_count != 1 else ''} as resolved.",
         }
     )
     return RedirectResponse(url=f"/api-push?{params}", status_code=303)
