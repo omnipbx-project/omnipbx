@@ -117,6 +117,10 @@ def list_delivery_logs(connection: psycopg.Connection) -> list[dict]:
                     payload_json->>'caller' AS caller,
                     payload_json->>'callee' AS callee,
                     payload_json->>'direction' AS direction,
+                    payload_json->>'linkedid' AS linkedid,
+                    payload_json->>'uniqueid' AS uniqueid,
+                    payload_json->>'trunk' AS trunk,
+                    COALESCE(payload_json->>'local_timestamp', payload_json->>'timestamp') AS call_time,
                     TO_CHAR(created_at AT TIME ZONE %(timezone)s, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
                     created_at AS sort_at
                 FROM api_push_delivery_logs
@@ -132,6 +136,10 @@ def list_delivery_logs(connection: psycopg.Connection) -> list[dict]:
                     dead.payload_json->>'caller' AS caller,
                     dead.payload_json->>'callee' AS callee,
                     dead.payload_json->>'direction' AS direction,
+                    dead.payload_json->>'linkedid' AS linkedid,
+                    dead.payload_json->>'uniqueid' AS uniqueid,
+                    dead.payload_json->>'trunk' AS trunk,
+                    COALESCE(dead.payload_json->>'local_timestamp', dead.payload_json->>'timestamp') AS call_time,
                     TO_CHAR(COALESCE(dead.last_attempt_at, dead.created_at) AT TIME ZONE %(timezone)s, 'YYYY-MM-DD HH24:MI:SS') AS created_at,
                     COALESCE(dead.last_attempt_at, dead.created_at) AS sort_at
                 FROM api_push_dead_letters dead
@@ -215,6 +223,7 @@ def _format_delivery_log_rows(rows: list[dict], timezone_name: str) -> list[dict
     for row in rows:
         clean = dict(row)
         clean["status_detail"] = _summarize_delivery_detail(str(clean.get("status_detail") or ""), str(clean.get("status") or ""))
+        clean["call_time"] = _format_payload_time(str(clean.get("call_time") or ""), timezone_name)
         clean["timezone"] = timezone_name
         formatted.append(clean)
     return formatted
@@ -227,6 +236,20 @@ def _system_timezone(connection: psycopg.Connection) -> str:
         return "UTC"
 
 
+def _format_payload_time(value: str, timezone_name: str) -> str:
+    if not value:
+        return ""
+    try:
+        from zoneinfo import ZoneInfo
+
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return parsed.strftime("%Y-%m-%d %H:%M:%S")
+        return parsed.astimezone(ZoneInfo(timezone_name)).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return value
+
+
 def _summarize_delivery_detail(detail: str, status: str) -> str:
     if not detail:
         return "Delivered successfully." if status == "success" else "No response detail returned."
@@ -235,8 +258,14 @@ def _summarize_delivery_detail(detail: str, status: str) -> str:
     http_match = re.search(r"\bHTTP\s+(\d{3})\b", text, flags=re.IGNORECASE)
     http_prefix = f"HTTP {http_match.group(1)}: " if http_match else ""
 
+    if status == "success":
+        return f"{http_prefix or 'HTTP 2xx: '}CRM accepted webhook."
+
     if "Unauthorized" in text:
         return f"{http_prefix or 'HTTP 401: '}Unauthorized - CRM rejected the API key or webhook secret."
+
+    if "api-.pusher.com" in text or "Pusher error" in text:
+        return f"{http_prefix or 'HTTP 500: '}CRM Pusher/broadcast config missing or invalid."
 
     if "SQLSTATE[42S02]" in text or "Base table or view not found" in text:
         table_match = re.search(r"Table '([^']+)' doesn't exist", text)

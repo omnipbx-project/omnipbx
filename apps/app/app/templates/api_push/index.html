@@ -97,19 +97,22 @@
       <table>
         <thead>
           <tr>
-            <th>Time</th>
+            <th>Call time</th>
+            <th>Sent at</th>
             <th>Status</th>
             <th>Event</th>
             <th>Caller</th>
             <th>Callee</th>
             <th>Direction</th>
-            <th>Target</th>
+            <th>Trunk</th>
+            <th>Linked ID</th>
             <th>Detail</th>
           </tr>
         </thead>
         <tbody>
           {% for row in delivery_logs %}
           <tr>
+            <td class="mono">{{ row.call_time or "-" }}</td>
             <td class="mono">{{ row.created_at }} {{ row.timezone or "" }}</td>
             <td>
               <span class="status-pill {{ 'success' if row.status == 'success' else 'danger' }}">
@@ -120,7 +123,8 @@
             <td class="mono">{{ row.caller or "-" }}</td>
             <td class="mono">{{ row.callee or "-" }}</td>
             <td>{{ row.direction or "-" }}</td>
-            <td class="mono">{{ row.target_url or "-" }}</td>
+            <td class="mono">{{ row.trunk or "-" }}</td>
+            <td class="mono">{{ row.linkedid or row.uniqueid or row.entity_key or "-" }}</td>
             <td>{{ row.status_detail or "-" }}</td>
           </tr>
           {% endfor %}
