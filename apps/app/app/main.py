@@ -11,6 +11,7 @@ from app.features.admin_accounts.ui import router as admin_accounts_ui_router
 from app.features.api_push.api import router as api_push_api_router
 from app.features.api_push.ui import router as api_push_ui_router
 from app.features.audit_log.ui import router as audit_log_ui_router
+from app.features.auto_dialer.ui import router as auto_dialer_ui_router
 from app.features.backup_restore.ui import router as backup_restore_ui_router
 from app.features.auth.ui import router as auth_ui_router
 from app.features.callbacks.api import router as callbacks_api_router
@@ -44,6 +45,7 @@ from app.features.welcome_messages.api import router as welcome_messages_api_rou
 from app.features.welcome_messages.ui import router as welcome_messages_ui_router
 from app.features.working_hours.api import router as working_hours_api_router
 from app.features.working_hours.ui import router as working_hours_ui_router
+from app.services.auto_dialer import start_auto_dialer_worker, stop_auto_dialer_worker
 from app.services.asterisk import sync_asterisk_config
 from app.services.api_push import start_api_push_worker
 from app.services.auth import AUTH_COOKIE_NAME, has_admin_users, resolve_session
@@ -69,7 +71,9 @@ async def lifespan(_: FastAPI):
     live_event_hub.set_snapshot_loader(_collect_live_snapshot)
     live_event_hub.refresh_snapshot_async("startup")
     live_event_hub.start()
+    start_auto_dialer_worker()
     yield
+    stop_auto_dialer_worker()
     live_event_hub.stop()
 
 app = FastAPI(
@@ -94,6 +98,7 @@ app.include_router(admin_accounts_ui_router)
 app.include_router(api_push_api_router)
 app.include_router(api_push_ui_router)
 app.include_router(audit_log_ui_router)
+app.include_router(auto_dialer_ui_router)
 app.include_router(callbacks_api_router)
 app.include_router(callbacks_ui_router)
 app.include_router(call_records_ui_router)

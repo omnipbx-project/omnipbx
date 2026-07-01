@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% from "_ui_macros.html" import empty_state, stat_card %}
+{% block content %}
+<section class="campaign-page">
+  <div class="routing-intro panel">
+    <div>
+      <a class="button-link secondary routing-back-link" href="/call-routing">Back to Call Routing</a>
+      <span class="routing-kicker">Call Routing</span>
+      <h3>Campaign Dialer</h3>
+    </div>
+    <p>Create calling campaigns, assign online agents, upload numbers, and let OmniPBX work through the list.</p>
+  </div>
+
+  {% if result %}
+  <div class="notice notice-{{ 'success' if result == 'success' else 'error' }}">
+    <strong>{{ result|title }}</strong>
+    <span>{{ detail }}</span>
+  </div>
+  {% endif %}
+
+  <section class="metrics-grid">
+    {{ stat_card("Campaigns", campaigns|length, "Saved campaign lists") }}
+    {{ stat_card("Running", campaigns|selectattr("status", "equalto", "running")|list|length, "Calling now", "success") }}
+    {{ stat_card("Ready Numbers", campaigns|sum(attribute="ready_count"), "Waiting to call", "warning") }}
+  </section>
+
+  <div class="campaign-toolbar">
+    <button type="button" data-open-dialog="campaign-dialog">Create Campaign</button>
+  </div>
+
+  <section class="panel campaign-list-panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Existing Campaigns</h3>
+        <p>Use clear names that your team will recognize later.</p>
+      </div>
+    </div>
+    {% if campaigns %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Campaign</th>
+            <th>Status</th>
+            <th>Mode</th>
+            <th>Calling Line</th>
+            <th>Numbers</th>
+            <th>Callers</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for campaign in campaigns %}
+          <tr>
+            <td><a class="campaign-name-link" href="/call-routing/auto-dialer/campaigns/{{ campaign.id }}"><strong>{{ campaign.name }}</strong></a></td>
+            <td><span class="routing-status {{ 'ready' if campaign.status == 'running' else 'basic' if campaign.status == 'paused' else 'planned' }}">{{ campaign.status|title }}</span></td>
+            <td>{{ "Auto Agent-First" if campaign.dialing_mode == "auto" else "Preview Dialing" }}</td>
+            <td>{{ campaign.trunk_name }}</td>
+            <td>
+              <div class="campaign-number-summary">
+                <span><strong>{{ campaign.lead_count }}</strong> total</span>
+                <span><strong>{{ campaign.successful_count }}</strong> successfully called</span>
+                <span><strong>{{ campaign.need_to_call_count }}</strong> need to call</span>
+                <span><strong>{{ campaign.failed_count }}</strong> failed calls</span>
+              </div>
+            </td>
+            <td>{{ campaign.assigned_users|length + campaign.assigned_groups|length }}</td>
+            <td class="campaign-actions">
+              <button
+                type="button"
+                class="secondary"
+                data-open-dialog="upload-numbers-dialog"
+                data-upload-action="/call-routing/auto-dialer/campaigns/{{ campaign.id }}/leads/import"
+                data-upload-campaign="{{ campaign.name }}"
+              >Upload Numbers</button>
+              <a class="button-link secondary" href="/call-routing/auto-dialer/campaigns?edit_id={{ campaign.id }}">Edit</a>
+              <form method="post" action="/call-routing/auto-dialer/campaigns/{{ campaign.id }}/status">
+                <input type="hidden" name="campaign_status" value="{{ 'paused' if campaign.status == 'running' else 'running' }}">
+                <button type="submit" class="secondary">{{ "Pause" if campaign.status == "running" else "Start" }}</button>
+              </form>
+              <form method="post" action="/call-routing/auto-dialer/campaigns/{{ campaign.id }}/delete" onsubmit="return confirm('Delete campaign {{ campaign.name }}?');">
+                <button type="submit" class="danger">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      {{ empty_state("No campaigns yet", "Create the first campaign, assign callers, and upload numbers.") }}
+    {% endif %}
+  </section>
+</section>
+
+<dialog class="campaign-dialog" id="campaign-dialog" {% if edit_campaign %}open{% endif %}>
+  <form class="campaign-dialog-card" method="post" action="/call-routing/auto-dialer/campaigns/save">
+    <div class="campaign-dialog-heading">
+      <div>
+        <span class="routing-kicker">Campaign Dialer</span>
+        <h3>{{ "Edit Campaign" if edit_campaign else "Create Campaign" }}</h3>
+      </div>
+      <button type="button" class="icon-button" data-close-dialog aria-label="Close">&times;</button>
+    </div>
+    {% if edit_campaign %}
+    <input type="hidden" name="campaign_id" value="{{ edit_campaign.id }}">
+    {% endif %}
+    <div class="field-grid two">
+      <div class="field">
+        <label for="name">Campaign Name</label>
+        <input id="name" type="text" name="name" value="{{ edit_campaign.name if edit_campaign else '' }}" required>
+      </div>
+      <div class="field">
+        <label for="trunk_name">Calling Line</label>
+        <select id="trunk_name" name="trunk_name" required>
+          <option value="">Select phone line to call from</option>
+          {% for trunk in trunks %}
+          <option value="{{ trunk.name }}" {% if edit_campaign and edit_campaign.trunk_name == trunk.name %}selected{% endif %}>{{ trunk.name }}{% if trunk.provider_name %} - {{ trunk.provider_name }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="field-grid two">
+      <div class="field">
+        <label for="source_type">Assign</label>
+        <select id="source_type" name="source_type">
+          <option value="group" {% if not edit_campaign or edit_campaign.assigned_groups %}selected{% endif %}>Group</option>
+          <option value="user" {% if edit_campaign and edit_campaign.assigned_users and not edit_campaign.assigned_groups %}selected{% endif %}>User</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Assigned groups/users</label>
+        <div class="routing-target-picker" data-routing-target-select="source_values">
+          <button type="button" class="routing-target-trigger" data-routing-target-trigger aria-expanded="false">
+            <span data-routing-target-label>Select source</span>
+            <strong>⌄</strong>
+          </button>
+          <div class="routing-target-menu" data-routing-target-menu hidden>
+            <div class="routing-target-options" data-target-kind="group">
+              {% for group in groups %}
+              <label class="routing-target-option">
+                <input type="checkbox" name="source_values" value="{{ group.name }}" {% if edit_campaign and group.name in edit_campaign.assigned_groups %}checked{% endif %}>
+                <span>{{ group.name }}</span>
+              </label>
+              {% else %}
+              <span class="muted">No groups created yet.</span>
+              {% endfor %}
+            </div>
+            <div class="routing-target-options" data-target-kind="user" hidden>
+              {% for extension in extensions %}
+              <label class="routing-target-option">
+                <input type="checkbox" name="source_values" value="{{ extension.extension }}" data-label="{{ extension.display_name }} ({{ extension.extension }})" {% if edit_campaign and extension.extension in edit_campaign.assigned_users %}checked{% endif %}>
+                <span>{{ extension.display_name }} <small>{{ extension.extension }}</small></span>
+              </label>
+              {% else %}
+              <span class="muted">No users created yet.</span>
+              {% endfor %}
+            </div>
+            <div class="routing-target-actions">
+              <button type="button" class="secondary" data-routing-target-clear>Clear</button>
+              <button type="button" data-routing-target-ok>OK</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <fieldset class="campaign-mode-box">
+      <legend>Dialing Mode</legend>
+      <label>
+        <input type="radio" name="dialing_mode" value="preview" {% if not edit_campaign or edit_campaign.dialing_mode != "auto" %}checked{% endif %}>
+        <span><strong>Preview Dialing</strong><small>Caller sees the number first and clicks Call.</small></span>
+      </label>
+      <label>
+        <input type="radio" name="dialing_mode" value="auto" {% if edit_campaign and edit_campaign.dialing_mode == "auto" %}checked{% endif %}>
+        <span><strong>Auto Dialing</strong><small>Online idle agents ring first, then OmniPBX dials the next number.</small></span>
+      </label>
+    </fieldset>
+    <div
+      class="field campaign-auto-wait {% if not edit_campaign or edit_campaign.dialing_mode != "auto" %}is-hidden{% endif %}"
+      data-auto-wait-field
+    >
+      <label for="next_call_wait_seconds">Wait Before Next Call</label>
+      <input id="next_call_wait_seconds" type="number" min="1" max="600" name="next_call_wait_seconds" value="{{ edit_campaign.next_call_wait_seconds if edit_campaign else 5 }}">
+    </div>
+    <div class="button-row">
+      <button type="submit">Save Campaign</button>
+      <button type="button" class="secondary" data-close-dialog>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="campaign-dialog" id="upload-numbers-dialog">
+  <form class="campaign-dialog-card" method="post" enctype="multipart/form-data" action="">
+    <div class="campaign-dialog-heading">
+      <div>
+        <span class="routing-kicker">New Numbers</span>
+        <h3>Upload Numbers</h3>
+        <p class="campaign-dialog-subtitle" data-upload-campaign-label></p>
+      </div>
+      <button type="button" class="icon-button" data-close-dialog aria-label="Close">&times;</button>
+    </div>
+    <div class="field-grid two">
+      <div class="field">
+        <label for="index_lead_file">Upload Contact List</label>
+        <input id="index_lead_file" type="file" name="lead_file" accept=".csv,.txt,.tsv,.xlsx">
+        <small>CSV, TXT, TSV, or XLSX.</small>
+      </div>
+      <div class="field">
+        <label for="index_google_sheet_url">Google Sheet Link</label>
+        <input id="index_google_sheet_url" type="url" name="google_sheet_url" placeholder="Paste public Google Sheet link">
+        <small>Use a shared sheet link. OmniPBX imports it as CSV.</small>
+      </div>
+    </div>
+    <div class="field">
+      <label for="index_pasted_leads">Or Paste Numbers</label>
+      <textarea id="index_pasted_leads" name="pasted_leads" rows="5" placeholder="Customer One, 01711111111&#10;Customer Two, 01722222222"></textarea>
+      <small>OmniPBX removes spaces, dashes, and brackets before dialing. Example: 01711-111111 dials as 01711111111.</small>
+    </div>
+    <details class="campaign-map-box">
+      <summary>Advanced column names</summary>
+      <p>Optional. OmniPBX finds phone numbers automatically. Use this only if your file has unusual column names.</p>
+      <div class="field-grid two">
+        <div class="field">
+          <label for="index_phone_column">Phone Number Column</label>
+          <input id="index_phone_column" type="text" name="phone_column" placeholder="phone_number">
+        </div>
+        <div class="field">
+          <label for="index_name_column">Name Column</label>
+          <input id="index_name_column" type="text" name="name_column" placeholder="name">
+        </div>
+        <div class="field">
+          <label for="index_company_column">Company Column</label>
+          <input id="index_company_column" type="text" name="company_column" placeholder="company">
+        </div>
+        <div class="field">
+          <label for="index_email_column">Email Column</label>
+          <input id="index_email_column" type="text" name="email_column" placeholder="email">
+        </div>
+      </div>
+      <div class="field">
+        <label for="index_note_column">Note Column</label>
+        <input id="index_note_column" type="text" name="note_column" placeholder="note">
+      </div>
+    </details>
+    <div class="button-row">
+      <button type="submit">Import Numbers</button>
+      <button type="button" class="secondary" data-close-dialog>Cancel</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

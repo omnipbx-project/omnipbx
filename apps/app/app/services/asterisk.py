@@ -26,7 +26,7 @@ ORDER BY extension;
 """
 
 FETCH_ENABLED_TRUNKS_SQL = """
-SELECT name, provider_name, host, username, password, transport, register_enabled,
+SELECT name, provider_name, main_number, host, username, password, transport, register_enabled,
        match_ip, codecs, outbound_prefix, strip_digits
 FROM trunks
 WHERE enabled = TRUE
@@ -838,6 +838,7 @@ def render_trunk_dialplan(
                 " same => n(allowed),NoOp(Outbound caller allowed)\n"
                 f" same => n,Set(CDR(trunk_name)={trunk_name})\n"
                 f" same => n,Set(OUTNUM={send_prefix}${{EXTEN:{strip_digits}}})\n"
+                f"{_render_trunk_caller_id_line(trunk)}"
                 f"{_render_recording_lines(recording_extensions, target_variable='OUTNUM')}"
                 f" same => n,Dial({_outbound_trunk_dial_target(str(trunk_name), trunk)},60)\n"
                 " same => n,Hangup()\n\n"
@@ -858,6 +859,7 @@ def render_trunk_dialplan(
                 " same => n,Set(CDR(caller_extension)=${CALLERID(num)})\n"
                 f" same => n,Set(CDR(trunk_name)={name})\n"
                 f" same => n,Set(OUTNUM=${{EXTEN:{prefix_len}}})\n"
+                f"{_render_trunk_caller_id_line(trunk)}"
                 f"{_render_recording_lines(recording_extensions, target_variable='OUTNUM')}"
                 f" same => n,Dial(PJSIP/${{OUTNUM}}@{name},60)\n"
                 " same => n,Hangup()\n\n"
@@ -1342,6 +1344,13 @@ def _outbound_trunk_dial_target(trunk_name: str, trunk: dict) -> str:
     server_uri = _default_server_uri(trunk)
     host = server_uri.replace("sip:", "", 1)
     return f"PJSIP/{trunk_name}/sip:${{OUTNUM}}@{host}"
+
+
+def _render_trunk_caller_id_line(trunk: dict) -> str:
+    main_number = re.sub(r"[^0-9+]", "", str(trunk.get("main_number") or ""))
+    if not main_number:
+        return ""
+    return f" same => n,Set(CALLERID(num)={main_number})\n"
 
 
 def _render_blocked_number_checks(rules: list[dict]) -> list[str]:

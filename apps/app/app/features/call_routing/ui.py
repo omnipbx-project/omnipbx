@@ -136,6 +136,21 @@ CALL_ROUTING_SECTIONS = [
             },
         ],
     },
+    {
+        "slug": "auto-dialer",
+        "title": "Campaign Dialer",
+        "summary": "Create calling campaigns, upload contact lists, and let agents work through leads.",
+        "href": "/call-routing/auto-dialer/campaigns",
+        "items": [
+            {
+                "slug": "campaigns",
+                "title": "Campaigns",
+                "description": "Create campaigns, assign callers, upload leads, and choose preview or auto dialing.",
+                "href": "/call-routing/auto-dialer/campaigns",
+                "status": "Ready",
+            },
+        ],
+    },
 ]
 
 ROUTING_FORMS = {
@@ -407,7 +422,7 @@ def _sections_with_counts(grouped_rules: dict[tuple[str, str], list[dict]]) -> l
             if rules:
                 section_rule_count += len(rules)
                 item["status"] = f"{len(rules)} saved"
-        section["href"] = f"/call-routing/{section['slug']}"
+        section["href"] = section.get("href") or f"/call-routing/{section['slug']}"
         section["saved_count"] = section_rule_count
         section["status"] = f"{section_rule_count} saved" if section_rule_count else "Open"
     return sections

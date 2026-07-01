@@ -17,6 +17,7 @@ NAV_SECTIONS = [
             {"href": "/extensions", "label": "Users", "icon": "◫"},
             {"href": "/trunks", "label": "Trunks", "icon": "⌁"},
             {"href": "/call-routing", "label": "Call Routing", "icon": "↗"},
+            {"href": "/call-routing/auto-dialer/leads", "label": "Leads", "icon": "☷"},
             {"href": "/call-logs", "label": "Call Log", "icon": "☏"},
             {"href": "/callbacks", "label": "Follow Up", "icon": "◎"},
             {"href": "/call-records", "label": "Call Records", "icon": "◌"},
@@ -62,6 +63,10 @@ def render_template(
         "/call-routing": {
             "placeholder": "Search routing option...",
             "label": "Search routing option",
+        },
+        "/call-routing/auto-dialer/leads": {
+            "placeholder": "Search lead or number...",
+            "label": "Search leads",
         },
         "/call-logs": {
             "placeholder": "Search caller, number...",

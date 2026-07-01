@@ -107,6 +107,40 @@ CREATE INDEX IF NOT EXISTS idx_cdr_raw_calldate ON cdr_raw (calldate DESC);
 CREATE INDEX IF NOT EXISTS idx_cdr_raw_linkedid ON cdr_raw (linkedid);
 CREATE INDEX IF NOT EXISTS idx_cdr_raw_direction ON cdr_raw (direction);
 
+CREATE TABLE IF NOT EXISTS autodialer_campaigns (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(160) NOT NULL UNIQUE,
+    trunk_name VARCHAR(80) NOT NULL,
+    dialing_mode VARCHAR(20) NOT NULL DEFAULT 'preview',
+    next_call_wait_seconds INTEGER NOT NULL DEFAULT 5,
+    assigned_users JSONB NOT NULL DEFAULT '[]'::jsonb,
+    assigned_groups JSONB NOT NULL DEFAULT '[]'::jsonb,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS autodialer_leads (
+    id BIGSERIAL PRIMARY KEY,
+    campaign_id BIGINT NOT NULL REFERENCES autodialer_campaigns(id) ON DELETE CASCADE,
+    lead_name VARCHAR(160) NOT NULL,
+    phone_number VARCHAR(40) NOT NULL,
+    dial_number VARCHAR(40),
+    company VARCHAR(160),
+    email VARCHAR(255),
+    note TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'ready',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_call_at TIMESTAMPTZ,
+    last_result VARCHAR(80),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (campaign_id, phone_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_autodialer_leads_campaign_status ON autodialer_leads (campaign_id, status);
+CREATE INDEX IF NOT EXISTS idx_autodialer_leads_created_at ON autodialer_leads (created_at DESC);
+
 CREATE TABLE IF NOT EXISTS cel_raw (
     id BIGSERIAL PRIMARY KEY,
     eventtype VARCHAR(40),

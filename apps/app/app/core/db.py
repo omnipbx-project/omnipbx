@@ -162,6 +162,40 @@ def initialize_schema() -> None:
         UNIQUE (section_slug, item_slug, name)
     );
 
+    CREATE TABLE IF NOT EXISTS autodialer_campaigns (
+        id BIGSERIAL PRIMARY KEY,
+        name VARCHAR(160) NOT NULL UNIQUE,
+        trunk_name VARCHAR(80) NOT NULL,
+        dialing_mode VARCHAR(20) NOT NULL DEFAULT 'preview',
+        next_call_wait_seconds INTEGER NOT NULL DEFAULT 5,
+        assigned_users JSONB NOT NULL DEFAULT '[]'::jsonb,
+        assigned_groups JSONB NOT NULL DEFAULT '[]'::jsonb,
+        status VARCHAR(20) NOT NULL DEFAULT 'draft',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS autodialer_leads (
+        id BIGSERIAL PRIMARY KEY,
+        campaign_id BIGINT NOT NULL REFERENCES autodialer_campaigns(id) ON DELETE CASCADE,
+        lead_name VARCHAR(160) NOT NULL,
+        phone_number VARCHAR(40) NOT NULL,
+        dial_number VARCHAR(40),
+        company VARCHAR(160),
+        email VARCHAR(255),
+        note TEXT,
+        status VARCHAR(20) NOT NULL DEFAULT 'ready',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_call_at TIMESTAMPTZ,
+        last_result VARCHAR(80),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (campaign_id, phone_number)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_autodialer_leads_campaign_status ON autodialer_leads (campaign_id, status);
+    CREATE INDEX IF NOT EXISTS idx_autodialer_leads_created_at ON autodialer_leads (created_at DESC);
+
     CREATE TABLE IF NOT EXISTS cdr_raw (
         id BIGSERIAL PRIMARY KEY,
         calldate TIMESTAMPTZ,
@@ -530,6 +564,18 @@ def initialize_schema() -> None:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_app_security_bans_active ON app_security_bans (subject_type, subject_value, enabled, banned_until)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_app_security_failures_subject ON app_security_failures (subject_type, subject_value)")
             cursor.execute("ALTER TABLE trunks ADD COLUMN IF NOT EXISTS main_number VARCHAR(80)")
+            cursor.execute("ALTER TABLE autodialer_campaigns ADD COLUMN IF NOT EXISTS dialing_mode VARCHAR(20) NOT NULL DEFAULT 'preview'")
+            cursor.execute("ALTER TABLE autodialer_campaigns ADD COLUMN IF NOT EXISTS next_call_wait_seconds INTEGER NOT NULL DEFAULT 5")
+            cursor.execute("ALTER TABLE autodialer_campaigns ADD COLUMN IF NOT EXISTS assigned_users JSONB NOT NULL DEFAULT '[]'::jsonb")
+            cursor.execute("ALTER TABLE autodialer_campaigns ADD COLUMN IF NOT EXISTS assigned_groups JSONB NOT NULL DEFAULT '[]'::jsonb")
+            cursor.execute("ALTER TABLE autodialer_campaigns ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'draft'")
+            cursor.execute("ALTER TABLE autodialer_leads ADD COLUMN IF NOT EXISTS company VARCHAR(160)")
+            cursor.execute("ALTER TABLE autodialer_leads ADD COLUMN IF NOT EXISTS dial_number VARCHAR(40)")
+            cursor.execute("ALTER TABLE autodialer_leads ADD COLUMN IF NOT EXISTS email VARCHAR(255)")
+            cursor.execute("ALTER TABLE autodialer_leads ADD COLUMN IF NOT EXISTS note TEXT")
+            cursor.execute("ALTER TABLE autodialer_leads ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0")
+            cursor.execute("ALTER TABLE autodialer_leads ADD COLUMN IF NOT EXISTS last_call_at TIMESTAMPTZ")
+            cursor.execute("ALTER TABLE autodialer_leads ADD COLUMN IF NOT EXISTS last_result VARCHAR(80)")
             cursor.execute("ALTER TABLE inbound_routes ALTER COLUMN destination_value TYPE VARCHAR(255)")
             cursor.execute("ALTER TABLE extensions ALTER COLUMN codecs SET DEFAULT 'ulaw,alaw,g722'")
             cursor.execute("ALTER TABLE extensions ALTER COLUMN video_codecs SET DEFAULT ''")

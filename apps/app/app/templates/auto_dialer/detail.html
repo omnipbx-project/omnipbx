@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% from "_ui_macros.html" import empty_state, stat_card %}
+{% block content %}
+<section class="campaign-page">
+  <div class="routing-intro panel">
+    <div>
+      <a class="button-link secondary routing-back-link" href="/call-routing/auto-dialer/campaigns">Back to Campaign Dialer</a>
+      <span class="routing-kicker">{{ "Auto Dialing" if campaign.dialing_mode == "auto" else "Preview Dialing" }}</span>
+      <h3>{{ campaign.name }}</h3>
+    </div>
+    <p>Upload numbers, check ready numbers, and start or pause the campaign when callers are ready.</p>
+  </div>
+
+  {% if result %}
+  <div class="notice notice-{{ 'success' if result == 'success' else 'error' }}">
+    <strong>{{ result|title }}</strong>
+    <span>{{ detail }}</span>
+  </div>
+  {% endif %}
+
+  <section class="metrics-grid">
+    {{ stat_card("All Numbers", campaign.lead_count, "Saved in this campaign") }}
+    {{ stat_card("Ready", campaign.ready_count, "Ready to call", "success") }}
+    {{ stat_card("Needs Fix", campaign.invalid_count, "Invalid or incomplete", "warning") }}
+  </section>
+
+  <div class="campaign-toolbar">
+    <button type="button" data-open-dialog="lead-dialog">Upload Numbers</button>
+    <form method="post" action="/call-routing/auto-dialer/campaigns/{{ campaign.id }}/status">
+      <input type="hidden" name="campaign_status" value="{{ 'paused' if campaign.status == 'running' else 'running' }}">
+      <button type="submit" class="secondary">{{ "Pause Campaign" if campaign.status == "running" else "Start Campaign" }}</button>
+    </form>
+  </div>
+
+  <section class="panel campaign-list-panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Numbers</h3>
+        <p>Phone numbers are kept unique inside this campaign, so repeat uploads skip duplicates.</p>
+      </div>
+    </div>
+    {% if leads %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Phone Number</th>
+            <th>Asterisk Dial Number</th>
+            <th>Status</th>
+            <th>Added Time</th>
+            <th>Company</th>
+            <th>Note</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for lead in leads %}
+          <tr>
+            <td><strong>{{ lead.lead_name }}</strong></td>
+            <td>{{ lead.phone_number }}</td>
+            <td>{{ lead.dial_number or lead.phone_number }}</td>
+            <td><span class="routing-status {{ 'ready' if lead.status == 'ready' else 'planned' }}">{{ "Ready to Call" if lead.status == "ready" else lead.status|title }}</span></td>
+            <td>{{ lead.added_at }}</td>
+            <td>{% if lead.company %}{{ lead.company }}{% else %}&mdash;{% endif %}</td>
+            <td>{% if lead.note %}{{ lead.note }}{% else %}&mdash;{% endif %}</td>
+            <td class="lead-actions">
+              {% if lead.status == 'ready' and caller_options %}
+              <form class="lead-call-form" method="post" action="/call-routing/auto-dialer/campaigns/{{ campaign.id }}/leads/{{ lead.id }}/call">
+                {% if caller_options|length == 1 %}
+                <input type="hidden" name="caller_extension" value="{{ caller_options[0] }}">
+                {% else %}
+                <select name="caller_extension" aria-label="Caller extension">
+                  {% for caller in caller_options %}
+                  <option value="{{ caller }}">{{ caller }}</option>
+                  {% endfor %}
+                </select>
+                {% endif %}
+                <button type="submit">Call</button>
+              </form>
+              {% endif %}
+              <form class="lead-delete-form" method="post" action="/call-routing/auto-dialer/campaigns/{{ campaign.id }}/leads/{{ lead.id }}/delete" onsubmit="return confirm('Delete this lead?');">
+                <button class="danger small" type="submit">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      {{ empty_state("No numbers yet", "Click Upload Numbers to upload a contact list or paste numbers.") }}
+    {% endif %}
+  </section>
+</section>
+
+<dialog class="campaign-dialog" id="lead-dialog">
+  <form class="campaign-dialog-card" method="post" enctype="multipart/form-data" action="/call-routing/auto-dialer/campaigns/{{ campaign.id }}/leads/import">
+    <div class="campaign-dialog-heading">
+      <div>
+        <span class="routing-kicker">New Numbers</span>
+        <h3>Upload Numbers</h3>
+      </div>
+      <button type="button" class="icon-button" data-close-dialog aria-label="Close">&times;</button>
+    </div>
+    <div class="field-grid two">
+      <div class="field">
+        <label for="lead_file">Upload Contact List</label>
+        <input id="lead_file" type="file" name="lead_file" accept=".csv,.txt,.tsv,.xlsx">
+        <small>CSV, TXT, TSV, or XLSX.</small>
+      </div>
+      <div class="field">
+        <label for="google_sheet_url">Google Sheet Link</label>
+        <input id="google_sheet_url" type="url" name="google_sheet_url" placeholder="Paste public Google Sheet link">
+        <small>Use a shared sheet link. OmniPBX imports it as CSV.</small>
+      </div>
+    </div>
+    <div class="field">
+      <label for="pasted_leads">Or Paste Numbers</label>
+      <textarea id="pasted_leads" name="pasted_leads" rows="5" placeholder="Customer One, 01711111111&#10;Customer Two, 01722222222"></textarea>
+      <small>OmniPBX removes spaces, dashes, and brackets before dialing. Example: 01711-111111 dials as 01711111111.</small>
+    </div>
+    <details class="campaign-map-box">
+      <summary>Advanced column names</summary>
+      <p>Optional. OmniPBX finds phone numbers automatically. Use this only if your file has unusual column names.</p>
+      <div class="field-grid two">
+        <div class="field">
+          <label for="phone_column">Phone Number Column</label>
+          <input id="phone_column" type="text" name="phone_column" placeholder="phone_number">
+        </div>
+        <div class="field">
+          <label for="name_column">Name Column</label>
+          <input id="name_column" type="text" name="name_column" placeholder="lead_name">
+        </div>
+        <div class="field">
+          <label for="company_column">Company Column</label>
+          <input id="company_column" type="text" name="company_column" placeholder="company">
+        </div>
+        <div class="field">
+          <label for="email_column">Email Column</label>
+          <input id="email_column" type="text" name="email_column" placeholder="email">
+        </div>
+      </div>
+      <div class="field">
+        <label for="note_column">Note Column</label>
+        <input id="note_column" type="text" name="note_column" placeholder="note">
+      </div>
+    </details>
+    <div class="button-row">
+      <button type="submit">Import Numbers</button>
+      <button type="button" class="secondary" data-close-dialog>Cancel</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

@@ -61,6 +61,7 @@ NAV_FEATURES = {
     "/extensions": "users:view",
     "/trunks": "trunks:view",
     "/call-routing": "call_routing:view",
+    "/call-routing/auto-dialer/leads": "call_routing:view",
     "/call-logs": "call_logs:view",
     "/callbacks": "callbacks:view",
     "/call-records": "call_records:view",

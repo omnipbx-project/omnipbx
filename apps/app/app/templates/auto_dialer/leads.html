@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% from "_ui_macros.html" import empty_state, stat_card %}
+{% block content %}
+<section class="campaign-page">
+  <div class="routing-intro panel">
+    <div>
+      <a class="button-link secondary routing-back-link" href="/call-routing">Back to Call Routing</a>
+      <span class="routing-kicker">Campaign Dialer</span>
+      <h3>Leads</h3>
+    </div>
+    <p>See uploaded numbers without opening each campaign.</p>
+  </div>
+
+  {% if result %}
+  <div class="notice notice-{{ 'success' if result == 'success' else 'error' }}">
+    <strong>{{ result|title }}</strong>
+    <span>{{ detail }}</span>
+  </div>
+  {% endif %}
+
+  <section class="metrics-grid">
+    {{ stat_card("Leads", leads|length, "Uploaded numbers") }}
+    {{ stat_card("Ready", leads|selectattr("status", "equalto", "ready")|list|length, "Waiting to call", "success") }}
+    {{ stat_card("Campaigns", campaigns|length, "Available lists", "warning") }}
+  </section>
+
+  <section class="panel campaign-list-panel">
+    <div class="section-header">
+      <div class="section-copy">
+        <h3>Lead Numbers</h3>
+        <p>All campaigns</p>
+      </div>
+      <button type="button" data-open-dialog="lead-upload-dialog">Upload Leads</button>
+    </div>
+
+    {% if leads %}
+    <div class="table-wrap">
+      <table class="campaign-leads-table">
+        <thead>
+          <tr>
+            <th>Campaign</th>
+            <th>Name</th>
+            <th>Phone Number</th>
+            <th>Asterisk Dial Number</th>
+            <th>Status</th>
+            <th>Added Time</th>
+            <th>Company</th>
+            <th>Note</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for lead in leads %}
+          {% set caller_options = caller_options_by_campaign.get(lead.campaign_id, []) %}
+          <tr>
+            <td><a class="campaign-name-link" href="/call-routing/auto-dialer/campaigns/{{ lead.campaign_id }}"><strong>{{ lead.campaign_name }}</strong></a></td>
+            <td><strong>{{ lead.lead_name }}</strong></td>
+            <td>{{ lead.phone_number }}</td>
+            <td>{{ lead.dial_number or lead.phone_number }}</td>
+            <td><span class="routing-status {{ 'ready' if lead.status == 'ready' else 'planned' }}">{{ "Ready to Call" if lead.status == "ready" else lead.status|title }}</span></td>
+            <td>{{ lead.added_at }}</td>
+            <td>{% if lead.company %}{{ lead.company }}{% else %}&mdash;{% endif %}</td>
+            <td>{% if lead.note %}{{ lead.note }}{% else %}&mdash;{% endif %}</td>
+            <td class="lead-actions">
+              {% if lead.status == 'ready' and caller_options %}
+              <form class="lead-call-form" method="post" action="/call-routing/auto-dialer/campaigns/{{ lead.campaign_id }}/leads/{{ lead.id }}/call?return_to=leads">
+                {% if caller_options|length == 1 %}
+                <input type="hidden" name="caller_extension" value="{{ caller_options[0] }}">
+                {% else %}
+                <select name="caller_extension" aria-label="Caller extension">
+                  {% for caller in caller_options %}
+                  <option value="{{ caller }}">{{ caller }}</option>
+                  {% endfor %}
+                </select>
+                {% endif %}
+                <button type="submit">Call</button>
+              </form>
+              {% endif %}
+              <form class="lead-delete-form" method="post" action="/call-routing/auto-dialer/campaigns/{{ lead.campaign_id }}/leads/{{ lead.id }}/delete?return_to=leads" onsubmit="return confirm('Delete this lead?');">
+                <button class="danger small" type="submit">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      {{ empty_state("No leads yet", "Upload numbers from Campaigns, then they will appear here.") }}
+    {% endif %}
+  </section>
+</section>
+
+<dialog class="campaign-dialog" id="lead-upload-dialog">
+  <form class="campaign-dialog-card" method="post" enctype="multipart/form-data" action="/call-routing/auto-dialer/leads/import">
+    <div class="campaign-dialog-heading">
+      <div>
+        <span class="routing-kicker">Lead Upload</span>
+        <h3>Upload Leads</h3>
+      </div>
+      <button type="button" class="icon-button" data-close-dialog aria-label="Close">&times;</button>
+    </div>
+    <div class="field">
+      <label for="lead_campaign_id">Campaign</label>
+      <select id="lead_campaign_id" name="campaign_id" required>
+        <option value="">Choose campaign</option>
+        {% for campaign in campaigns %}
+        <option value="{{ campaign.id }}">{{ campaign.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field-grid two">
+      <div class="field">
+        <label for="lead_file">Upload Contact List</label>
+        <input id="lead_file" type="file" name="lead_file" accept=".csv,.txt,.tsv,.xlsx">
+        <small>CSV, TXT, TSV, or XLSX.</small>
+      </div>
+      <div class="field">
+        <label for="google_sheet_url">Google Sheet Link</label>
+        <input id="google_sheet_url" type="url" name="google_sheet_url" placeholder="Paste public Google Sheet link">
+        <small>Use a shared sheet link. OmniPBX imports it as CSV.</small>
+      </div>
+    </div>
+    <div class="field">
+      <label for="lead_name">Lead Name</label>
+      <input id="lead_name" type="text" name="lead_name" placeholder="Customer One">
+      <small>Optional. Used when the typed line has only a phone number.</small>
+    </div>
+    <div class="field">
+      <label for="pasted_leads">Type Numbers</label>
+      <textarea id="pasted_leads" name="pasted_leads" rows="6" placeholder="Customer One, 01711111111&#10;Customer Two, 01722222222&#10;01733333333"></textarea>
+      <small>Use one lead per line. You can type name, number or only the number.</small>
+    </div>
+    <div class="button-row">
+      <button type="submit">Import Leads</button>
+      <button type="button" class="secondary" data-close-dialog>Cancel</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

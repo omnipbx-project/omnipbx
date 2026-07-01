@@ -103,16 +103,36 @@ def ami_command(command: str) -> str:
     return "\n".join(output)
 
 
-def ami_originate_application(channel: str, application: str, data: str) -> dict[str, str]:
+def ami_originate_application(channel: str, application: str, data: str, *, caller_id: str = "") -> dict[str, str]:
+    fields = {
+        "Channel": channel,
+        "Application": application,
+        "Data": data,
+        "Async": "true",
+    }
+    if caller_id:
+        fields["CallerID"] = caller_id
     messages = ami_action(
         "Originate",
-        {
-            "Channel": channel,
-            "Application": application,
-            "Data": data,
-            "Async": "true",
-        },
+        fields,
     )
+    response = messages[0] if messages else {}
+    if response.get("Response") not in {"Success", None}:
+        raise AmiError(response.get("Message", "AMI originate failed."))
+    return response
+
+
+def ami_originate_extension(channel: str, context: str, extension: str, *, caller_id: str = "") -> dict[str, str]:
+    fields = {
+        "Channel": channel,
+        "Context": context,
+        "Exten": extension,
+        "Priority": "1",
+        "Async": "true",
+    }
+    if caller_id:
+        fields["CallerID"] = caller_id
+    messages = ami_action("Originate", fields)
     response = messages[0] if messages else {}
     if response.get("Response") not in {"Success", None}:
         raise AmiError(response.get("Message", "AMI originate failed."))
