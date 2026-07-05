@@ -174,7 +174,14 @@
       aor: `sip:${config.extension}@${config.sip_domain}`,
       delegate: sipDelegate(),
       media: {
-        constraints: {audio: true, video: false},
+        constraints: {
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          video: false,
+        },
         remote: {audio: els.audio, video: els.remoteVideo},
         local: {video: els.localVideo},
       },
@@ -192,7 +199,7 @@
         logLevel: "warn",
         sessionDescriptionHandlerFactoryOptions: {
           iceGatheringTimeout: 1000,
-          peerConnectionConfiguration: {iceServers: []},
+          peerConnectionConfiguration: {iceServers: config.ice_servers || []},
         },
         userAgentString: "OmniPBX Webphone",
       },

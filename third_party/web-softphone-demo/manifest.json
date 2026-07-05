@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OmniPBX Webphone",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "OmniPBX browser webphone with a persistent floating dialer, click-to-call, and SIP over WSS/WebRTC.",
   "permissions": [
     "storage",

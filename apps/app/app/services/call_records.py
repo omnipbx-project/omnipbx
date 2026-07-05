@@ -3,7 +3,7 @@ from __future__ import annotations
 import psycopg
 from psycopg.rows import dict_row
 
-from app.services.call_logs import resolve_recording_path, sync_cdr_from_asterisk
+from app.services.call_logs import resolve_recording_path, sync_cdr_from_asterisk, visible_cdr_condition
 from app.services.date_ranges import parse_date_bound
 from app.services.extensions import list_extensions
 
@@ -20,7 +20,7 @@ def list_call_records(
     limit: int = 200,
 ) -> dict[str, object]:
     sync_cdr_from_asterisk(connection)
-    where = ["COALESCE(NULLIF(recordingfile, ''), '') <> ''"]
+    where = [visible_cdr_condition(), "COALESCE(NULLIF(recordingfile, ''), '') <> ''"]
     params: dict[str, object] = {"limit": limit}
     search = search.strip()
     if search:

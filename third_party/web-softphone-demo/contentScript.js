@@ -8,6 +8,13 @@
   const PHONE_CANDIDATE_RE = /(?:\+?\d[\d\s().-]{8,22}\d)/g;
   const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'INPUT', 'SELECT', 'OPTION', 'BUTTON', 'A', 'CODE', 'PRE', 'SVG', 'CANVAS']);
 
+  function hasPhoneCandidate(value) {
+    PHONE_CANDIDATE_RE.lastIndex = 0;
+    const ok = PHONE_CANDIDATE_RE.test(String(value || ''));
+    PHONE_CANDIDATE_RE.lastIndex = 0;
+    return ok;
+  }
+
   function cleanNumber(value) {
     return String(value || '')
       .replace(/^tel:/i, '')
@@ -48,8 +55,7 @@
   }
 
   function canProcessTextNode(node) {
-    if (!node || !node.nodeValue || !PHONE_CANDIDATE_RE.test(node.nodeValue)) return false;
-    PHONE_CANDIDATE_RE.lastIndex = 0;
+    if (!node || !node.nodeValue || !hasPhoneCandidate(node.nodeValue)) return false;
 
     const parent = node.parentElement;
     if (!parent) return false;
@@ -82,6 +88,7 @@
     let lastIndex = 0;
     let changed = false;
 
+    PHONE_CANDIDATE_RE.lastIndex = 0;
     text.replace(PHONE_CANDIDATE_RE, (match, offset) => {
       if (!isPhoneLike(match)) return match;
       if (offset > lastIndex) frag.appendChild(document.createTextNode(text.slice(lastIndex, offset)));
@@ -90,6 +97,7 @@
       changed = true;
       return match;
     });
+    PHONE_CANDIDATE_RE.lastIndex = 0;
 
     if (!changed) return;
     if (lastIndex < text.length) frag.appendChild(document.createTextNode(text.slice(lastIndex)));

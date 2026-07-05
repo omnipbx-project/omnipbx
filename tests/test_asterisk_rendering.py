@@ -10,6 +10,7 @@ from app.services.asterisk import (
     render_inbound_routes_config,
     render_pjsip_base_config,
     render_pjsip_config,
+    render_rtp_config,
     render_ring_groups_config,
     render_trunk_dialplan,
     render_trunk_pjsip_config,
@@ -50,7 +51,7 @@ class AsteriskRenderingTests(TestCase):
                     "secret": "web-secret",
                     "context": "omnipbx-internal",
                     "transport": "transport-wss",
-                    "codecs": "ulaw,alaw",
+                    "codecs": "opus,ulaw,alaw",
                     "video_codecs": "h264",
                     "simultaneous_device_limit": 20,
                 },
@@ -60,9 +61,19 @@ class AsteriskRenderingTests(TestCase):
         self.assertIn("[1001]\ntype = endpoint\ntransport = transport-udp", config)
         self.assertIn("allow = ulaw,alaw", config)
         self.assertIn("[1002]\ntype = endpoint\ntransport = transport-wss", config)
+        self.assertIn("allow = opus,ulaw,alaw", config)
         self.assertIn("webrtc = yes", config)
+        self.assertIn("tos_audio = ef", config)
+        self.assertIn("cos_audio = 5", config)
         self.assertIn("max_contacts = 10", config)
         self.assertIn("qualify_frequency = 0", config)
+
+    def test_rtp_config_uses_system_port_range(self):
+        config = render_rtp_config({"rtp_start": 12000, "rtp_end": 22000})
+
+        self.assertIn("rtpstart = 12000", config)
+        self.assertIn("rtpend = 22000", config)
+        self.assertIn("strictrtp = yes", config)
 
     def test_trunk_pjsip_config_renders_registration_identify_and_ip_contact_modes(self):
         config = render_trunk_pjsip_config(

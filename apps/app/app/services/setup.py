@@ -621,7 +621,7 @@ def _default_system_settings() -> dict:
         "admin_email": None,
         "sip_port": 5060,
         "rtp_start": 10000,
-        "rtp_end": 10100,
+        "rtp_end": 20000,
         "local_networks": None,
         "public_base_url": None,
         "caddy_enabled": False,

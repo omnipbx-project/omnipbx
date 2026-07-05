@@ -68,6 +68,10 @@ def save_softphone_settings_from_ui(
     sip_domain: str = Form(default=""),
     display_name_prefix: str = Form(default=""),
     public_host: str = Form(default=""),
+    stun_urls: str = Form(default=""),
+    turn_urls: str = Form(default=""),
+    turn_username: str = Form(default=""),
+    turn_credential: str = Form(default=""),
     note: str = Form(default=""),
     connection: psycopg.Connection = Depends(get_connection),
 ) -> RedirectResponse:
@@ -79,6 +83,10 @@ def save_softphone_settings_from_ui(
         sip_domain=sip_domain or None,
         display_name_prefix=display_name_prefix or None,
         public_host=public_host or None,
+        stun_urls=stun_urls or None,
+        turn_urls=turn_urls or None,
+        turn_username=turn_username or None,
+        turn_credential=turn_credential or None,
         note=note or None,
     )
     save_softphone_settings(connection, payload)

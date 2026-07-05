@@ -5,15 +5,36 @@ document.addEventListener("DOMContentLoaded", function () {
     const searchInput = document.querySelector(".topbar-search input");
     const supervisorExtension = document.getElementById("supervisor-extension");
     const actionMessage = document.getElementById("live-action-message");
+    const canSupervise = document.body.dataset.canSupervise === "true";
 
     function setSupervisorExtension(extension) {
       if (!supervisorExtension) return;
+      if (supervisorExtension.tagName === "SELECT") {
+        const normalized = String(extension || "").trim();
+        if ([...supervisorExtension.options].some((option) => option.value === normalized)) {
+          supervisorExtension.value = normalized;
+        }
+        return;
+      }
       const normalized = String(extension || "").trim();
       supervisorExtension.dataset.extension = normalized;
       supervisorExtension.textContent = normalized || "Not available";
     }
 
+    function getSupervisorExtension() {
+      if (!supervisorExtension) return "";
+      if (supervisorExtension.tagName === "SELECT") {
+        return supervisorExtension.value || "";
+      }
+      return supervisorExtension.dataset.extension || "";
+    }
+
+    if (supervisorExtension?.tagName === "SELECT") {
+      setSupervisorExtension(supervisorExtension.value || "");
+    }
+
     window.addEventListener("omnipbx:webphone-config", function (event) {
+      if (supervisorExtension?.tagName === "SELECT") return;
       setSupervisorExtension(event.detail?.extension);
     });
 
@@ -39,7 +60,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const body = document.getElementById("active-calls-body");
       if (!body) return;
       if (!calls.length) {
-        body.innerHTML = '<tr><td colspan="7" class="muted">No active calls right now</td></tr>';
+        body.innerHTML = `<tr><td colspan="${canSupervise ? 12 : 11}" class="muted">No active calls right now</td></tr>`;
         return;
       }
       body.innerHTML = calls.map((call) => `
@@ -50,13 +71,18 @@ document.addEventListener("DOMContentLoaded", function () {
           <td class="mono">${escapeText(call.duration)}</td>
           <td><span class="status-pill ${escapeText(call.status_class)}">${escapeText(call.status)}</span></td>
           <td>${escapeText(call.trunk)}</td>
-          <td>
+          <td class="mono">${escapeText(call.codec)}</td>
+          <td class="mono">${escapeText(call.loss)}</td>
+          <td class="mono">${escapeText(call.jitter)}</td>
+          <td class="mono">${escapeText(call.rtt)}</td>
+          <td><span class="status-pill ${escapeText(call.quality_class)}">${escapeText(call.quality)}</span></td>
+          ${canSupervise ? `<td>
             <div class="supervisor-actions">
               <button type="button" class="secondary supervisor-action" data-action="listen" data-channel="${escapeText(call.id)}">Listen Quietly</button>
               <button type="button" class="secondary supervisor-action" data-action="guide" data-channel="${escapeText(call.id)}">Guide Agent</button>
               <button type="button" class="secondary supervisor-action" data-action="join" data-channel="${escapeText(call.id)}">Join Conversation</button>
             </div>
-          </td>
+          </td>` : ""}
         </tr>
       `).join("");
     }
@@ -108,6 +134,7 @@ document.addEventListener("DOMContentLoaded", function () {
         "Active Calls": summary.active_calls,
         "Active Users": summary.active_users,
         "Trunks Online": summary.trunks_online,
+        "Quality Alerts": summary.quality_alerts,
         "System Status": summary.system_status,
       };
       document.querySelectorAll(".live-summary .metric-card").forEach((card) => {
@@ -137,9 +164,9 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     async function runSupervisorAction(button) {
-      const extension = supervisorExtension?.dataset.extension || "";
+      const extension = getSupervisorExtension();
       if (!extension) {
-        showActionMessage("Your logged-in account does not have a ready webphone extension.", false);
+        showActionMessage("Choose a supervisor extension first.", false);
         return;
       }
 
@@ -186,6 +213,7 @@ document.addEventListener("DOMContentLoaded", function () {
     document.addEventListener("click", function (event) {
       const button = event.target.closest(".supervisor-action");
       if (!button) return;
+      if (!canSupervise) return;
       runSupervisorAction(button);
     });
 

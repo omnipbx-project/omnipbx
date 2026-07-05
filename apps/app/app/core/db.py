@@ -21,7 +21,7 @@ def initialize_schema() -> None:
         secret VARCHAR(128) NOT NULL,
         context VARCHAR(64) NOT NULL DEFAULT 'omnipbx-internal',
         transport VARCHAR(40) NOT NULL DEFAULT 'transport-udp',
-        codecs VARCHAR(200) NOT NULL DEFAULT 'ulaw,alaw,g722',
+        codecs VARCHAR(200) NOT NULL DEFAULT 'ulaw,alaw,opus',
         video_codecs VARCHAR(200) NOT NULL DEFAULT '',
         call_recording_enabled BOOLEAN NOT NULL DEFAULT FALSE,
         auto_provision_enabled BOOLEAN NOT NULL DEFAULT FALSE,
@@ -295,6 +295,10 @@ def initialize_schema() -> None:
         sip_domain VARCHAR(255),
         display_name_prefix VARCHAR(120),
         public_host VARCHAR(255),
+        stun_urls VARCHAR(1000),
+        turn_urls VARCHAR(1000),
+        turn_username VARCHAR(255),
+        turn_credential VARCHAR(255),
         note TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -422,7 +426,7 @@ def initialize_schema() -> None:
         admin_email VARCHAR(255),
         sip_port INTEGER NOT NULL DEFAULT 5060,
         rtp_start INTEGER NOT NULL DEFAULT 10000,
-        rtp_end INTEGER NOT NULL DEFAULT 10100,
+        rtp_end INTEGER NOT NULL DEFAULT 20000,
         local_networks VARCHAR(500),
         public_base_url VARCHAR(500),
         caddy_enabled BOOLEAN NOT NULL DEFAULT FALSE,
@@ -553,8 +557,12 @@ def initialize_schema() -> None:
             cursor.execute("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS dialing_region VARCHAR(16) NOT NULL DEFAULT '+880'")
             cursor.execute("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS admin_email VARCHAR(255)")
             cursor.execute("ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS local_networks VARCHAR(500)")
+            cursor.execute("ALTER TABLE softphone_settings ADD COLUMN IF NOT EXISTS stun_urls VARCHAR(1000)")
+            cursor.execute("ALTER TABLE softphone_settings ADD COLUMN IF NOT EXISTS turn_urls VARCHAR(1000)")
+            cursor.execute("ALTER TABLE softphone_settings ADD COLUMN IF NOT EXISTS turn_username VARCHAR(255)")
+            cursor.execute("ALTER TABLE softphone_settings ADD COLUMN IF NOT EXISTS turn_credential VARCHAR(255)")
             cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS transport VARCHAR(40) NOT NULL DEFAULT 'transport-udp'")
-            cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS codecs VARCHAR(200) NOT NULL DEFAULT 'ulaw,alaw,g722'")
+            cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS codecs VARCHAR(200) NOT NULL DEFAULT 'ulaw,alaw,opus'")
             cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS video_codecs VARCHAR(200) NOT NULL DEFAULT ''")
             cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS call_recording_enabled BOOLEAN NOT NULL DEFAULT FALSE")
             cursor.execute("ALTER TABLE extensions ADD COLUMN IF NOT EXISTS auto_provision_enabled BOOLEAN NOT NULL DEFAULT FALSE")
@@ -577,12 +585,12 @@ def initialize_schema() -> None:
             cursor.execute("ALTER TABLE autodialer_leads ADD COLUMN IF NOT EXISTS last_call_at TIMESTAMPTZ")
             cursor.execute("ALTER TABLE autodialer_leads ADD COLUMN IF NOT EXISTS last_result VARCHAR(80)")
             cursor.execute("ALTER TABLE inbound_routes ALTER COLUMN destination_value TYPE VARCHAR(255)")
-            cursor.execute("ALTER TABLE extensions ALTER COLUMN codecs SET DEFAULT 'ulaw,alaw,g722'")
+            cursor.execute("ALTER TABLE extensions ALTER COLUMN codecs SET DEFAULT 'ulaw,alaw,opus'")
             cursor.execute("ALTER TABLE extensions ALTER COLUMN video_codecs SET DEFAULT ''")
             cursor.execute("UPDATE extensions SET transport = 'transport-udp' WHERE transport IS NULL OR transport = ''")
-            cursor.execute("UPDATE extensions SET codecs = 'ulaw,alaw,g722' WHERE transport = 'transport-udp' AND (codecs IS NULL OR codecs = '' OR codecs = 'ulaw,alaw')")
-            cursor.execute("UPDATE extensions SET codecs = 'ulaw,alaw' WHERE transport = 'transport-udp-softphone' AND (codecs IS NULL OR codecs = '' OR codecs = 'ulaw,alaw,g722' OR codecs = 'g722,ulaw,alaw' OR codecs = 'opus,g722,ulaw,alaw')")
-            cursor.execute("UPDATE extensions SET codecs = 'ulaw' WHERE transport = 'transport-wss' AND (codecs IS NULL OR codecs = '' OR codecs = 'ulaw,alaw' OR codecs = 'ulaw,alaw,g722' OR codecs = 'g722,ulaw,alaw' OR codecs = 'opus,g722,ulaw,alaw' OR codecs = 'opus,ulaw')")
+            cursor.execute("UPDATE extensions SET codecs = 'ulaw,alaw,opus' WHERE transport = 'transport-udp' AND (codecs IS NULL OR codecs = '' OR codecs = 'ulaw,alaw' OR codecs = 'ulaw,alaw,g722' OR codecs = 'g722,ulaw,alaw')")
+            cursor.execute("UPDATE extensions SET codecs = 'opus,ulaw,alaw' WHERE transport = 'transport-udp-softphone' AND (codecs IS NULL OR codecs = '' OR codecs = 'ulaw,alaw' OR codecs = 'ulaw,alaw,g722' OR codecs = 'g722,ulaw,alaw' OR codecs = 'opus,g722,ulaw,alaw')")
+            cursor.execute("UPDATE extensions SET codecs = 'opus,ulaw,alaw' WHERE transport = 'transport-wss' AND (codecs IS NULL OR codecs = '' OR codecs = 'ulaw' OR codecs = 'ulaw,alaw' OR codecs = 'ulaw,alaw,g722' OR codecs = 'g722,ulaw,alaw' OR codecs = 'opus,g722,ulaw,alaw' OR codecs = 'opus,ulaw')")
             cursor.execute("UPDATE extensions SET video_codecs = '' WHERE video_codecs IS NULL")
             cursor.execute("UPDATE extensions SET video_codecs = 'h264,vp8' WHERE transport = 'transport-udp-softphone' AND video_codecs = ''")
             cursor.execute("UPDATE extensions SET video_codecs = '' WHERE transport = 'transport-wss'")
@@ -611,8 +619,11 @@ def initialize_schema() -> None:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_push_delivery_logs_created_at ON api_push_delivery_logs (created_at DESC)")
             cursor.execute(
                 """
-                INSERT INTO softphone_settings (id, enabled, websocket_url, sip_domain, display_name_prefix, public_host, note)
-                VALUES (1, FALSE, NULL, NULL, 'OmniPBX', NULL, NULL)
+                INSERT INTO softphone_settings (
+                    id, enabled, websocket_url, sip_domain, display_name_prefix, public_host,
+                    stun_urls, turn_urls, turn_username, turn_credential, note
+                )
+                VALUES (1, FALSE, NULL, NULL, 'OmniPBX', NULL, NULL, NULL, NULL, NULL, NULL)
                 ON CONFLICT (id) DO NOTHING
                 """
             )
@@ -628,6 +639,20 @@ def initialize_schema() -> None:
                     ('Supervisor', 'Can view team users, team call history, and basic reports.', '["Team users", "Team calls", "Reports"]'::jsonb),
                     ('Admin', 'Can manage users, groups, phone lines, call flow, reports, and settings.', '["Users", "Trunks", "Call flow", "Settings"]'::jsonb)
                 ON CONFLICT (name) DO NOTHING
+                """
+            )
+            cursor.execute(
+                """
+                UPDATE user_permissions
+                SET features = (features - 'call_logs:view')
+                    || CASE
+                        WHEN features ? 'call_logs:view_own' THEN '[]'::jsonb
+                        ELSE '["call_logs:view_own"]'::jsonb
+                    END,
+                    updated_at = NOW()
+                WHERE name = 'User'
+                  AND features ? 'call_logs:view'
+                  AND NOT features ? 'call_logs:view_own'
                 """
             )
             cursor.execute(
@@ -664,7 +689,7 @@ def initialize_schema() -> None:
                 VALUES (
                     1, FALSE, 'OmniPBX', 'Bangladesh', 'UTC', 'en', '+880',
                     'office', 'local_network', TRUE, NULL, 'http', NULL, NULL,
-                    5060, 10000, 10100, NULL, NULL, FALSE
+                    5060, 10000, 20000, NULL, NULL, FALSE
                 )
                 ON CONFLICT (id) DO NOTHING
                 """
@@ -691,7 +716,7 @@ def initialize_schema() -> None:
             cursor.execute(
                 """
                 INSERT INTO advanced_network_settings (id, trusted_ips, blocked_ips, open_ports, note)
-                VALUES (1, '', '', '5060/udp,10000-10100/udp,18000/tcp', '')
+                VALUES (1, '', '', '5060/udp,10000-20000/udp,3478/tcp,3478/udp,49160-49200/udp,18000/tcp', '')
                 ON CONFLICT (id) DO NOTHING
                 """
             )

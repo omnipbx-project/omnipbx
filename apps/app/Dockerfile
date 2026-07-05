@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libedit-dev \
     libjansson-dev \
     libncurses-dev \
+    libopus-dev \
     libpq-dev \
     libsqlite3-dev \
     libssl-dev \
@@ -51,6 +52,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libedit2 \
     libjansson4 \
     libncurses6 \
+    libopus0 \
     libpq5 \
     libsqlite3-0 \
     libssl3 \
@@ -79,6 +81,22 @@ COPY --from=asterisk-builder /asterisk-root/etc/ /etc/
 COPY --from=asterisk-builder /asterisk-root/var/lib/asterisk/ /var/lib/asterisk/
 COPY --from=asterisk-builder /asterisk-root/var/spool/asterisk/ /var/spool/asterisk/
 
+RUN arch="$(dpkg --print-architecture)" \
+    && case "${arch}" in \
+      amd64) \
+        curl -fsSL "https://downloads.digium.com/pub/telephony/codec_opus/asterisk-22.0/x86-64/codec_opus-22.0-current-x86_64.tar.gz" -o /tmp/codec_opus.tgz \
+        && tar -xzf /tmp/codec_opus.tgz -C /tmp \
+        && codec_dir="$(find /tmp -maxdepth 1 -type d -name 'codec_opus-*' -print -quit)" \
+        && install -m 0644 "${codec_dir}/codec_opus.so" /usr/lib/asterisk/modules/codec_opus.so \
+        && install -m 0644 "${codec_dir}/format_ogg_opus.so" /usr/lib/asterisk/modules/format_ogg_opus.so \
+        && mkdir -p /var/lib/asterisk/documentation/thirdparty \
+        && install -m 0644 "${codec_dir}/codec_opus_config-en_US.xml" /var/lib/asterisk/documentation/thirdparty/codec_opus_config-en_US.xml \
+        && rm -rf /tmp/codec_opus.tgz "${codec_dir}" ;; \
+      *) \
+        echo "codec_opus binary package is unavailable for ${arch}; use an amd64 image for Opus transcoding." >&2 \
+        && exit 1 ;; \
+    esac
+
 WORKDIR /opt/omnipbx
 
 COPY requirements.txt .
@@ -90,6 +108,6 @@ COPY entrypoint.sh /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 8000 5060/udp 10000-10100/udp
+EXPOSE 8000 5060/udp 10000-20000/udp
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]

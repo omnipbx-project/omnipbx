@@ -16,10 +16,16 @@ class Settings(BaseSettings):
     public_https_port: int = 443
     sip_port: int = 5060
     rtp_start: int = 10000
-    rtp_end: int = 10100
+    rtp_end: int = 20000
+    turn_port: int = 3478
+    turn_min_port: int = 49160
+    turn_max_port: int = 49200
+    turn_username: str = "omnipbx"
+    turn_credential: str = ""
     internal_context: str = "omnipbx-internal"
     generated_config_dir: str = "/etc/asterisk/generated"
     pjsip_base_file: str = "/etc/asterisk/pjsip.conf"
+    rtp_file: str = "/etc/asterisk/rtp.conf"
     pjsip_generated_file: str = "/etc/asterisk/generated/pjsip.generated.conf"
     pjsip_trunks_generated_file: str = "/etc/asterisk/generated/pjsip.trunks.generated.conf"
     extensions_generated_file: str = "/etc/asterisk/generated/extensions.generated.conf"

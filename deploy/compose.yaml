@@ -16,6 +16,11 @@ services:
       OMNIPBX_SIP_PORT: ${ASTERISK_SIP_PORT}
       OMNIPBX_RTP_START: ${ASTERISK_RTP_START}
       OMNIPBX_RTP_END: ${ASTERISK_RTP_END}
+      OMNIPBX_TURN_PORT: ${OMNIPBX_TURN_PORT:-3478}
+      OMNIPBX_TURN_MIN_PORT: ${OMNIPBX_TURN_MIN_PORT:-49160}
+      OMNIPBX_TURN_MAX_PORT: ${OMNIPBX_TURN_MAX_PORT:-49200}
+      OMNIPBX_TURN_USERNAME: ${OMNIPBX_TURN_USERNAME:-omnipbx}
+      OMNIPBX_TURN_CREDENTIAL: ${OMNIPBX_TURN_CREDENTIAL:-change-me}
       OMNIPBX_HOST_PROJECT_PATH: /opt/omnipbx-host
       OMNIPBX_AMI_HOST: 127.0.0.1
       OMNIPBX_AMI_PORT: 5038
@@ -25,7 +30,7 @@ services:
       - "${OMNIPBX_WEB_PORT}:${OMNIPBX_WEB_PORT}"
       - "${ASTERISK_SIP_PORT}:5060/udp"
       - "${ASTERISK_HTTPS_PORT:-8089}:8089"
-      - "${ASTERISK_RTP_START}-${ASTERISK_RTP_END}:10000-10100/udp"
+      - "${ASTERISK_RTP_START}-${ASTERISK_RTP_END}:${ASTERISK_RTP_START}-${ASTERISK_RTP_END}/udp"
     volumes:
       - ./runtime:/var/lib/omnipbx
       - ..:/opt/omnipbx-host
@@ -72,6 +77,31 @@ services:
       - omnipbx_caddy_config:/config
       - ./caddy/bootstrap.sh:/bootstrap.sh:ro
     command: ["sh", "/bootstrap.sh"]
+
+  turn:
+    image: coturn/coturn:4.6
+    container_name: omnipbx-turn
+    restart: unless-stopped
+    env_file:
+      - .env
+    command:
+      - --listening-port=${OMNIPBX_TURN_PORT:-3478}
+      - --min-port=${OMNIPBX_TURN_MIN_PORT:-49160}
+      - --max-port=${OMNIPBX_TURN_MAX_PORT:-49200}
+      - --realm=${OMNIPBX_TURN_REALM:-omnipbx.local}
+      - --server-name=${OMNIPBX_TURN_REALM:-omnipbx.local}
+      - --external-ip=${OMNIPBX_TURN_EXTERNAL_IP:-127.0.0.1}
+      - --user=${OMNIPBX_TURN_USERNAME:-omnipbx}:${OMNIPBX_TURN_CREDENTIAL:-change-me}
+      - --lt-cred-mech
+      - --fingerprint
+      - --no-cli
+      - --no-tls
+      - --no-dtls
+      - --log-file=stdout
+    ports:
+      - "${OMNIPBX_TURN_PORT:-3478}:${OMNIPBX_TURN_PORT:-3478}/udp"
+      - "${OMNIPBX_TURN_PORT:-3478}:${OMNIPBX_TURN_PORT:-3478}/tcp"
+      - "${OMNIPBX_TURN_MIN_PORT:-49160}-${OMNIPBX_TURN_MAX_PORT:-49200}:${OMNIPBX_TURN_MIN_PORT:-49160}-${OMNIPBX_TURN_MAX_PORT:-49200}/udp"
 
 volumes:
   omnipbx_postgres:

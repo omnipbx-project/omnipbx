@@ -12,7 +12,7 @@ from app.services.audio import normalize_sound_name
 
 
 DEFAULT_EXTENSION_TRANSPORT = "transport-udp"
-DEFAULT_EXTENSION_CODECS = "ulaw,alaw,g722"
+DEFAULT_EXTENSION_CODECS = "ulaw,alaw,opus"
 DEFAULT_EXTENSION_VIDEO_CODECS = ""
 WEBPHONE_TRANSPORT = "transport-wss"
 SOFTPHONE_TRANSPORT = "transport-udp-softphone"
@@ -124,7 +124,9 @@ FETCH_PJSIP_NETWORK_SQL = """
 SELECT
     softphone.sip_domain,
     softphone.public_host,
-    system.public_base_url
+    system.public_base_url,
+    system.rtp_start,
+    system.rtp_end
 FROM softphone_settings softphone
 CROSS JOIN system_settings system
 WHERE softphone.id = 1 AND system.id = 1;
@@ -197,6 +199,7 @@ def sync_asterisk_config(connection: psycopg.Connection, reload_config: bool = T
     ivrs = _attach_ivr_options(ivrs, ivr_options)
 
     pjsip_base_text = render_pjsip_base_config(pjsip_network)
+    rtp_text = render_rtp_config(pjsip_network)
     pjsip_text = render_pjsip_config(extensions) + _custom_config_text(advanced_custom_config, "pjsip")
     dialplan_text = render_extensions_config(extensions, call_routing_rules, user_profiles) + _custom_config_text(advanced_custom_config, "dialplan")
     pjsip_trunks_text = render_trunk_pjsip_config(trunks)
@@ -221,6 +224,7 @@ def sync_asterisk_config(connection: psycopg.Connection, reload_config: bool = T
 
     Path(settings.generated_config_dir).mkdir(parents=True, exist_ok=True)
     Path(settings.pjsip_base_file).write_text(pjsip_base_text, encoding="utf-8")
+    Path(settings.rtp_file).write_text(rtp_text, encoding="utf-8")
     Path(settings.pjsip_generated_file).write_text(pjsip_text, encoding="utf-8")
     Path(settings.extensions_generated_file).write_text(dialplan_text, encoding="utf-8")
     Path(settings.pjsip_trunks_generated_file).write_text(pjsip_trunks_text, encoding="utf-8")
@@ -335,6 +339,32 @@ def render_pjsip_base_config(network: dict | None = None) -> str:
     )
 
 
+def render_rtp_config(network: dict | None = None) -> str:
+    settings = get_settings()
+    network = network or {}
+    rtp_start = _rtp_port(network.get("rtp_start"), settings.rtp_start)
+    rtp_end = _rtp_port(network.get("rtp_end"), settings.rtp_end)
+    if rtp_end < rtp_start:
+        rtp_start, rtp_end = settings.rtp_start, settings.rtp_end
+    return (
+        "[general]\n"
+        f"rtpstart = {rtp_start}\n"
+        f"rtpend = {rtp_end}\n"
+        "strictrtp = yes\n"
+        "probation = 4\n"
+    )
+
+
+def _rtp_port(value: object, fallback: int) -> int:
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    if port < 1024 or port > 65535:
+        return fallback
+    return port
+
+
 def _pjsip_advertised_host(network: dict) -> str:
     for key in ("sip_domain", "public_host", "public_base_url"):
         value = str(network.get(key) or "").strip()
@@ -370,12 +400,9 @@ def render_pjsip_config(extensions: list[dict]) -> str:
         max_contacts = _simultaneous_device_limit(item.get("simultaneous_device_limit"))
         codecs = item.get("codecs") or DEFAULT_EXTENSION_CODECS
         video_codecs = item.get("video_codecs") or DEFAULT_EXTENSION_VIDEO_CODECS
-        if transport == WEBPHONE_TRANSPORT:
-            allowed_codecs = "ulaw"
-        else:
-            allowed_codecs = ",".join(
-                codec_group for codec_group in [codecs, video_codecs] if codec_group
-            )
+        allowed_codecs = ",".join(
+            codec_group for codec_group in [codecs, video_codecs] if codec_group
+        )
         webphone_options = ""
         if transport == WEBPHONE_TRANSPORT:
             webphone_options = (
@@ -409,6 +436,8 @@ def render_pjsip_config(extensions: list[dict]) -> str:
                 "force_rport = yes\n"
                 "rewrite_contact = yes\n"
                 "rtp_symmetric = yes\n"
+                "tos_audio = ef\n"
+                "cos_audio = 5\n"
                 f"{webphone_options}"
                 "\n"
                 f"[auth-{extension}]\n"
@@ -740,6 +769,8 @@ def render_trunk_pjsip_config(trunks: list[dict]) -> str:
                 "force_rport = yes\n"
                 "rewrite_contact = yes\n"
                 "rtp_symmetric = yes\n"
+                "tos_audio = ef\n"
+                "cos_audio = 5\n"
                 "trust_id_inbound = yes\n"
                 "send_pai = yes\n"
             )

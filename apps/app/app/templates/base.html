@@ -21,7 +21,7 @@
   <script src="{{ script }}" defer></script>
   {% endfor %}
 </head>
-<body>
+<body data-can-supervise="{{ 'true' if current_user and current_user.role != 'read_only' and (current_user.role != 'user' or 'live_overview:supervise' in user_features) else 'false' }}">
   {% if show_shell %}
   <div class="app-shell">
     {% include "components/_sidebar.html" %}

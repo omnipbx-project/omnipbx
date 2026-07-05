@@ -120,6 +120,11 @@
     els.accountLabel.textContent = els.sipUser.value.trim() || '—';
   }
 
+  function setDialNumber(value, focus = true) {
+    els.dialNumber.value = normalizeNumber(value);
+    if (focus) els.dialNumber.focus();
+  }
+
   function accountKey() {
     return [
       els.wsUrl.value.trim(),
@@ -146,7 +151,7 @@
       return;
     }
     if (state.currentSession) {
-      els.callBtn.textContent = 'In Call';
+      els.callBtn.textContent = 'Hang Up';
       els.callBtn.classList.add('busy');
       return;
     }
@@ -190,7 +195,7 @@
     updateRegisterToggle();
     updateToggleButton(els.autoAnswerBtn, state.autoAnswer);
     if (data.pendingNumber) {
-      els.dialNumber.value = normalizeNumber(data.pendingNumber);
+      setDialNumber(data.pendingNumber, false);
       storageSet({ pendingNumber: '' });
     }
     setAccountLabel();
@@ -480,6 +485,22 @@
     }
   }
 
+  function sendDtmfTone(tone) {
+    const session = state.currentSession;
+    if (!session || state.incomingSession) return false;
+    try {
+      if (typeof session.sendDTMF === 'function') {
+        session.sendDTMF(tone);
+        logLine(`DTMF ${tone}`);
+        return true;
+      }
+    } catch (error) {
+      console.warn(error);
+      setStatus('DTMF failed', 'bad');
+    }
+    return false;
+  }
+
   function hangup() {
     try {
       if (state.currentSession) state.currentSession.terminate();
@@ -602,6 +623,7 @@
     els.keypad.addEventListener('click', (event) => {
       const key = event.target.closest('button')?.dataset.key;
       if (!key) return;
+      if (sendDtmfTone(key)) return;
       els.dialNumber.value += key;
       els.dialNumber.focus();
     });
@@ -626,7 +648,13 @@
     els.copyNumberBtn.addEventListener('click', copyDialNumber);
     els.messageBtn.addEventListener('click', copyDialNumber);
 
-    els.callBtn.addEventListener('click', () => callNumber(false));
+    els.callBtn.addEventListener('click', () => {
+      if (state.currentSession && !state.incomingSession) {
+        hangup();
+        return;
+      }
+      callNumber(false);
+    });
     els.videoCallBtn.addEventListener('click', () => callNumber(true));
     els.transferBtn.addEventListener('click', transferCall);
 
@@ -673,12 +701,12 @@
     if (hasChrome) {
       chrome.storage.onChanged.addListener((changes, area) => {
         if (area !== 'local' || !changes.pendingNumber?.newValue) return;
-        els.dialNumber.value = normalizeNumber(changes.pendingNumber.newValue);
+        setDialNumber(changes.pendingNumber.newValue);
         storageSet({ pendingNumber: '' });
       });
       chrome.runtime.onMessage.addListener((message) => {
         if (message && message.type === 'SOFTPHONE_SET_NUMBER') {
-          els.dialNumber.value = normalizeNumber(message.number);
+          setDialNumber(message.number);
         }
         if (message && message.type === 'SOFTPHONE_REGISTER_NOW') {
           loadSettings(false).then(async () => {

@@ -4,7 +4,13 @@ from psycopg.rows import dict_row
 
 from app.core.db import get_connection
 from app.models.callback import CallbackFollowupUpdate
-from app.services.call_logs import list_call_logs, list_callback_worklist, sync_cdr_from_asterisk, update_callback_followup
+from app.services.call_logs import (
+    list_call_logs,
+    list_callback_worklist,
+    sync_cdr_from_asterisk,
+    update_callback_followup,
+    visible_cdr_condition,
+)
 from app.services.crm_api import require_crm_api_key
 from app.services.date_ranges import resolve_date_range
 from app.services.setup import get_system_settings
@@ -28,7 +34,7 @@ def get_crm_call_data(
     connection: psycopg.Connection = Depends(get_connection),
 ) -> dict[str, object]:
     sync_cdr_from_asterisk(connection)
-    where = ["1=1"]
+    where = [visible_cdr_condition()]
     params: dict[str, object] = {"limit": limit, "offset": offset}
     if direction != "all":
         where.append("COALESCE(direction, 'unknown') = %(direction)s")

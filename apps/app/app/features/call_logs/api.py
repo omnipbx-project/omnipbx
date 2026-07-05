@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
 import psycopg
 
 from app.core.db import get_connection
-from app.services.call_logs import list_call_logs, resolve_recording_path, sync_cdr_from_asterisk
+from app.services.call_logs import agent_call_log_scope, list_call_logs, resolve_recording_path, sync_cdr_from_asterisk
 from app.services.date_ranges import resolve_date_range
 from app.services.setup import get_system_settings
 
@@ -11,8 +11,16 @@ from app.services.setup import get_system_settings
 router = APIRouter(prefix="/api", tags=["call-logs"])
 
 
+def _agent_extension_scope(request: Request) -> str | None:
+    return agent_call_log_scope(
+        getattr(request.state, "current_user", None),
+        set(getattr(request.state, "user_features", set())),
+    )
+
+
 @router.get("/call-logs")
 def get_call_logs(
+    request: Request,
     search: str = "",
     direction: str = "all",
     category: str = "all",
@@ -34,6 +42,7 @@ def get_call_logs(
             date_from=resolved_range.date_from,
             date_to=resolved_range.date_to,
             timezone_name=timezone_name,
+            agent_extension=_agent_extension_scope(request),
             limit=limit,
         ),
     }

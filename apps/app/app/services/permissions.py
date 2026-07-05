@@ -11,7 +11,7 @@ ALL_FEATURES = {
     "api_push:manage", "api_push:send_test", "api_push:view",
     "audit_log:view",
     "backup_restore:backup", "backup_restore:restore", "backup_restore:view",
-    "call_logs:export", "call_logs:recordings", "call_logs:view",
+    "call_logs:export", "call_logs:recordings", "call_logs:view", "call_logs:view_own",
     "call_records:download", "call_records:view",
     "call_routing:manage", "call_routing:view",
     "callbacks:complete", "callbacks:take", "callbacks:view",
@@ -36,6 +36,7 @@ ALL_FEATURES = {
 BUILTIN_PERMISSION_FEATURES = {
     "User": {
         "dashboard:view",
+        "call_logs:view_own",
         "live_overview:view",
         "softphone:view",
     },
@@ -62,7 +63,7 @@ NAV_FEATURES = {
     "/trunks": "trunks:view",
     "/call-routing": "call_routing:view",
     "/call-routing/auto-dialer/leads": "call_routing:view",
-    "/call-logs": "call_logs:view",
+    "/call-logs": "call_logs:view_own",
     "/callbacks": "callbacks:view",
     "/call-records": "call_records:view",
     "/welcome-messages": "voicemail:view",
@@ -103,10 +104,13 @@ def features_for_principal(connection: psycopg.Connection, principal: dict | Non
     features = _normalize_features(row.get("features"))
     if any(":" in feature for feature in features):
         return {feature for feature in features if feature in ALL_FEATURES}
-    return set(BUILTIN_PERMISSION_FEATURES.get(str(row.get("permission_name") or "User"), set()))
+    permission_name = str(row.get("permission_name") or "User")
+    return set(BUILTIN_PERMISSION_FEATURES.get(permission_name, set()))
 
 
 def has_feature(features: set[str], required: str) -> bool:
+    if required == "call_logs:view_own" and "call_logs:view" in features:
+        return True
     return required in features
 
 
@@ -116,7 +120,7 @@ def filter_navigation(nav_sections: list[dict], features: set[str]) -> list[dict
         items = [
             dict(item)
             for item in section["items"]
-            if NAV_FEATURES.get(item["href"]) in features
+            if has_feature(features, NAV_FEATURES.get(item["href"]) or "")
         ]
         if items:
             filtered.append({**section, "items": items})
@@ -125,7 +129,7 @@ def filter_navigation(nav_sections: list[dict], features: set[str]) -> list[dict
 
 def first_allowed_path(features: set[str]) -> str:
     for path, feature in NAV_FEATURES.items():
-        if feature in features:
+        if has_feature(features, feature):
             return path
     if "softphone:view" in features:
         return "/softphone"
@@ -179,7 +183,7 @@ def required_feature(method: str, path: str) -> str | None:
     if path.startswith("/api/call-logs") or path.startswith("/call-logs"):
         if path.endswith("/export"):
             return "call_logs:export"
-        return "call_logs:view"
+        return "call_logs:view_own"
     if path.startswith("/api/callbacks") or path.startswith("/callbacks"):
         if path.endswith("/take"):
             return "callbacks:take"

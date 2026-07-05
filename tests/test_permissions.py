@@ -5,8 +5,11 @@ import support  # noqa: F401
 from app.features.extensions.ui import _safe_return_path
 from app.services.permissions import (
     BUILTIN_PERMISSION_FEATURES,
+    ALL_FEATURES,
     first_allowed_path,
     filter_navigation,
+    has_feature,
+    _normalize_features,
     required_feature,
 )
 
@@ -28,6 +31,13 @@ class PermissionTests(TestCase):
         self.assertEqual(required_feature("GET", "/api/softphone/bootstrap"), "softphone:configure")
         self.assertEqual(required_feature("GET", "/softphone"), "softphone:configure")
         self.assertEqual(required_feature("GET", "/status/usage"), "dashboard:view")
+        self.assertEqual(required_feature("GET", "/call-logs"), "call_logs:view_own")
+
+    def test_full_call_log_view_includes_own_call_log_access(self):
+        self.assertTrue(has_feature({"call_logs:view"}, "call_logs:view_own"))
+        self.assertEqual(first_allowed_path({"call_logs:view"}), "/call-logs")
+        self.assertIn("call_logs:view", ALL_FEATURES)
+        self.assertIn("call_logs:view", _normalize_features('["call_logs:view"]'))
 
     def test_navigation_hides_features_without_view_access(self):
         navigation = [
@@ -50,7 +60,7 @@ class PermissionTests(TestCase):
 
     def test_first_allowed_path_uses_the_first_visible_feature(self):
         self.assertEqual(first_allowed_path({"softphone:view"}), "/softphone")
-        self.assertEqual(first_allowed_path({"call_logs:view"}), "/call-logs")
+        self.assertEqual(first_allowed_path({"call_logs:view_own"}), "/call-logs")
         self.assertEqual(first_allowed_path(set()), "/my-profile")
 
     def test_my_profile_is_available_without_a_feature_permission(self):

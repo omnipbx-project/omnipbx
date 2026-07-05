@@ -31,6 +31,13 @@ Typical SIP/WebRTC requirements:
 - Valid TLS certificate for WSS
 
 
+## Version 2.1.1
+
+- Active calls now turn the main call button into a hangup action instead of a passive status label.
+- Keypad digits, `*`, and `#` send DTMF tones during an active SIP call.
+- Click-to-call scanning now resets regex state between DOM scans, improving reliability on dynamic pages.
+- Numbers sent to an already-open softphone window are normalized through one shared helper and focused in the dial box.
+
 ## Version 2.0.6
 
 - Replaced the demo placeholder `jssip.min.js` with a real bundled JsSIP browser build.

@@ -7,6 +7,7 @@ import psycopg
 from app.features.status.service import collect_status_snapshot
 from app.services.ami import AmiError, ami_command, ami_originate_application
 from app.services.extensions import list_extensions
+from app.services.softphone import get_softphone_dnd
 from app.services.trunks import list_trunks
 from app.services.user_management import profiles_by_extension
 
@@ -26,6 +27,8 @@ def collect_live_overview(connection: psycopg.Connection) -> dict[str, object]:
 
     channel_output = _run_asterisk_command("core show channels concise", errors)
     active_calls = _parse_active_calls(channel_output, trunks)
+    channelstats_output = _run_asterisk_command("pjsip show channelstats", errors) if active_calls else ""
+    active_calls = _attach_call_quality(active_calls, _parse_channel_quality_stats(channelstats_output))
     extensions_on_call = _extensions_on_call(active_calls)
 
     try:
@@ -46,6 +49,7 @@ def collect_live_overview(connection: psycopg.Connection) -> dict[str, object]:
         "active_calls": len(active_calls),
         "active_users": len([user for user in active_users if user["status"] in {"Online", "On Call"}]),
         "trunks_online": len([trunk for trunk in trunk_rows if trunk["status"] == "Online"]),
+        "quality_alerts": len([call for call in active_calls if call.get("quality_class") in {"warn", "danger"}]),
         "system_status": system_status["label"],
     }
 
@@ -85,10 +89,27 @@ def start_supervisor_action(
     active_channel_ids = {call["id"] for call in overview["active_calls"]}
     if channel_id not in active_channel_ids:
         return {"ok": False, "message": "That call has already ended."}
+    if get_softphone_dnd(connection, supervisor_extension):
+        return {"ok": False, "message": f"Extension {supervisor_extension} has DND enabled. Turn DND off first."}
+    if _number_from_channel(channel_id) == supervisor_extension:
+        return {
+            "ok": False,
+            "message": "Choose a different Monitor from extension. You cannot supervise the same phone that is already on this call.",
+        }
+
+    _hangup_existing_supervisor_spies(supervisor_extension)
 
     app_data = f"{channel_id},{action_config['options']}"
     try:
-        ami_originate_application(f"PJSIP/{supervisor_extension}", "ChanSpy", app_data)
+        ami_originate_application(
+            f"PJSIP/{supervisor_extension}",
+            "ChanSpy",
+            app_data,
+            variables={
+                "CDR_PROP(disable)": "1",
+                "OMNI_SUPERVISOR_SPY": "1",
+            },
+        )
     except (AmiError, EOFError, OSError, TimeoutError) as exc:
         command = f"channel originate PJSIP/{supervisor_extension} application ChanSpy {app_data}"
         errors: list[str] = []
@@ -100,6 +121,20 @@ def start_supervisor_action(
         "ok": True,
         "message": f"Calling extension {supervisor_extension} to {action_config['label'].lower()}.",
     }
+
+
+def _hangup_existing_supervisor_spies(supervisor_extension: str) -> None:
+    errors: list[str] = []
+    output = _run_asterisk_command("core show channels concise", errors)
+    channel_prefix = f"PJSIP/{supervisor_extension}-"
+    for raw_line in output.splitlines():
+        parts = raw_line.split("!")
+        if len(parts) < 7:
+            continue
+        channel = parts[0].strip()
+        application = parts[5].strip()
+        if channel.startswith(channel_prefix) and application == "ChanSpy":
+            _run_asterisk_command(f"channel request hangup {channel}", errors)
 
 
 def _ensure_chanspy_available() -> str:
@@ -148,7 +183,7 @@ def _run_asterisk_command(command: str, errors: list[str]) -> str:
 
 
 def _parse_active_calls(output: str, trunks: list[dict]) -> list[dict[str, str]]:
-    calls: list[dict[str, str]] = []
+    call_legs: list[dict[str, str]] = []
     trunk_names = [str(trunk["name"]) for trunk in trunks]
     seen_channels: set[str] = set()
 
@@ -165,35 +200,219 @@ def _parse_active_calls(output: str, trunks: list[dict]) -> list[dict[str, str]]
         context = parts[1].strip()
         to_number = parts[2].strip() or "-"
         state = parts[4].strip()
+        application = parts[5].strip()
         dial_data = parts[6].strip() if len(parts) > 6 else ""
         caller_id = parts[7].strip() or _number_from_channel(channel) or "-"
         duration = parts[8].strip() or "00:00:00"
-        bridged_to = parts[11].strip() if len(parts) > 11 else ""
+        bridge_id = parts[11].strip() if len(parts) > 11 else ""
         seen_channels.add(channel)
-        if bridged_to:
-            seen_channels.add(bridged_to)
-        if _is_internal_dialed_leg(context, channel, to_number, caller_id, state, bridged_to):
+        if bridge_id.startswith("PJSIP/"):
+            seen_channels.add(bridge_id)
+        if application == "ChanSpy":
             continue
-        trunk = _infer_trunk(channel, bridged_to, dial_data, trunk_names)
+        if _is_supervisor_originate_leg(context, channel, to_number, caller_id, state, application, dial_data, bridge_id):
+            continue
+        if _is_internal_dialed_leg(context, channel, to_number, caller_id, state, bridge_id):
+            continue
+        trunk = _infer_trunk(channel, bridge_id, dial_data, trunk_names)
 
-        calls.append(
+        call_legs.append(
             {
                 "id": channel,
                 "from": caller_id,
                 "to": to_number,
-                "direction": _simple_direction(context, channel, bridged_to, trunk),
+                "direction": _simple_direction(context, channel, bridge_id, trunk),
                 "duration": duration,
                 "status": _simple_call_status(state),
                 "status_class": _call_status_class(state),
                 "trunk": trunk or "-",
+                "_application": application,
+                "_bridge_id": bridge_id,
+                "_context": context,
+                "_dial_data": dial_data,
+                "_endpoint": _number_from_channel(channel),
             }
         )
 
+    calls = _collapse_bridged_call_legs(call_legs)
     return _deduplicate_unbridged_trunk_legs(calls)
 
 
+def _collapse_bridged_call_legs(call_legs: list[dict[str, str]]) -> list[dict[str, str]]:
+    grouped: dict[str, list[dict[str, str]]] = {}
+    ordered_keys: list[str] = []
+    for leg in call_legs:
+        bridge_id = leg.get("_bridge_id", "")
+        key = bridge_id if bridge_id and not bridge_id.startswith("PJSIP/") else leg["id"]
+        if key not in grouped:
+            grouped[key] = []
+            ordered_keys.append(key)
+        grouped[key].append(leg)
+    return [_public_call(_merge_call_legs(grouped[key])) for key in ordered_keys]
+
+
+def _merge_call_legs(legs: list[dict[str, str]]) -> dict[str, str]:
+    if len(legs) == 1:
+        return legs[0]
+
+    incoming_trunk = next((leg for leg in legs if leg["direction"] == "Incoming" and leg["trunk"] != "-"), None)
+    outgoing = next((leg for leg in legs if leg["direction"] == "Outgoing"), None)
+    internal = next((leg for leg in legs if leg["trunk"] == "-" and leg.get("_endpoint")), None)
+    if outgoing:
+        merged = dict(outgoing)
+        merged["status"] = _best_call_status(legs)
+        merged["status_class"] = _best_call_status_class(legs)
+        merged["duration"] = _longest_duration(legs)
+        return merged
+    if incoming_trunk:
+        merged = dict(incoming_trunk)
+        if internal:
+            merged["id"] = internal["id"]
+            merged["to"] = internal.get("_endpoint") or internal["from"] or incoming_trunk["to"]
+        elif incoming_trunk["to"] in {"-", "s"}:
+            merged["to"] = "-"
+        merged["status"] = _best_call_status(legs)
+        merged["status_class"] = _best_call_status_class(legs)
+        merged["duration"] = _longest_duration(legs)
+        return merged
+    merged = dict(legs[0])
+    merged["status"] = _best_call_status(legs)
+    merged["status_class"] = _best_call_status_class(legs)
+    merged["duration"] = _longest_duration(legs)
+    return merged
+
+
+def _public_call(call: dict[str, str]) -> dict[str, str]:
+    return {key: value for key, value in call.items() if not key.startswith("_")}
+
+
+def _parse_channel_quality_stats(output: str) -> dict[str, dict[str, str]]:
+    stats: dict[str, dict[str, str]] = {}
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith(("=", "BridgeId", "Objects found", "No objects found")):
+            continue
+        parts = line.split()
+        if len(parts) >= 3 and parts[-2:] == ["not", "valid"]:
+            stats[_normalize_channel_stats_id(parts[0])] = {
+                "codec": "-",
+                "loss": "-",
+                "jitter": "-",
+                "rtt": "-",
+                "quality": "Collecting",
+                "quality_class": "unknown",
+            }
+            continue
+
+        uptime_index = next((index for index, part in enumerate(parts) if re.fullmatch(r"\d{2}:\d{2}:\d{2}", part)), -1)
+        if uptime_index <= 0 or len(parts) < uptime_index + 10:
+            continue
+
+        channel_id = _normalize_channel_stats_id(parts[uptime_index - 1])
+        codec = parts[uptime_index + 1]
+        rx_loss_pct = _float_or_none(parts[uptime_index + 4])
+        rx_jitter = _float_or_none(parts[uptime_index + 5])
+        tx_loss_pct = _float_or_none(parts[uptime_index + 8])
+        tx_jitter = _float_or_none(parts[uptime_index + 9])
+        rtt = _float_or_none(parts[uptime_index + 10]) if len(parts) > uptime_index + 10 else None
+        loss_pct = max(value for value in [rx_loss_pct, tx_loss_pct] if value is not None) if any(value is not None for value in [rx_loss_pct, tx_loss_pct]) else None
+        jitter = max(value for value in [rx_jitter, tx_jitter] if value is not None) if any(value is not None for value in [rx_jitter, tx_jitter]) else None
+        quality, quality_class = _quality_status(loss_pct=loss_pct, jitter=jitter, rtt=rtt)
+        stats[channel_id] = {
+            "codec": codec,
+            "loss": _format_quality_number(loss_pct, suffix="%"),
+            "jitter": _format_quality_number(jitter, suffix=" ms"),
+            "rtt": _format_quality_number(rtt, suffix=" ms"),
+            "quality": quality,
+            "quality_class": quality_class,
+        }
+    return stats
+
+
+def _attach_call_quality(calls: list[dict[str, str]], stats: dict[str, dict[str, str]]) -> list[dict[str, str]]:
+    for call in calls:
+        channel_id = _normalize_channel_stats_id(call["id"])
+        quality = stats.get(channel_id) or {
+            "codec": "-",
+            "loss": "-",
+            "jitter": "-",
+            "rtt": "-",
+            "quality": "Collecting",
+            "quality_class": "unknown",
+        }
+        call.update(quality)
+    return calls
+
+
+def _normalize_channel_stats_id(channel_id: str) -> str:
+    return channel_id.strip().removeprefix("PJSIP/")
+
+
+def _float_or_none(value: str) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _quality_status(*, loss_pct: float | None, jitter: float | None, rtt: float | None) -> tuple[str, str]:
+    loss_pct = loss_pct or 0.0
+    jitter = jitter or 0.0
+    rtt = rtt or 0.0
+    if loss_pct >= 5 or jitter >= 80 or rtt >= 300:
+        return "Poor", "danger"
+    if loss_pct >= 2 or jitter >= 30 or rtt >= 180:
+        return "Fair", "warn"
+    return "Good", "online"
+
+
+def _format_quality_number(value: float | None, *, suffix: str) -> str:
+    if value is None:
+        return "-"
+    if value.is_integer():
+        return f"{int(value)}{suffix}"
+    return f"{value:.1f}{suffix}"
+
+
+def _best_call_status(legs: list[dict[str, str]]) -> str:
+    statuses = [leg["status"] for leg in legs]
+    if "Connected" in statuses:
+        return "Connected"
+    if "Ringing" in statuses:
+        return "Ringing"
+    if "Busy" in statuses:
+        return "Busy"
+    return statuses[0] if statuses else "Starting"
+
+
+def _best_call_status_class(legs: list[dict[str, str]]) -> str:
+    status = _best_call_status(legs)
+    if status == "Connected":
+        return "online"
+    if status == "Ringing":
+        return "warn"
+    if status == "Busy":
+        return "offline"
+    return "warn"
+
+
+def _longest_duration(legs: list[dict[str, str]]) -> str:
+    return max((leg["duration"] for leg in legs), key=_duration_seconds, default="00:00:00")
+
+
+def _duration_seconds(duration: str) -> int:
+    parts = duration.split(":")
+    if len(parts) != 3:
+        return 0
+    try:
+        hours, minutes, seconds = [int(part) for part in parts]
+    except ValueError:
+        return 0
+    return hours * 3600 + minutes * 60 + seconds
+
+
 def _deduplicate_unbridged_trunk_legs(calls: list[dict[str, str]]) -> list[dict[str, str]]:
-    outbound_keys = {
+    outbound_destination_keys = {
         (call["to"], call["trunk"], call["duration"])
         for call in calls
         if call["direction"] == "Outgoing" and call["trunk"] != "-"
@@ -203,9 +422,14 @@ def _deduplicate_unbridged_trunk_legs(calls: list[dict[str, str]]) -> list[dict[
         for call in calls
         if not (
             call["direction"] == "Incoming"
-            and call["from"] == call["to"]
-            and (call["to"], call["trunk"], call["duration"]) in outbound_keys
             and call["id"].startswith(f"PJSIP/{call['trunk']}-")
+            and (
+                (
+                    call["from"] == call["to"]
+                    and (call["to"], call["trunk"], call["duration"]) in outbound_destination_keys
+                )
+                or (call["from"], call["trunk"], call["duration"]) in outbound_destination_keys
+            )
         )
     ]
 
@@ -231,6 +455,29 @@ def _is_internal_dialed_leg(
         and endpoint
         and endpoint == to_number
         and caller_id == to_number
+    )
+
+
+def _is_supervisor_originate_leg(
+    context: str,
+    channel: str,
+    to_number: str,
+    caller_id: str,
+    state: str,
+    application: str,
+    dial_data: str,
+    bridged_to: str,
+) -> bool:
+    endpoint = _number_from_channel(channel)
+    return (
+        context == "omnipbx-internal"
+        and not bridged_to
+        and endpoint
+        and endpoint == caller_id
+        and to_number in {"", "-", "s"}
+        and state.strip().lower() in {"ring", "ringing"}
+        and application in {"AppDial", "Dial"}
+        and dial_data == "(Outgoing Line)"
     )
 
 

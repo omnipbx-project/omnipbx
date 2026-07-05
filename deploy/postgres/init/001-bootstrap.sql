@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS extensions (
     secret VARCHAR(128) NOT NULL,
     context VARCHAR(64) NOT NULL DEFAULT 'omnipbx-internal',
     transport VARCHAR(40) NOT NULL DEFAULT 'transport-udp',
-    codecs VARCHAR(200) NOT NULL DEFAULT 'ulaw,alaw,g722',
+    codecs VARCHAR(200) NOT NULL DEFAULT 'ulaw,alaw,opus',
     video_codecs VARCHAR(200) NOT NULL DEFAULT '',
     call_recording_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     auto_provision_enabled BOOLEAN NOT NULL DEFAULT FALSE,
@@ -243,5 +243,5 @@ VALUES ('pjsip', '', FALSE), ('dialplan', '', FALSE)
 ON CONFLICT (config_key) DO NOTHING;
 
 INSERT INTO advanced_network_settings (id, trusted_ips, blocked_ips, open_ports, note)
-VALUES (1, '', '', '5060/udp,10000-10100/udp,18000/tcp', '')
+VALUES (1, '', '', '5060/udp,10000-20000/udp,3478/tcp,3478/udp,49160-49200/udp,18000/tcp', '')
 ON CONFLICT (id) DO NOTHING;

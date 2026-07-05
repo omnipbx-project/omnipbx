@@ -50,6 +50,16 @@ CDR_COLUMNS = [
     "callee_extension",
 ]
 
+VISIBLE_CDR_CONDITION = """
+NOT (
+    COALESCE(lastapp, '') = 'ChanSpy'
+    OR COALESCE(lastdata, '') ILIKE '%%ChanSpy%%'
+    OR COALESCE(lastdata, '') ILIKE '%%qbuE%%'
+    OR COALESCE(lastdata, '') ILIKE '%%qbwuE%%'
+    OR COALESCE(lastdata, '') ILIKE '%%qbBuE%%'
+)
+"""
+
 
 def sync_cdr_from_asterisk(connection: psycopg.Connection) -> dict[str, int]:
     settings = get_settings()
@@ -75,6 +85,8 @@ def sync_cdr_from_asterisk(connection: psycopg.Connection) -> dict[str, int]:
                 values["billsec"] = _parse_int(values.get("billsec"))
                 values["uniqueid"] = uniqueid
                 values["linkedid"] = (values.get("linkedid") or uniqueid).strip() or uniqueid
+                if _is_supervisor_spy_cdr(values):
+                    continue
                 cursor.execute(
                     """
                     INSERT INTO cdr_raw (
@@ -131,11 +143,15 @@ def list_call_logs(
     date_from: str | None = None,
     date_to: str | None = None,
     timezone_name: str = "UTC",
+    agent_extension: str | None = None,
     limit: int = 250,
 ) -> dict[str, object]:
     sync_cdr_from_asterisk(connection)
-    where = ["1=1"]
+    where = [visible_cdr_condition()]
     params: dict[str, object] = {"limit": limit, "missed": list(MISSED_DISPOSITIONS)}
+    if agent_extension is not None:
+        params["agent_extension"] = agent_extension.strip()
+        where.append(_agent_call_log_condition() if params["agent_extension"] else "FALSE")
     search = search.strip()
     if search:
         params["search"] = f"%{search}%"
@@ -247,6 +263,15 @@ def list_call_logs(
     }
 
 
+def agent_call_log_scope(principal: dict | None, features: set[str] | None = None) -> str | None:
+    principal = principal or {}
+    if principal.get("role") != "user":
+        return None
+    if features and "call_logs:view" in features:
+        return None
+    return str(principal.get("extension") or principal.get("username") or "").strip()
+
+
 def _call_log_category_condition(category: str) -> str | None:
     if category == "missed":
         return customer_missed_call_condition()
@@ -257,6 +282,17 @@ def _call_log_category_condition(category: str) -> str | None:
     if category == "outgoing":
         return "COALESCE(direction, 'unknown') = 'outbound'"
     return None
+
+
+def _agent_call_log_condition() -> str:
+    return """
+    (
+        COALESCE(NULLIF(caller_extension, ''), '') = %(agent_extension)s OR
+        COALESCE(NULLIF(callee_extension, ''), '') = %(agent_extension)s OR
+        COALESCE(NULLIF(src, ''), '') = %(agent_extension)s OR
+        COALESCE(NULLIF(dst, ''), '') = %(agent_extension)s
+    )
+    """
 
 
 def list_callback_worklist(
@@ -271,6 +307,7 @@ def list_callback_worklist(
 ) -> dict[str, object]:
     sync_cdr_from_asterisk(connection)
     base_where = [
+        visible_cdr_condition("c"),
         callback_candidate_condition("c"),
         "COALESCE(NULLIF(c.src, ''), NULLIF(c.clid, ''), '') <> ''",
     ]
@@ -371,11 +408,28 @@ def _later_answered_inbound_sql() -> str:
     return """
     SELECT 1
     FROM cdr_raw later
-    WHERE COALESCE(later.direction, 'unknown') = 'inbound'
+    WHERE {visible_condition}
+      AND COALESCE(later.direction, 'unknown') = 'inbound'
       AND later.disposition = 'ANSWERED'
       AND later.calldate > c.calldate
       AND COALESCE(NULLIF(later.src, ''), NULLIF(later.clid, ''), '') = COALESCE(NULLIF(c.src, ''), NULLIF(c.clid, ''), '')
-    """
+    """.format(visible_condition=visible_cdr_condition("later"))
+
+
+def visible_cdr_condition(alias: str = "") -> str:
+    if not alias:
+        return VISIBLE_CDR_CONDITION
+    prefix = f"{alias}."
+    return VISIBLE_CDR_CONDITION.replace("lastapp", f"{prefix}lastapp").replace("lastdata", f"{prefix}lastdata")
+
+
+def _is_supervisor_spy_cdr(values: dict[str, object]) -> bool:
+    lastapp = str(values.get("lastapp") or "")
+    lastdata = str(values.get("lastdata") or "")
+    if lastapp == "ChanSpy":
+        return True
+    lowered = lastdata.lower()
+    return "chanspy" in lowered or any(option.lower() in lowered for option in ("qbuE", "qbwuE", "qbBuE"))
 
 
 def update_callback_followup(

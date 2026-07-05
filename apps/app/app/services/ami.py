@@ -103,7 +103,14 @@ def ami_command(command: str) -> str:
     return "\n".join(output)
 
 
-def ami_originate_application(channel: str, application: str, data: str, *, caller_id: str = "") -> dict[str, str]:
+def ami_originate_application(
+    channel: str,
+    application: str,
+    data: str,
+    *,
+    caller_id: str = "",
+    variables: dict[str, str] | None = None,
+) -> dict[str, str]:
     fields = {
         "Channel": channel,
         "Application": application,
@@ -112,6 +119,8 @@ def ami_originate_application(channel: str, application: str, data: str, *, call
     }
     if caller_id:
         fields["CallerID"] = caller_id
+    if variables:
+        fields["Variable"] = [f"{key}={value}" for key, value in variables.items()]
     messages = ami_action(
         "Originate",
         fields,
@@ -139,8 +148,12 @@ def ami_originate_extension(channel: str, context: str, extension: str, *, calle
     return response
 
 
-def _send_message(stream, fields: dict[str, str]) -> None:
-    payload = "".join(f"{key}: {value}\r\n" for key, value in fields.items()) + "\r\n"
+def _send_message(stream, fields: dict[str, str | list[str]]) -> None:
+    lines: list[str] = []
+    for key, value in fields.items():
+        values = value if isinstance(value, list) else [value]
+        lines.extend(f"{key}: {item}\r\n" for item in values)
+    payload = "".join(lines) + "\r\n"
     stream.write(payload.encode("utf-8"))
 
 

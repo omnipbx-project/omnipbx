@@ -19,6 +19,7 @@ from app.services.call_classification import (
 from app.services.call_logs import (
     list_callback_worklist,
     sync_cdr_from_asterisk,
+    visible_cdr_condition,
 )
 from app.services.date_ranges import DATE_RANGE_OPTIONS, parse_date_bound, resolve_date_range
 from app.services.extensions import list_extensions
@@ -114,7 +115,8 @@ def _range_filter(range_key: str, *, date_from: str = "", date_to: str = "", tim
         if end:
             where.append("calldate <= %(date_to)s")
             params["date_to"] = end
-        return (" AND ".join(where) if where else "1=1"), params
+        where.append(visible_cdr_condition())
+        return " AND ".join(where), params
     if date_from or date_to:
         where = []
         params = {}
@@ -126,9 +128,10 @@ def _range_filter(range_key: str, *, date_from: str = "", date_to: str = "", tim
         if end:
             where.append("calldate <= %(date_to)s")
             params["date_to"] = end
-        return (" AND ".join(where) if where else "1=1"), params
+        where.append(visible_cdr_condition())
+        return " AND ".join(where), params
     if range_key == "all":
-        return "1=1", {}
+        return visible_cdr_condition(), {}
     now = datetime.now(UTC)
     if range_key == "today":
         start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -136,7 +139,7 @@ def _range_filter(range_key: str, *, date_from: str = "", date_to: str = "", tim
         start = now - timedelta(days=7)
     else:
         start = now - timedelta(days=30)
-    return "calldate >= %(date_from)s", {"date_from": start}
+    return f"calldate >= %(date_from)s AND {visible_cdr_condition()}", {"date_from": start}
 
 
 def _parse_report_date(value: str, *, end_of_day: bool, timezone_name: str = "UTC") -> datetime | None:
@@ -466,7 +469,7 @@ def _system_summary(connection: psycopg.Connection) -> dict[str, object]:
     runtime_disk = _disk_report(Path(settings.runtime_dir))
 
     with connection.cursor(row_factory=dict_row) as cursor:
-        cursor.execute("SELECT MAX(calldate) AS last_cdr, COUNT(*) AS cdr_rows FROM cdr_raw")
+        cursor.execute(f"SELECT MAX(calldate) AS last_cdr, COUNT(*) AS cdr_rows FROM cdr_raw WHERE {visible_cdr_condition()}")
         cdr = dict(cursor.fetchone())
         cursor.execute("SELECT MAX(eventtime) AS last_cel, COUNT(*) AS cel_rows FROM cel_raw")
         cel = dict(cursor.fetchone())

@@ -57,7 +57,8 @@
     font-weight: 600;
   }
 
-  .supervisor-extension-field strong {
+  .supervisor-extension-field strong,
+  .supervisor-extension-field select {
     min-width: 72px;
     padding: 9px 11px;
     border: 1px solid var(--line);
@@ -65,6 +66,12 @@
     background: color-mix(in srgb, var(--bg-panel-strong) 94%, transparent);
     color: var(--text);
     text-align: center;
+  }
+
+  .supervisor-extension-field select {
+    min-width: 170px;
+    max-width: 240px;
+    text-align: left;
   }
 
   .live-action-message {

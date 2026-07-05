@@ -8,6 +8,7 @@ import psycopg
 from app.core.db import get_connection
 from app.features.live_overview.service import collect_live_overview, start_supervisor_action
 from app.services.live_events import live_event_hub
+from app.services.extensions import get_extension, list_extensions
 from app.services.softphone import resolve_current_webphone
 from app.services.trunks import list_trunks
 from app.web import render_template
@@ -23,8 +24,10 @@ def live_overview_page(
 ) -> HTMLResponse:
     overview = _initial_overview(connection)
     current_user = getattr(request.state, "current_user", None) or {}
-    webphone = _current_webphone(connection, request, current_user)
-    supervisor_extension = str((webphone.get("config") or {}).get("extension") or "")
+    user_features = set(getattr(request.state, "user_features", set()))
+    can_supervise = _can_supervise_live_calls(current_user, user_features)
+    supervisor_extensions = _supervisor_extensions(connection, current_user) if can_supervise else []
+    supervisor_extension = _default_supervisor_extension(current_user, supervisor_extensions)
     return render_template(
         request,
         "live_overview/index.html",
@@ -32,7 +35,9 @@ def live_overview_page(
         page_description="",
         active_nav="/live-overview",
         overview=overview,
+        can_supervise=can_supervise,
         supervisor_extension=supervisor_extension,
+        supervisor_extensions=supervisor_extensions,
         dashboard_notifications=[],
         page_css=["/static/css/live_overview.css"],
         page_js=["/static/js/live_overview.js"],
@@ -82,18 +87,18 @@ def supervisor_action(
     connection: psycopg.Connection = Depends(get_connection),
 ) -> dict[str, str | bool]:
     current_user = getattr(request.state, "current_user", None) or {}
-    webphone = _current_webphone(
+    user_features = set(getattr(request.state, "user_features", set()))
+    if not _can_supervise_live_calls(current_user, user_features):
+        return {"ok": False, "message": "You do not have permission to use supervisor actions."}
+    resolved_extension = _resolve_supervisor_extension(
         connection,
-        request,
         current_user,
         selected_extension=supervisor_extension,
     )
-    config = webphone.get("config") or {}
-    resolved_extension = str(config.get("extension") or "")
-    if not webphone.get("available") or not resolved_extension:
+    if not resolved_extension:
         return {
             "ok": False,
-            "message": "Your logged-in account does not have a registered webphone extension.",
+            "message": "Choose a registered supervisor extension.",
         }
     return start_supervisor_action(
         connection,
@@ -101,6 +106,60 @@ def supervisor_action(
         channel_id=channel_id,
         action=action,
     )
+
+
+def _can_supervise_live_calls(current_user: dict, user_features: set[str]) -> bool:
+    role = str(current_user.get("role") or "")
+    if role == "read_only":
+        return False
+    return role != "user" or "live_overview:supervise" in user_features
+
+
+def _resolve_supervisor_extension(
+    connection: psycopg.Connection,
+    current_user: dict,
+    *,
+    selected_extension: str = "",
+) -> str:
+    selected_extension = selected_extension.strip()
+    role = str(current_user.get("role") or "")
+    own_extension = str(current_user.get("extension") or "").strip()
+    if own_extension:
+        record = get_extension(connection, own_extension)
+        return str(record["extension"]) if record and record.get("enabled") else ""
+    can_switch = role in {"owner", "admin"}
+    extension = selected_extension if can_switch else str(current_user.get("extension") or "")
+    if not extension:
+        return ""
+    record = get_extension(connection, extension)
+    if not record or not record.get("enabled"):
+        return ""
+    if not can_switch and extension != str(current_user.get("extension") or ""):
+        return ""
+    return str(record["extension"])
+
+
+def _supervisor_extensions(connection: psycopg.Connection, current_user: dict) -> list[dict[str, str]]:
+    role = str(current_user.get("role") or "")
+    can_switch = role in {"owner", "admin"}
+    if can_switch:
+        return [
+            {"extension": str(row["extension"]), "display_name": str(row["display_name"] or row["extension"])}
+            for row in list_extensions(connection)
+            if row.get("enabled")
+        ]
+    extension = str(current_user.get("extension") or "")
+    record = get_extension(connection, extension) if extension else None
+    if not record or not record.get("enabled"):
+        return []
+    return [{"extension": str(record["extension"]), "display_name": str(record["display_name"] or record["extension"])}]
+
+
+def _default_supervisor_extension(current_user: dict, supervisor_extensions: list[dict[str, str]]) -> str:
+    current_extension = str(current_user.get("extension") or "")
+    if current_extension and any(row["extension"] == current_extension for row in supervisor_extensions):
+        return current_extension
+    return supervisor_extensions[0]["extension"] if supervisor_extensions else ""
 
 
 def _current_webphone(

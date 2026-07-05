@@ -12,7 +12,9 @@ def get_softphone_settings(connection: psycopg.Connection) -> dict:
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             """
-            SELECT enabled, websocket_url, sip_domain, display_name_prefix, public_host, note
+            SELECT
+                enabled, websocket_url, sip_domain, display_name_prefix, public_host,
+                stun_urls, turn_urls, turn_username, turn_credential, note
             FROM softphone_settings
             WHERE id = 1
             """
@@ -32,6 +34,10 @@ def save_softphone_settings(connection: psycopg.Connection, payload: SoftphoneSe
                 sip_domain = %(sip_domain)s,
                 display_name_prefix = %(display_name_prefix)s,
                 public_host = %(public_host)s,
+                stun_urls = %(stun_urls)s,
+                turn_urls = %(turn_urls)s,
+                turn_username = %(turn_username)s,
+                turn_credential = %(turn_credential)s,
                 note = %(note)s,
                 updated_at = NOW()
             WHERE id = 1
@@ -98,6 +104,10 @@ def build_softphone_bootstrap(connection: psycopg.Connection, extension: str, *,
         "sip_domain": sip_domain,
         "websocket_url": websocket_url,
         "public_host": public_host,
+        "ice_servers": ice_servers_from_settings(
+            settings,
+            fallback_host=_ice_host(public_host=public_host, sip_domain=sip_domain),
+        ),
         "display_name_prefix": settings.get("display_name_prefix"),
         "note": settings.get("note"),
         "dnd_enabled": get_softphone_dnd(connection, row["extension"]),
@@ -174,3 +184,45 @@ def _resolved_webphone_settings(settings: dict, *, request_host: str, request_sc
         public_host_value = host_no_port if public_port == 443 else f"{host_no_port}:{public_port}"
         public_host = f"https://{public_host_value}"
     return websocket_url or "", sip_domain or "", public_host or ""
+
+
+def ice_servers_from_settings(settings: dict, *, fallback_host: str = "") -> list[dict[str, object]]:
+    app_settings = get_settings()
+    servers: list[dict[str, object]] = []
+    stun_urls = _ice_urls(settings.get("stun_urls"))
+    if not stun_urls and fallback_host:
+        stun_urls = [f"stun:{fallback_host}:{app_settings.turn_port}"]
+    if stun_urls:
+        servers.append({"urls": stun_urls if len(stun_urls) > 1 else stun_urls[0]})
+    turn_urls = _ice_urls(settings.get("turn_urls"))
+    if not turn_urls and fallback_host and app_settings.turn_credential:
+        turn_urls = [f"turn:{fallback_host}:{app_settings.turn_port}"]
+    if turn_urls:
+        turn_server: dict[str, object] = {"urls": turn_urls if len(turn_urls) > 1 else turn_urls[0]}
+        username = str(settings.get("turn_username") or app_settings.turn_username or "").strip()
+        credential = str(settings.get("turn_credential") or app_settings.turn_credential or "").strip()
+        if username:
+            turn_server["username"] = username
+        if credential:
+            turn_server["credential"] = credential
+        servers.append(turn_server)
+    return servers
+
+
+def _ice_urls(value: object) -> list[str]:
+    raw_urls = str(value or "").replace(",", "\n").splitlines()
+    urls: list[str] = []
+    for raw_url in raw_urls:
+        url = raw_url.strip()
+        if not url or not url.lower().startswith(("stun:", "turn:", "turns:")):
+            continue
+        if url not in urls:
+            urls.append(url)
+    return urls
+
+
+def _ice_host(*, public_host: str, sip_domain: str) -> str:
+    candidate = public_host or sip_domain
+    if "://" in candidate:
+        candidate = candidate.split("://", 1)[1]
+    return candidate.split("/", 1)[0].split(":", 1)[0].strip("[]")

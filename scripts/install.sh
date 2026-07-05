@@ -46,6 +46,9 @@ PUBLIC_HTTPS_PORT=""
 SIP_PORT=""
 RTP_START=""
 RTP_END=""
+TURN_PORT="3478"
+TURN_MIN_PORT="49160"
+TURN_MAX_PORT="49200"
 DRY_RUN="false"
 DRY_RUN_ROOT=""
 INSTALL_STARTED_AT="${SECONDS}"
@@ -351,12 +354,13 @@ configure_firewall() {
 
   log INFO "Configuring firewall (${FIREWALL_NAME}) for OmniPBX"
 
-  local tcp_ports=("${WEB_PORT}" "${PUBLIC_HTTP_PORT}" "${PUBLIC_HTTPS_PORT}")
-  local udp_ports=("${SIP_PORT}")
+  local tcp_ports=("${WEB_PORT}" "${PUBLIC_HTTP_PORT}" "${PUBLIC_HTTPS_PORT}" "${TURN_PORT}")
+  local udp_ports=("${SIP_PORT}" "${TURN_PORT}")
   local rtp_range="${RTP_START}:${RTP_END}"
+  local turn_range="${TURN_MIN_PORT}:${TURN_MAX_PORT}"
 
   if [[ "${DRY_RUN}" == "true" ]]; then
-    log INFO "Dry run: would open TCP ports ${tcp_ports[*]} and UDP ports ${udp_ports[*]}, ${rtp_range}"
+    log INFO "Dry run: would open TCP ports ${tcp_ports[*]} and UDP ports ${udp_ports[*]}, ${rtp_range}, ${turn_range}"
     return 0
   fi
 
@@ -369,6 +373,7 @@ configure_firewall() {
         ufw allow "${port}/udp" >/dev/null
       done
       ufw allow "${RTP_START}:${RTP_END}/udp" >/dev/null
+      ufw allow "${TURN_MIN_PORT}:${TURN_MAX_PORT}/udp" >/dev/null
       ;;
     firewalld)
       for port in "${tcp_ports[@]}"; do
@@ -378,6 +383,7 @@ configure_firewall() {
         firewall-cmd --permanent --add-port="${port}/udp" >/dev/null
       done
       firewall-cmd --permanent --add-port="${RTP_START}-${RTP_END}/udp" >/dev/null
+      firewall-cmd --permanent --add-port="${TURN_MIN_PORT}-${TURN_MAX_PORT}/udp" >/dev/null
       firewall-cmd --reload >/dev/null
       ;;
   esac
@@ -473,12 +479,15 @@ install_cli_helper() {
 
 write_env_file() {
   local postgres_password="${POSTGRES_PASSWORD:-}"
+  local turn_credential="${OMNIPBX_TURN_CREDENTIAL:-}"
   if [[ -f "${ENV_FILE}" ]]; then
     # shellcheck disable=SC1090
     source "${ENV_FILE}"
     postgres_password="${POSTGRES_PASSWORD:-${postgres_password}}"
+    turn_credential="${OMNIPBX_TURN_CREDENTIAL:-${turn_credential}}"
   fi
   postgres_password="${postgres_password:-$(random_secret)}"
+  turn_credential="${turn_credential:-$(random_secret)}"
   cat > "${ENV_FILE}" <<EOF
 COMPOSE_PROJECT_NAME=omnipbx
 ASTERISK_VERSION=22.9.0
@@ -493,6 +502,13 @@ POSTGRES_PASSWORD=${postgres_password}
 ASTERISK_SIP_PORT=${SIP_PORT}
 ASTERISK_RTP_START=${RTP_START}
 ASTERISK_RTP_END=${RTP_END}
+OMNIPBX_TURN_PORT=${TURN_PORT}
+OMNIPBX_TURN_MIN_PORT=${TURN_MIN_PORT}
+OMNIPBX_TURN_MAX_PORT=${TURN_MAX_PORT}
+OMNIPBX_TURN_USERNAME=omnipbx
+OMNIPBX_TURN_CREDENTIAL=${turn_credential}
+OMNIPBX_TURN_REALM=${DETECTED_HOST}
+OMNIPBX_TURN_EXTERNAL_IP=${DETECTED_HOST}
 EOF
 }
 
@@ -505,7 +521,9 @@ ports = [
     {"label": "Public HTTP", "proto": "tcp", "requested": 80, "selected": int("${PUBLIC_HTTP_PORT}"), "status": "free" if 80 == int("${PUBLIC_HTTP_PORT}") else "conflicted"},
     {"label": "Public HTTPS", "proto": "tcp", "requested": 443, "selected": int("${PUBLIC_HTTPS_PORT}"), "status": "free" if 443 == int("${PUBLIC_HTTPS_PORT}") else "conflicted"},
     {"label": "SIP", "proto": "udp", "requested": 5060, "selected": int("${SIP_PORT}"), "status": "free" if 5060 == int("${SIP_PORT}") else "conflicted"},
-    {"label": "RTP", "proto": "udp", "requested": "10000-10100", "selected": "${RTP_START}-${RTP_END}", "status": "free" if "${RTP_START}-${RTP_END}" == "10000-10100" else "conflicted"},
+    {"label": "RTP", "proto": "udp", "requested": "10000-20000", "selected": "${RTP_START}-${RTP_END}", "status": "free" if "${RTP_START}-${RTP_END}" == "10000-20000" else "conflicted"},
+    {"label": "TURN", "proto": "tcp/udp", "requested": 3478, "selected": int("${TURN_PORT}"), "status": "free" if 3478 == int("${TURN_PORT}") else "conflicted"},
+    {"label": "TURN relay", "proto": "udp", "requested": "49160-49200", "selected": "${TURN_MIN_PORT}-${TURN_MAX_PORT}", "status": "free" if "${TURN_MIN_PORT}-${TURN_MAX_PORT}" == "49160-49200" else "conflicted"},
 ]
 print(json.dumps(ports))
 PY
@@ -573,7 +591,7 @@ Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=${INSTALL_ROOT}
 Environment=COMPOSE_PROGRESS=plain
-ExecStart=/usr/bin/docker compose --progress plain -f ${DEPLOY_DIR}/compose.yaml up -d postgres app caddy
+ExecStart=/usr/bin/docker compose --progress plain -f ${DEPLOY_DIR}/compose.yaml up -d postgres app caddy turn
 ExecStop=/usr/bin/docker compose --progress plain -f ${DEPLOY_DIR}/compose.yaml down
 TimeoutStartSec=0
 
@@ -643,6 +661,9 @@ choose_ports() {
       SIP_PORT="${ASTERISK_SIP_PORT}"
       RTP_START="${ASTERISK_RTP_START}"
       RTP_END="${ASTERISK_RTP_END}"
+      TURN_PORT="${OMNIPBX_TURN_PORT:-${TURN_PORT}}"
+      TURN_MIN_PORT="${OMNIPBX_TURN_MIN_PORT:-${TURN_MIN_PORT}}"
+      TURN_MAX_PORT="${OMNIPBX_TURN_MAX_PORT:-${TURN_MAX_PORT}}"
       log INFO "Reusing existing OmniPBX ports from ${ENV_FILE}"
       return 0
     fi
@@ -653,7 +674,7 @@ choose_ports() {
   PUBLIC_HTTPS_PORT="$(find_free_port tcp 443)" || fail "Could not find a free public HTTPS port."
   SIP_PORT="$(find_free_port udp 5060)" || fail "Could not find a free SIP port."
   local rtp_range
-  rtp_range="$(find_free_udp_range 10000 101)" || fail "Could not find a free RTP range."
+  rtp_range="$(find_free_udp_range 10000 10001)" || fail "Could not find a free RTP range."
   RTP_START="${rtp_range%%:*}"
   RTP_END="${rtp_range##*:}"
 }
@@ -752,7 +773,7 @@ main() {
     log INFO "Dry run: skipping image pull and container startup"
   else
     log INFO "Pulling required container images"
-    compose_cmd -f "${DEPLOY_DIR}/compose.yaml" pull postgres app caddy
+    compose_cmd -f "${DEPLOY_DIR}/compose.yaml" pull postgres app caddy turn
   fi
   write_systemd_unit
 

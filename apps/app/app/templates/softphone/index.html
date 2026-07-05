@@ -47,6 +47,26 @@
             <input id="public_host" type="text" name="public_host" value="{{ settings.public_host or '' }}" placeholder="https://pbx.example.com">
           </div>
         </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="stun_urls">STUN URLs</label>
+            <textarea id="stun_urls" name="stun_urls" rows="3" placeholder="stun:turn.example.com:3478">{{ settings.stun_urls or '' }}</textarea>
+          </div>
+          <div class="field">
+            <label for="turn_urls">TURN URLs</label>
+            <textarea id="turn_urls" name="turn_urls" rows="3" placeholder="turn:turn.example.com:3478&#10;turns:turn.example.com:5349">{{ settings.turn_urls or '' }}</textarea>
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field">
+            <label for="turn_username">TURN username</label>
+            <input id="turn_username" type="text" name="turn_username" value="{{ settings.turn_username or '' }}" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="turn_credential">TURN credential</label>
+            <input id="turn_credential" type="password" name="turn_credential" value="{{ settings.turn_credential or '' }}" autocomplete="new-password">
+          </div>
+        </div>
         <div class="field">
           <label for="note">Note</label>
           <textarea id="note" name="note" rows="4" placeholder="Optional instructions for browser-phone users">{{ settings.note or '' }}</textarea>

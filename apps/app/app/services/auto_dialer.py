@@ -798,6 +798,7 @@ def _columns(rows: list[dict[str, str]]) -> list[str]:
 
 def _parse_delimited(text: str, delimiter: str) -> list[dict[str, str]]:
     sample = text[:2048]
+    nonempty_lines = [line.strip() for line in text.splitlines() if line.strip()]
     try:
         dialect = csv.Sniffer().sniff(sample)
     except csv.Error:
@@ -812,6 +813,8 @@ def _parse_delimited(text: str, delimiter: str) -> list[dict[str, str]]:
         if any(str(value or "").strip() for value in row.values())
     ]
     if not rows and any(_normalize_phone(str(field or "")) for field in reader.fieldnames):
+        return _parse_text(text)
+    if not rows and len(nonempty_lines) == 1:
         return _parse_text(text)
     return rows
 
