@@ -333,6 +333,7 @@ def render_pjsip_base_config(network: dict | None = None) -> str:
         "type = transport\n"
         "protocol = wss\n"
         "bind = 0.0.0.0\n"
+        f"{external_lines}"
         "symmetric_transport = yes\n\n"
         "#include generated/pjsip.generated.conf\n"
         "#include generated/pjsip.trunks.generated.conf\n"
@@ -416,7 +417,7 @@ def render_pjsip_config(extensions: list[dict]) -> str:
                 "rtcp_mux = yes\n"
                 "media_use_received_transport = yes\n"
             )
-        qualify_frequency = "0" if transport == WEBPHONE_TRANSPORT else "3"
+        qualify_frequency = "0" if transport == WEBPHONE_TRANSPORT else "2"
         webphone_aor_options = ""
         if transport == WEBPHONE_TRANSPORT:
             webphone_aor_options = "default_expiration = 120\nmaximum_expiration = 180\n"
@@ -450,9 +451,10 @@ def render_pjsip_config(extensions: list[dict]) -> str:
                 "type = aor\n"
                 f"max_contacts = {max_contacts}\n"
                 "remove_existing = yes\n"
+                "remove_unavailable = yes\n"
                 f"{webphone_aor_options}"
                 f"qualify_frequency = {qualify_frequency}\n"
-                "qualify_timeout = 2.0\n\n"
+                "qualify_timeout = 1.0\n\n"
             )
         )
     return "".join(blocks)
@@ -484,7 +486,7 @@ def render_extensions_config(
     for item in extensions:
         extension = item["extension"]
         voicemail = _internal_voicemail_rule(voicemail_rules, extension)
-        timeout = _safe_int(_rule_config(voicemail).get("timeout") if voicemail else "", 60, minimum=5, maximum=120)
+        timeout = _safe_int(_rule_config(voicemail).get("timeout") if voicemail else "", 20, minimum=5, maximum=120)
         blocks.append(f"exten => {extension},1,NoOp(OmniPBX call to {extension})\n")
         blocks.append(" same => n,Set(CDR(omni_linkedid)=${CHANNEL(linkedid)})\n")
         blocks.append(" same => n,Set(CDR(direction)=internal)\n")

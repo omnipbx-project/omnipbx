@@ -5,7 +5,7 @@ from psycopg.rows import dict_row
 
 from app.core.settings import get_settings
 from app.models.softphone import SoftphoneSettingsPayload
-from app.services.extensions import ADMIN_EXTENSION, WEBPHONE_TRANSPORT
+from app.services.extensions import ADMIN_EXTENSION, WEBPHONE_TRANSPORT, get_extension
 
 
 def get_softphone_settings(connection: psycopg.Connection) -> dict:
@@ -154,6 +154,51 @@ def resolve_current_webphone(
     }
 
 
+def resolve_current_desktop_softphone(
+    connection: psycopg.Connection,
+    username: str = "",
+    *,
+    extension: str = "",
+    request_host: str = "",
+    request_scheme: str = "https",
+    can_switch: bool = False,
+) -> dict:
+    selected = (extension if can_switch else username).strip() or username.strip()
+    if can_switch and not selected.isdigit():
+        selected = ADMIN_EXTENSION
+    row = get_extension(connection, selected) if selected else None
+    if not row or not row.get("enabled"):
+        return {
+            "available": False,
+            "message": "No enabled extension is available for desktop softphone provisioning.",
+            "config": None,
+        }
+
+    settings = get_softphone_settings(connection)
+    _, sip_domain, public_host = _resolved_webphone_settings(
+        settings,
+        request_host=request_host,
+        request_scheme=request_scheme,
+    )
+    server = sip_domain or _ice_host(public_host=public_host, sip_domain=sip_domain)
+    config = {
+        "extension": row["extension"],
+        "display_name": row["display_name"],
+        "username": row["extension"],
+        "auth_user": row["extension"],
+        "password": row["secret"],
+        "sip_domain": server,
+        "server": server,
+        "transport": "udp",
+        "context": row.get("context"),
+    }
+    return {
+        "available": bool(server),
+        "message": "Desktop softphone settings ready." if server else "SIP domain is not configured.",
+        "config": config,
+    }
+
+
 def list_webphone_extensions(connection: psycopg.Connection) -> list[dict]:
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
@@ -190,8 +235,6 @@ def ice_servers_from_settings(settings: dict, *, fallback_host: str = "") -> lis
     app_settings = get_settings()
     servers: list[dict[str, object]] = []
     stun_urls = _ice_urls(settings.get("stun_urls"))
-    if not stun_urls and fallback_host:
-        stun_urls = [f"stun:{fallback_host}:{app_settings.turn_port}"]
     if stun_urls:
         servers.append({"urls": stun_urls if len(stun_urls) > 1 else stun_urls[0]})
     turn_urls = _ice_urls(settings.get("turn_urls"))

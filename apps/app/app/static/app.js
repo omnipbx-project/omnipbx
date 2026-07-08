@@ -113,16 +113,22 @@
       document.querySelectorAll(".topbar-profile[aria-expanded='true']").forEach((trigger) => {
         trigger.setAttribute("aria-expanded", "false");
       });
+      document.querySelectorAll(".provision-panel.open").forEach((panel) => {
+        panel.classList.remove("open");
+      });
+      document.querySelectorAll(".provision-trigger[aria-expanded='true']").forEach((trigger) => {
+        trigger.setAttribute("aria-expanded", "false");
+      });
       closeCardMenus();
       setSidebarOpen(false);
     });
 
     document.addEventListener("keydown", function (event) {
       if (event.key !== "Escape") return;
-      document.querySelectorAll(".notification-panel.open, .profile-panel.open").forEach((panel) => {
+      document.querySelectorAll(".notification-panel.open, .profile-panel.open, .provision-panel.open").forEach((panel) => {
         panel.classList.remove("open");
       });
-      document.querySelectorAll(".notification-trigger[aria-expanded='true'], .topbar-profile[aria-expanded='true']").forEach((trigger) => {
+      document.querySelectorAll(".notification-trigger[aria-expanded='true'], .topbar-profile[aria-expanded='true'], .provision-trigger[aria-expanded='true']").forEach((trigger) => {
         trigger.setAttribute("aria-expanded", "false");
       });
       closeCardMenus();
@@ -142,7 +148,26 @@
       });
     });
 
-    document.querySelectorAll("#webphone-provision").forEach((button) => {
+    document.querySelectorAll(".provision-menu").forEach((menu) => {
+      const trigger = menu.querySelector("#provision-trigger");
+      const panel = menu.querySelector("#provision-panel");
+      const status = menu.querySelector("#provision-status");
+      const desktopSettings = menu.querySelector("#desktop-softphone-settings");
+      const desktopButton = menu.querySelector("#desktop-softphone-provision");
+      const webExtensionButton = menu.querySelector("#webphone-provision");
+      if (!trigger || !panel) return;
+
+      function setProvisionOpen(isOpen) {
+        panel.classList.toggle("open", isOpen);
+        trigger.setAttribute("aria-expanded", String(isOpen));
+      }
+
+      function setProvisionStatus(message, tone) {
+        if (!status) return;
+        status.textContent = message || "";
+        status.dataset.tone = tone || "";
+      }
+
       function waitForProvisionResult(requestId) {
         return new Promise((resolve, reject) => {
           const timeout = window.setTimeout(() => {
@@ -162,11 +187,60 @@
         });
       }
 
-      button.addEventListener("click", async function (event) {
+      async function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+        return false;
+      }
+
+      function desktopSettingsText(config) {
+        return [
+          "OmniPBX desktop softphone settings",
+          `Extension: ${config.extension || ""}`,
+          `Display name: ${config.display_name || ""}`,
+          `SIP server: ${config.server || config.sip_domain || ""}`,
+          `Username: ${config.username || ""}`,
+          `Auth user: ${config.auth_user || config.username || ""}`,
+          `Password: ${config.password || ""}`,
+          `Transport: ${config.transport || "udp"}`
+        ].join("\n");
+      }
+
+      trigger.addEventListener("click", function (event) {
         event.stopPropagation();
-        const originalTitle = button.title;
-        button.disabled = true;
-        button.title = "Provisioning...";
+        setProvisionOpen(!panel.classList.contains("open"));
+      });
+      panel.addEventListener("click", function (event) {
+        event.stopPropagation();
+      });
+
+      desktopButton?.addEventListener("click", async function () {
+        desktopButton.disabled = true;
+        setProvisionStatus("Preparing desktop softphone settings...", "busy");
+        try {
+          const response = await fetch("/api/softphone/desktop/current", {cache: "no-store"});
+          if (!response.ok) throw new Error("Unable to load desktop softphone settings.");
+          const data = await response.json();
+          if (!data.available || !data.config) throw new Error(data.message || "Desktop softphone settings are not ready.");
+          const settingsText = desktopSettingsText(data.config);
+          if (desktopSettings) {
+            desktopSettings.textContent = settingsText;
+            desktopSettings.hidden = false;
+          }
+          const copied = await copyText(settingsText);
+          setProvisionStatus(copied ? "SIP settings copied. Paste them into your desktop softphone." : "SIP settings shown below. Copy is available over HTTPS.", copied ? "ok" : "warn");
+        } catch (error) {
+          setProvisionStatus(error.message || "Desktop softphone provisioning failed.", "bad");
+        } finally {
+          desktopButton.disabled = false;
+        }
+      });
+
+      webExtensionButton?.addEventListener("click", async function () {
+        webExtensionButton.disabled = true;
+        setProvisionStatus("Sending settings to browser extension...", "busy");
         try {
           const response = await fetch("/api/softphone/bootstrap/current", {cache: "no-store"});
           if (!response.ok) throw new Error("Unable to load webphone settings.");
@@ -186,15 +260,11 @@
           }, window.location.origin);
           const result = await waitForProvisionResult(requestId);
           if (!result.ok) throw new Error(result.error || "Web extension provisioning failed.");
-          button.title = "Provision request sent";
-          window.setTimeout(() => {
-            button.title = originalTitle;
-          }, 1800);
+          setProvisionStatus("Web extension provisioned and registration started.", "ok");
         } catch (error) {
-          alert(error.message || "Web extension provisioning failed.");
-          button.title = originalTitle;
+          setProvisionStatus(error.message || "Web extension provisioning failed.", "bad");
         } finally {
-          button.disabled = false;
+          webExtensionButton.disabled = false;
         }
       });
     });

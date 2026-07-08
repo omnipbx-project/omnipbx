@@ -320,6 +320,7 @@ def _parse_channel_quality_stats(output: str) -> dict[str, dict[str, str]]:
         quality, quality_class = _quality_status(loss_pct=loss_pct, jitter=jitter, rtt=rtt)
         stats[channel_id] = {
             "codec": codec,
+            "uptime": parts[uptime_index],
             "loss": _format_quality_number(loss_pct, suffix="%"),
             "jitter": _format_quality_number(jitter, suffix=" ms"),
             "rtt": _format_quality_number(rtt, suffix=" ms"),
@@ -334,6 +335,7 @@ def _attach_call_quality(calls: list[dict[str, str]], stats: dict[str, dict[str,
         channel_id = _normalize_channel_stats_id(call["id"])
         quality = stats.get(channel_id) or {
             "codec": "-",
+            "uptime": "",
             "loss": "-",
             "jitter": "-",
             "rtt": "-",
@@ -341,6 +343,9 @@ def _attach_call_quality(calls: list[dict[str, str]], stats: dict[str, dict[str,
             "quality_class": "unknown",
         }
         call.update(quality)
+        if _duration_seconds(call.get("duration", "")) == 0 and _duration_seconds(call.get("uptime", "")) > 0:
+            call["duration"] = call["uptime"]
+        call.pop("uptime", None)
     return calls
 
 

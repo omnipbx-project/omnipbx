@@ -40,7 +40,8 @@
     callLog: $('callLog'),
     statusText: $('statusText'),
     statusDot: $('statusDot'),
-    accountLabel: $('accountLabel')
+    accountLabel: $('accountLabel'),
+    callTimer: $('callTimer')
   };
 
   const state = {
@@ -56,7 +57,19 @@
     mediaRecorder: null,
     recordedChunks: [],
     registering: false,
-    accountKey: ''
+    accountKey: '',
+    iceServers: [],
+    retryTimer: null,
+    manualUnregister: false,
+    pendingCall: null,
+    ringtone: null,
+    ringback: null,
+    callStartedAt: 0,
+    callAnswered: false,
+    statsTimer: null,
+    talkStartedAt: 0,
+    talkTimer: null,
+    hangupResetTimer: null
   };
 
   const DEFAULTS = {
@@ -66,6 +79,7 @@
     authUser: '',
     sipPass: '',
     displayName: '',
+    iceServers: [],
     autoRegister: false,
     autoAnswer: false
   };
@@ -82,6 +96,25 @@
       if (!hasChrome) return resolve();
       chrome.storage.local.set(values, resolve);
     });
+  }
+
+  function runtimeMessage(message) {
+    if (!hasChrome || !chrome.runtime || !chrome.runtime.sendMessage) return;
+    chrome.runtime.sendMessage(message, () => void chrome.runtime.lastError);
+  }
+
+  function rememberWindowSize() {
+    if (!hasChrome) return;
+    clearTimeout(rememberWindowSize.timer);
+    rememberWindowSize.timer = setTimeout(() => {
+      const width = Math.round(window.outerWidth || window.innerWidth || 0);
+      const height = Math.round(window.outerHeight || window.innerHeight || 0);
+      if (width < 180 || height < 260) return;
+      storageSet({
+        softphoneWindowWidth: width,
+        softphoneWindowHeight: height
+      });
+    }, 300);
   }
 
   function normalizeNumber(raw) {
@@ -116,13 +149,23 @@
     if (tone === 'bad') els.statusDot.classList.add('bad');
   }
 
+  function setCallStatus(text, tone = 'idle') {
+    if (state.callAnswered && /ringing/i.test(String(text || ''))) return;
+    setStatus(text, tone);
+  }
+
   function setAccountLabel() {
     els.accountLabel.textContent = els.sipUser.value.trim() || '—';
   }
 
   function setDialNumber(value, focus = true) {
+    if (!canEditDialNumber()) return;
     els.dialNumber.value = normalizeNumber(value);
     if (focus) els.dialNumber.focus();
+  }
+
+  function canEditDialNumber() {
+    return !state.currentSession && !state.incomingSession;
   }
 
   function accountKey() {
@@ -136,6 +179,7 @@
   }
 
   function logLine(text) {
+    console.log(`OmniPBX softphone: ${text}`);
     const li = document.createElement('li');
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     li.textContent = `${time}  ${text}`;
@@ -143,8 +187,127 @@
     while (els.callLog.children.length > 30) els.callLog.lastElementChild.remove();
   }
 
+  function callTiming(label) {
+    if (!state.callStartedAt) return;
+    const elapsed = Math.round(performance.now() - state.callStartedAt);
+    logLine(`${label} (+${elapsed} ms)`);
+  }
+
+  function formatDuration(seconds) {
+    const total = Math.max(0, Math.floor(seconds || 0));
+    const minutes = Math.floor(total / 60);
+    const secs = total % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+
+  function updateTalkTimer() {
+    if (!els.callTimer) return;
+    if (!state.talkStartedAt) {
+      els.callTimer.textContent = '00:00';
+      els.callTimer.classList.remove('active');
+      return;
+    }
+    els.callTimer.textContent = formatDuration((Date.now() - state.talkStartedAt) / 1000);
+    els.callTimer.classList.add('active');
+  }
+
+  function startTalkTimer() {
+    state.talkStartedAt = Date.now();
+    updateTalkTimer();
+    if (state.talkTimer) clearInterval(state.talkTimer);
+    state.talkTimer = setInterval(updateTalkTimer, 1000);
+  }
+
+  function stopTalkTimer() {
+    if (state.talkTimer) clearInterval(state.talkTimer);
+    state.talkTimer = null;
+    state.talkStartedAt = 0;
+    updateTalkTimer();
+  }
+
+  function sipFirstLine(message) {
+    const text = typeof message === 'string'
+      ? message
+      : new TextDecoder('utf-8').decode(message || new ArrayBuffer(0));
+    return text.split(/\r\n|\n/)[0] || '';
+  }
+
+  function safeSipUser(value) {
+    return String(value || '').replace(/[^A-Za-z0-9_.!~*'()%+\-]/g, '') || 'webphone';
+  }
+
+  function randomContactHost() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return `${window.crypto.randomUUID()}.invalid`;
+    }
+    return `${Math.random().toString(36).slice(2)}.invalid`;
+  }
+
+  function sipMessageText(message) {
+    if (typeof message === 'string') return message;
+    return new TextDecoder('utf-8').decode(message || new ArrayBuffer(0));
+  }
+
+  function looksLikeDockerHost(host) {
+    return /^[a-z0-9-]+$/i.test(host)
+      && /[a-z]/i.test(host)
+      && /\d/.test(host)
+      && !host.includes('.');
+  }
+
+  function sanitizeInboundSipMessage(message) {
+    const text = sipMessageText(message);
+    if (!/^INVITE\s/i.test(text)) return message;
+    const sipDomain = (els.sipDomain.value || '').trim();
+    if (!sipDomain) return message;
+    let changed = false;
+    const sanitized = text.replace(/^(From|f|Contact|m):([^\r\n]*)$/gmi, (line, header, value) => {
+      const nextValue = value.replace(/@([A-Za-z0-9-]+)(?=[:;>])/g, (match, host) => {
+        if (!looksLikeDockerHost(host)) return match;
+        changed = true;
+        return `@${sipDomain}`;
+      });
+      return `${header}:${nextValue}`;
+    });
+    if (changed) logLine(`WS in: sanitized SIP host to ${sipDomain}`);
+    return changed ? sanitized : message;
+  }
+
+  function bindSocketDiagnostics(socket) {
+    if (!socket || socket.__softphoneDiagnostics) return;
+    socket.__softphoneDiagnostics = true;
+    const originalSend = socket.send.bind(socket);
+    socket.send = (message) => {
+      const firstLine = sipFirstLine(message);
+      if (firstLine) logLine(`WS out: ${firstLine}`);
+      return originalSend(message);
+    };
+    if (typeof socket._onMessage === 'function') {
+      const originalOnMessage = socket._onMessage.bind(socket);
+      socket._onMessage = (event) => {
+        const firstLine = sipFirstLine(event && event.data);
+        if (firstLine) logLine(`WS in: ${firstLine}`);
+        if (/^(CANCEL|BYE)\s/i.test(firstLine)) {
+          logLine(`Incoming call cleared by ${firstLine.split(/\s+/)[0]}`);
+          setCallStatus('Call ended', 'warn');
+          resetSessionState();
+        }
+        const data = sanitizeInboundSipMessage(event && event.data);
+        try {
+          return originalOnMessage({ data });
+        } catch (error) {
+          const detail = error && (error.stack || error.message) ? (error.stack || error.message) : error;
+          logLine(`WS handler error: ${String(detail).slice(0, 220)}`);
+          throw error;
+        }
+      };
+    }
+  }
+
   function updateCallButtons() {
     els.callBtn.classList.remove('ready', 'incoming', 'busy');
+    const dialLocked = Boolean(state.currentSession || state.incomingSession);
+    els.dialNumber.readOnly = dialLocked;
     if (state.incomingSession) {
       els.callBtn.textContent = 'Answer';
       els.callBtn.classList.add('incoming');
@@ -157,6 +320,145 @@
     }
     els.callBtn.textContent = 'Call';
     if (state.isRegistered) els.callBtn.classList.add('ready');
+  }
+
+  function startRingtone() {
+    if (state.ringtone) return;
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) {
+      logLine('Incoming ringtone is not supported in this browser');
+      return;
+    }
+    try {
+      const ctx = new AudioContext();
+      const gain = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+      const oscillators = [440, 480].map((frequency) => {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = frequency;
+        osc.connect(filter);
+        osc.start();
+        return osc;
+      });
+      filter.type = 'lowpass';
+      filter.frequency.value = 1200;
+      gain.gain.value = 0;
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+
+      const setLevel = (delay, level) => {
+        const time = ctx.currentTime + delay;
+        gain.gain.cancelScheduledValues(time);
+        gain.gain.setTargetAtTime(level, time, 0.035);
+      };
+      const playPattern = () => {
+        setLevel(0.0, 0.075);
+        setLevel(0.42, 0.0);
+        setLevel(0.72, 0.075);
+        setLevel(1.14, 0.0);
+      };
+      playPattern();
+      const interval = setInterval(playPattern, 3200);
+      state.ringtone = { ctx, gain, oscillators, interval };
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {
+          logLine('Click the webphone once to allow ringtone audio');
+        });
+      }
+    } catch (error) {
+      console.warn(error);
+      logLine('Incoming ringtone could not start');
+    }
+  }
+
+  function stopRingtone() {
+    if (!state.ringtone) return;
+    const ringtone = state.ringtone;
+    state.ringtone = null;
+    clearInterval(ringtone.interval);
+    try {
+      const now = ringtone.ctx.currentTime;
+      ringtone.gain.gain.cancelScheduledValues(now);
+      ringtone.gain.gain.setValueAtTime(0, now);
+      (ringtone.oscillators || []).forEach((osc) => {
+        try {
+          osc.stop(now + 0.02);
+        } catch (error) {
+          console.warn(error);
+        }
+      });
+      setTimeout(() => ringtone.ctx.close().catch(() => {}), 60);
+    } catch (error) {
+      console.warn(error);
+    }
+  }
+
+  function startRingbackTone() {
+    if (state.ringback) return;
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    try {
+      const ctx = new AudioContext();
+      const gain = ctx.createGain();
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = 425;
+      gain.gain.value = 0;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+
+      const setLevel = (delay, level) => {
+        const time = ctx.currentTime + delay;
+        gain.gain.cancelScheduledValues(time);
+        gain.gain.setTargetAtTime(level, time, 0.04);
+      };
+      const playPattern = () => {
+        setLevel(0.0, 0.055);
+        setLevel(0.9, 0.0);
+      };
+      playPattern();
+      const interval = setInterval(playPattern, 3000);
+      state.ringback = { ctx, gain, osc, interval };
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {
+          logLine('Click the webphone once to allow call audio');
+        });
+      }
+    } catch (error) {
+      console.warn(error);
+    }
+  }
+
+  function stopRingbackTone() {
+    if (!state.ringback) return;
+    const ringback = state.ringback;
+    state.ringback = null;
+    clearInterval(ringback.interval);
+    try {
+      const now = ringback.ctx.currentTime;
+      ringback.gain.gain.cancelScheduledValues(now);
+      ringback.gain.gain.setValueAtTime(0, now);
+      ringback.osc.stop(now + 0.02);
+      setTimeout(() => ringback.ctx.close().catch(() => {}), 60);
+    } catch (error) {
+      console.warn(error);
+    }
+  }
+
+  function prepareCallAudio() {
+    try {
+      els.remoteAudio.muted = false;
+      els.remoteAudio.volume = Number(els.speakerVolume.value || 1);
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (AudioContext) {
+        const ctx = new AudioContext();
+        ctx.resume().finally(() => ctx.close().catch(() => {}));
+      }
+    } catch (error) {
+      console.warn(error);
+    }
   }
 
   function updateToggleButton(button, value) {
@@ -192,6 +494,7 @@
     els.sipPass.value = data.sipPass || '';
     els.displayName.value = data.displayName || '';
     state.autoAnswer = Boolean(data.autoAnswer);
+    state.iceServers = Array.isArray(data.iceServers) ? data.iceServers : [];
     updateRegisterToggle();
     updateToggleButton(els.autoAnswerBtn, state.autoAnswer);
     if (data.pendingNumber) {
@@ -227,6 +530,8 @@
   async function registerUA() {
     if (state.registering) return;
     if (!validateBeforeRegister()) return;
+    state.manualUnregister = false;
+    clearRegisterRetry();
     await saveSettings();
     const nextAccountKey = accountKey();
     if (state.ua && state.isRegistered && state.accountKey === nextAccountKey) {
@@ -244,9 +549,12 @@
       }
 
       const socket = new JsSIP.WebSocketInterface(els.wsUrl.value.trim());
+      bindSocketDiagnostics(socket);
+      const contactUri = `sip:${safeSipUser(els.sipUser.value.trim())}@${randomContactHost()};transport=ws`;
       const config = {
         sockets: [socket],
         uri: currentAccountUri(),
+        contact_uri: contactUri,
         password: els.sipPass.value,
         display_name: els.displayName.value.trim() || els.sipUser.value.trim(),
         session_timers: false,
@@ -260,15 +568,20 @@
       state.ua.start();
       setStatus('Connecting...', 'warn');
       logLine('Connecting to SIP WSS');
+      logLine(`SIP contact user: ${safeSipUser(els.sipUser.value.trim())}`);
     } catch (error) {
       console.error(error);
       setStatus(`Register error: ${error.message || error}`, 'bad');
+      scheduleRegisterRetry('register error');
     } finally {
       state.registering = false;
     }
   }
 
   function unregisterUA() {
+    state.manualUnregister = true;
+    clearRegisterRetry();
+    storageSet({ keepRegistered: false, autoRegister: false });
     try {
       if (state.currentSession) state.currentSession.terminate();
       if (state.ua) state.ua.stop();
@@ -285,34 +598,71 @@
     logLine('Unregistered');
   }
 
+  function clearRegisterRetry() {
+    if (!state.retryTimer) return;
+    clearTimeout(state.retryTimer);
+    state.retryTimer = null;
+  }
+
+  async function scheduleRegisterRetry(reason) {
+    if (state.manualUnregister || state.retryTimer) return;
+    const values = await storageGet(['keepRegistered']);
+    if (!values.keepRegistered) return;
+    state.retryTimer = setTimeout(() => {
+      state.retryTimer = null;
+      logLine(`Retrying registration after ${reason}`);
+      registerUA();
+    }, 2500);
+  }
+
   function bindUAEvents(ua) {
-    ua.on('connected', () => setStatus('Connected, registering...', 'warn'));
+    ua.on('connected', () => {
+      setStatus('Connected, registering...', 'warn');
+      callTiming('SIP WebSocket connected');
+    });
     ua.on('disconnected', () => {
       state.isRegistered = false;
+      runtimeMessage({ type: 'SOFTPHONE_PAGE_UNREGISTERED' });
       setStatus('Disconnected', 'bad');
       updateRegisterToggle();
       updateCallButtons();
+      scheduleRegisterRetry('disconnect');
     });
     ua.on('registered', () => {
       state.isRegistered = true;
+      clearRegisterRetry();
+      storageSet({ keepRegistered: true, autoRegister: false });
       setStatus('Registered', 'ok');
       updateRegisterToggle();
       updateCallButtons();
       logLine('Registered successfully');
+      runtimeMessage({ type: 'SOFTPHONE_PAGE_REGISTERED' });
+      callTiming('SIP registered');
+      if (state.pendingCall) {
+        const pending = state.pendingCall;
+        state.pendingCall = null;
+        setDialNumber(pending.number, false);
+        setTimeout(() => callNumber(pending.withVideo), 150);
+      }
     });
     ua.on('unregistered', () => {
       state.isRegistered = false;
+      runtimeMessage({ type: 'SOFTPHONE_PAGE_UNREGISTERED' });
       setStatus('Unregistered', 'warn');
       updateRegisterToggle();
       updateCallButtons();
+      scheduleRegisterRetry('unregister');
     });
     ua.on('registrationFailed', (event) => {
       state.isRegistered = false;
+      runtimeMessage({ type: 'SOFTPHONE_PAGE_UNREGISTERED' });
       const cause = event && (event.cause || event.response && event.response.reason_phrase) || 'Registration failed';
       setStatus(String(cause), 'bad');
       updateRegisterToggle();
       updateCallButtons();
       logLine(`Registration failed: ${cause}`);
+      callTiming(`Registration failed: ${cause}`);
+      scheduleRegisterRetry(String(cause));
     });
     ua.on('newRTCSession', handleRTCSession);
   }
@@ -326,55 +676,114 @@
     }
 
     state.currentSession = session;
+    state.callAnswered = false;
     setupSessionEvents(session);
 
     if (data.originator === 'remote') {
       const remoteIdentity = session.remote_identity && session.remote_identity.uri
         ? session.remote_identity.uri.toString()
         : 'Unknown caller';
+      state.callStartedAt = performance.now();
+      callTiming('Incoming RTC session received');
       logLine(`Incoming call from ${remoteIdentity}`);
 
       state.incomingSession = session;
       setStatus(`Incoming: ${remoteIdentity}`, 'warn');
       updateCallButtons();
+      startRingtone();
+      runtimeMessage({ type: 'SOFTPHONE_INCOMING_CALL', caller: remoteIdentity });
 
       if (state.autoAnswer) {
         answerCall(false);
       }
     } else {
-      setStatus('Calling...', 'warn');
+      setCallStatus('Calling...', 'warn');
       updateCallButtons();
+      callTiming('RTC session created');
     }
   }
 
   function setupSessionEvents(session) {
+    let iceReadyTimer = null;
+    let iceReadyDone = false;
+    const markIceReady = (ready, reason) => {
+      if (iceReadyDone || typeof ready !== 'function') return;
+      iceReadyDone = true;
+      if (iceReadyTimer) clearTimeout(iceReadyTimer);
+      callTiming(`ICE ready: ${reason}`);
+      ready();
+    };
+    session.on('icecandidate', (event) => {
+      const candidate = event && event.candidate && event.candidate.candidate || '';
+      const typeMatch = candidate.match(/\btyp\s+(\w+)/);
+      const candidateType = typeMatch ? typeMatch[1] : 'unknown';
+      callTiming(`ICE candidate ${candidateType}`);
+      if (candidateType === 'srflx' || candidateType === 'relay') {
+        markIceReady(event.ready, candidateType);
+      } else if (!iceReadyTimer && event && typeof event.ready === 'function') {
+        iceReadyTimer = setTimeout(() => markIceReady(event.ready, 'timeout'), 1200);
+      }
+    });
+    session.on('sdp', (event) => {
+      if (event && event.originator === 'local') {
+        event.sdp = preferG711Audio(event.sdp);
+        callTiming('Local SDP ready');
+      }
+    });
+    session.on('getusermediafailed', (error) => {
+      callTiming(`Microphone failed: ${error && error.message ? error.message : error}`);
+    });
     session.on('peerconnection', (data) => {
+      callTiming('Peer connection created');
       bindPeerConnection(data.peerconnection || session.connection);
     });
-    session.on('progress', () => setStatus('Ringing...', 'warn'));
+    session.on('progress', () => {
+      if (state.callAnswered) return;
+      setCallStatus('Ringing...', 'warn');
+      callTiming('SIP progress/ringing');
+      if (!state.incomingSession) startRingbackTone();
+    });
     session.on('accepted', () => {
-      setStatus('Call accepted', 'ok');
+      stopRingtone();
+      stopRingbackTone();
+      state.callAnswered = true;
+      setCallStatus('In call', 'ok');
       logLine('Call accepted');
+      callTiming('Call accepted');
+      startTalkTimer();
+      attachRemoteReceivers(session, 'accepted');
+      playRemoteAudio('accepted');
       state.incomingSession = null;
       updateCallButtons();
     });
     session.on('confirmed', () => {
-      setStatus('In call', 'ok');
+      stopRingtone();
+      stopRingbackTone();
+      state.callAnswered = true;
+      setCallStatus('In call', 'ok');
       logLine('Call connected');
+      callTiming('Call connected');
+      if (!state.talkStartedAt) startTalkTimer();
       state.incomingSession = null;
       updateCallButtons();
+      attachRemoteReceivers(session, 'confirmed');
+      playRemoteAudio('confirmed');
       attachLocalPreview(session);
+      startInboundAudioStats(session);
     });
     session.on('ended', (event) => {
-      const cause = event && event.cause ? event.cause : 'Ended';
-      logLine(`Call ended: ${cause}`);
-      setStatus('Call ended', 'warn');
+      stopRingbackTone();
+      const detail = sessionEventDetail(event, 'Ended');
+      logLine(`Call ended: ${detail}`);
+      setStatus(`Ended: ${shortStatus(detail)}`, 'warn');
       resetSessionState();
     });
     session.on('failed', (event) => {
-      const cause = event && event.cause ? event.cause : 'Failed';
-      logLine(`Call failed: ${cause}`);
-      setStatus(`Failed: ${cause}`, 'bad');
+      stopRingbackTone();
+      const detail = sessionEventDetail(event, 'Failed');
+      logLine(`Call failed: ${detail}`);
+      callTiming(`Call failed: ${detail}`);
+      setStatus(`Failed: ${shortStatus(detail)}`, 'bad');
       resetSessionState();
     });
     session.on('muted', () => setStatus('Microphone muted', 'warn'));
@@ -383,23 +792,116 @@
     session.on('unhold', () => setStatus('In call', 'ok'));
   }
 
+  function sessionEventDetail(event, fallback) {
+    if (!event) return fallback;
+    const parts = [];
+    const cause = event.cause || fallback;
+    if (cause) parts.push(String(cause));
+    const response = event.response || event.message;
+    const statusCode = response && (response.status_code || response.statusCode);
+    const reason = response && (response.reason_phrase || response.reasonPhrase);
+    if (statusCode || reason) {
+      parts.push(`SIP ${[statusCode, reason].filter(Boolean).join(' ')}`);
+    }
+    if (event.originator) parts.push(`by ${event.originator}`);
+    return parts.join(' - ') || fallback;
+  }
+
+  function shortStatus(text) {
+    const value = String(text || '');
+    return value.length > 42 ? `${value.slice(0, 39)}...` : value;
+  }
+
   function bindPeerConnection(pc) {
     if (!pc || pc.__softphoneBound) return;
     pc.__softphoneBound = true;
+    pc.addEventListener('icegatheringstatechange', () => {
+      callTiming(`ICE gathering ${pc.iceGatheringState}`);
+    });
+    pc.addEventListener('iceconnectionstatechange', () => {
+      callTiming(`ICE connection ${pc.iceConnectionState}`);
+    });
 
     pc.addEventListener('track', (event) => {
-      if (!state.remoteStream) state.remoteStream = new MediaStream();
       const incomingStream = event.streams && event.streams[0];
       const tracks = incomingStream ? incomingStream.getTracks() : [event.track];
-      tracks.forEach((track) => {
-        if (!state.remoteStream.getTracks().some((existing) => existing.id === track.id)) {
-          state.remoteStream.addTrack(track);
-        }
-      });
-      els.remoteAudio.srcObject = state.remoteStream;
-      els.remoteVideo.srcObject = state.remoteStream;
-      if (state.remoteStream.getVideoTracks().length) els.mediaPanel.classList.add('active');
+      attachRemoteTracks(tracks, 'track');
     });
+  }
+
+  function attachRemoteReceivers(session, reason) {
+    try {
+      const pc = session && session.connection;
+      if (!pc || typeof pc.getReceivers !== 'function') return;
+      const tracks = pc.getReceivers().map((receiver) => receiver.track).filter(Boolean);
+      if (tracks.length) attachRemoteTracks(tracks, reason);
+      else callTiming(`No remote receivers yet: ${reason}`);
+    } catch (error) {
+      console.warn(error);
+      callTiming(`Remote receiver check failed: ${reason}`);
+    }
+  }
+
+  function attachRemoteTracks(tracks, reason) {
+    if (!tracks || !tracks.length) return;
+    if (!state.remoteStream) state.remoteStream = new MediaStream();
+    tracks.forEach((track) => {
+      if (!state.remoteStream.getTracks().some((existing) => existing.id === track.id)) {
+        state.remoteStream.addTrack(track);
+        callTiming(`Remote ${track.kind} track received: ${reason}`);
+        track.addEventListener('mute', () => callTiming(`Remote ${track.kind} muted`));
+        track.addEventListener('unmute', () => callTiming(`Remote ${track.kind} unmuted`));
+        track.addEventListener('ended', () => callTiming(`Remote ${track.kind} ended`));
+      }
+    });
+    els.remoteAudio.srcObject = state.remoteStream;
+    els.remoteVideo.srcObject = state.remoteStream;
+    playRemoteAudio(reason);
+    if (state.remoteStream.getVideoTracks().length) els.mediaPanel.classList.add('active');
+  }
+
+  function playRemoteAudio(reason) {
+    if (!els.remoteAudio.srcObject) return;
+    els.remoteAudio.muted = false;
+    els.remoteAudio.volume = Number(els.speakerVolume.value || 1);
+    if (!els.remoteAudio.paused && !els.remoteAudio.ended) return;
+    const playPromise = els.remoteAudio.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise
+        .then(() => callTiming(`Remote audio playing: ${reason}`))
+        .catch((error) => callTiming(`Remote audio blocked: ${error && error.message ? error.message : error}`));
+    }
+  }
+
+  function startInboundAudioStats(session) {
+    stopInboundAudioStats();
+    const pc = session && session.connection;
+    if (!pc || typeof pc.getStats !== 'function') return;
+    let lastPackets = null;
+    let lastBytes = null;
+    state.statsTimer = setInterval(async () => {
+      try {
+        const report = await pc.getStats();
+        report.forEach((stat) => {
+          if (stat.type !== 'inbound-rtp' || stat.kind !== 'audio') return;
+          const packets = Number(stat.packetsReceived || 0);
+          const bytes = Number(stat.bytesReceived || 0);
+          const packetsDelta = lastPackets === null ? 0 : packets - lastPackets;
+          const bytesDelta = lastBytes === null ? 0 : bytes - lastBytes;
+          lastPackets = packets;
+          lastBytes = bytes;
+          callTiming(`Inbound audio packets=${packets} (+${packetsDelta}) bytes=${bytes} (+${bytesDelta}) level=${stat.audioLevel ?? 'n/a'}`);
+        });
+      } catch (error) {
+        callTiming(`Inbound audio stats failed: ${error && error.message ? error.message : error}`);
+      }
+    }, 3000);
+  }
+
+  function stopInboundAudioStats() {
+    if (!state.statsTimer) return;
+    clearInterval(state.statsTimer);
+    state.statsTimer = null;
   }
 
   function attachLocalPreview(session) {
@@ -419,9 +921,18 @@
   }
 
   function resetSessionState() {
+    if (state.hangupResetTimer) {
+      clearTimeout(state.hangupResetTimer);
+      state.hangupResetTimer = null;
+    }
+    stopRingtone();
+    stopRingbackTone();
     stopRecording(true);
+    stopInboundAudioStats();
+    stopTalkTimer();
     state.currentSession = null;
     state.incomingSession = null;
+    state.callAnswered = false;
     state.remoteStream = null;
     state.localStream = null;
     state.isMuted = false;
@@ -429,6 +940,7 @@
     els.remoteVideo.srcObject = null;
     els.localVideo.srcObject = null;
     els.mediaPanel.classList.remove('active');
+    els.dialNumber.value = '';
     updateToggleButton(els.recordBtn, false);
     updateCallButtons();
   }
@@ -438,11 +950,6 @@
       answerCall(withVideo);
       return;
     }
-    if (!state.ua || !state.isRegistered) {
-      setStatus('Register first', 'bad');
-      els.settingsPanel.classList.add('open');
-      return;
-    }
     if (state.currentSession) return;
 
     const destination = targetUri(els.dialNumber.value);
@@ -450,14 +957,31 @@
       setStatus('Enter a number', 'bad');
       return;
     }
+    if (!state.ua || !state.isRegistered) {
+      if (validateBeforeRegister()) {
+        state.callStartedAt = performance.now();
+        state.pendingCall = { number: els.dialNumber.value, withVideo };
+        setStatus('Registering before call...', 'warn');
+        callTiming('Call clicked; registering first');
+        registerUA();
+      } else {
+        els.settingsPanel.classList.add('open');
+      }
+      return;
+    }
 
     const options = {
       mediaConstraints: { audio: true, video: Boolean(withVideo) },
-      pcConfig: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] },
+      pcConfig: currentPeerConnectionConfig(),
       rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: Boolean(withVideo) }
     };
 
     try {
+      prepareCallAudio();
+      state.callStartedAt = performance.now();
+      setStatus('Starting call...', 'warn');
+      callTiming('Call clicked; invoking JsSIP');
+      callTiming(`ICE policy: ${options.pcConfig.iceTransportPolicy || 'default'} (${(options.pcConfig.iceServers || []).length} servers)`);
       state.ua.call(destination, options);
       logLine(`Calling ${destination}${withVideo ? ' with video' : ''}`);
     } catch (error) {
@@ -466,23 +990,74 @@
     }
   }
 
-  function answerCall(withVideo = false) {
+  async function answerCall(withVideo = false) {
     const session = state.incomingSession;
     if (!session) return;
     try {
       session.answer({
         mediaConstraints: { audio: true, video: Boolean(withVideo) },
-        pcConfig: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] },
+        pcConfig: currentPeerConnectionConfig(),
         rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: Boolean(withVideo) }
       });
       setStatus('Answering...', 'warn');
       logLine(`Answered${withVideo ? ' with video' : ''}`);
       state.incomingSession = null;
+      stopRingtone();
       updateCallButtons();
     } catch (error) {
       console.error(error);
       setStatus(`Answer failed: ${error.message || error}`, 'bad');
     }
+  }
+
+  function currentPeerConnectionConfig() {
+    const config = {};
+    if (state.iceServers && state.iceServers.length) {
+      config.iceServers = state.iceServers;
+      if (hasTurnServer(state.iceServers)) {
+        config.iceTransportPolicy = 'relay';
+      }
+    }
+    return config;
+  }
+
+  function hasTurnServer(iceServers) {
+    return iceServers.some((server) => {
+      const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+      return urls.some((url) => String(url || '').toLowerCase().startsWith('turn:'));
+    });
+  }
+
+  function preferG711Audio(sdp) {
+    const lines = String(sdp || '').split(/\r\n|\n/);
+    const audioIndex = lines.findIndex((line) => line.startsWith('m=audio '));
+    if (audioIndex < 0) return sdp;
+    const nextMediaIndex = lines.findIndex((line, index) => index > audioIndex && line.startsWith('m='));
+    const endIndex = nextMediaIndex < 0 ? lines.length : nextMediaIndex;
+    const audioLines = lines.slice(audioIndex, endIndex);
+    const codecByPayload = new Map();
+
+    audioLines.forEach((line) => {
+      const match = line.match(/^a=rtpmap:(\d+)\s+([^/]+)/i);
+      if (match) codecByPayload.set(match[1], match[2].toLowerCase());
+    });
+
+    const mParts = lines[audioIndex].trim().split(/\s+/);
+    const payloads = mParts.slice(3);
+    const g711Payloads = payloads.filter((payload) => ['pcmu', 'pcma'].includes(codecByPayload.get(payload)));
+    if (!g711Payloads.length) return sdp;
+
+    const dtmfPayloads = payloads.filter((payload) => codecByPayload.get(payload) === 'telephone-event');
+    const allowedPayloads = [...g711Payloads, ...dtmfPayloads.filter((payload) => !g711Payloads.includes(payload))];
+    const allowed = new Set(allowedPayloads);
+    const filteredLines = lines.filter((line, index) => {
+      if (index === audioIndex) return true;
+      if (index < audioIndex || index >= endIndex) return true;
+      const payloadMatch = line.match(/^a=(?:rtpmap|fmtp|rtcp-fb):(\d+)/i);
+      return !payloadMatch || allowed.has(payloadMatch[1]);
+    });
+    filteredLines[audioIndex] = [...mParts.slice(0, 3), ...allowedPayloads].join(' ');
+    return filteredLines.join('\r\n');
   }
 
   function sendDtmfTone(tone) {
@@ -502,13 +1077,29 @@
   }
 
   function hangup() {
+    const session = state.currentSession || state.incomingSession;
+    if (!session) {
+      resetSessionState();
+      return;
+    }
+    setStatus('Ending call...', 'warn');
+    logLine('Hangup requested');
     try {
-      if (state.currentSession) state.currentSession.terminate();
+      const options = state.incomingSession
+        ? { status_code: 486, reason_phrase: 'Busy Here' }
+        : { reason_phrase: 'Normal Clearing' };
+      session.terminate(options);
     } catch (error) {
       console.warn(error);
-    } finally {
-      resetSessionState();
+      try {
+        if (state.ua && typeof state.ua.terminateSessions === 'function') {
+          state.ua.terminateSessions({ reason_phrase: 'Normal Clearing' });
+        }
+      } catch (fallbackError) {
+        console.warn(fallbackError);
+      }
     }
+    state.hangupResetTimer = setTimeout(resetSessionState, 1200);
   }
 
   function toggleMicMute() {
@@ -624,6 +1215,7 @@
       const key = event.target.closest('button')?.dataset.key;
       if (!key) return;
       if (sendDtmfTone(key)) return;
+      if (!canEditDialNumber()) return;
       els.dialNumber.value += key;
       els.dialNumber.focus();
     });
@@ -631,17 +1223,24 @@
     els.dialNumber.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') callNumber(false);
       if (event.key === 'Escape') hangup();
+      const allowedKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'Tab', 'Enter', 'Escape'];
+      if (!canEditDialNumber() && !allowedKeys.includes(event.key) && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+      }
     });
 
     els.plusBtn.addEventListener('click', () => {
+      if (!canEditDialNumber()) return;
       els.dialNumber.value += '+';
       els.dialNumber.focus();
     });
     els.clearBtn.addEventListener('click', () => {
+      if (!canEditDialNumber()) return;
       els.dialNumber.value = '';
       els.dialNumber.focus();
     });
     els.backspaceBtn?.addEventListener('click', () => {
+      if (!canEditDialNumber()) return;
       els.dialNumber.value = els.dialNumber.value.slice(0, -1);
       els.dialNumber.focus();
     });
@@ -697,15 +1296,18 @@
     });
 
     window.addEventListener('beforeunload', saveSettings);
+    window.addEventListener('resize', rememberWindowSize);
+    rememberWindowSize();
 
     if (hasChrome) {
       chrome.storage.onChanged.addListener((changes, area) => {
         if (area !== 'local' || !changes.pendingNumber?.newValue) return;
+        if (!canEditDialNumber()) return;
         setDialNumber(changes.pendingNumber.newValue);
         storageSet({ pendingNumber: '' });
       });
       chrome.runtime.onMessage.addListener((message) => {
-        if (message && message.type === 'SOFTPHONE_SET_NUMBER') {
+        if (message && message.type === 'SOFTPHONE_SET_NUMBER' && canEditDialNumber()) {
           setDialNumber(message.number);
         }
         if (message && message.type === 'SOFTPHONE_REGISTER_NOW') {

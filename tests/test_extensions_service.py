@@ -18,9 +18,9 @@ from app.services.extensions import (
 
 class ExtensionServiceTests(TestCase):
     def test_transport_helpers_return_expected_codec_and_provisioning_defaults(self):
-        self.assertEqual(audio_codecs_for_transport(WEBPHONE_TRANSPORT), "opus,ulaw,alaw")
+        self.assertEqual(audio_codecs_for_transport(WEBPHONE_TRANSPORT), "ulaw,alaw,opus")
         self.assertEqual(video_codecs_for_transport(WEBPHONE_TRANSPORT), "")
-        self.assertEqual(audio_codecs_for_transport(SOFTPHONE_TRANSPORT), "opus,ulaw,alaw")
+        self.assertEqual(audio_codecs_for_transport(SOFTPHONE_TRANSPORT), "ulaw,alaw,opus")
         self.assertEqual(video_codecs_for_transport(SOFTPHONE_TRANSPORT), "")
         self.assertEqual(audio_codecs_for_transport("transport-udp"), "ulaw,alaw,opus")
         self.assertEqual(video_codecs_for_transport("transport-udp"), "")

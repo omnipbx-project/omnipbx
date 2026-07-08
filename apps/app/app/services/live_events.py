@@ -40,6 +40,7 @@ class LiveEventHub:
         self._snapshot_loader: Callable[[], dict[str, object]] | None = None
         self._snapshot: dict[str, object] | None = None
         self._snapshot_refreshing = False
+        self._snapshot_pending_event: str | None = None
         self._sent_call_events: dict[str, float] = {}
         self._call_sessions: dict[str, dict[str, str]] = {}
 
@@ -61,7 +62,10 @@ class LiveEventHub:
     def refresh_snapshot_async(self, event_name: str = "snapshot") -> None:
         with self._condition:
             loader = self._snapshot_loader
-            if not loader or self._snapshot_refreshing:
+            if not loader:
+                return
+            if self._snapshot_refreshing:
+                self._snapshot_pending_event = event_name
                 return
             self._snapshot_refreshing = True
 
@@ -143,11 +147,18 @@ class LiveEventHub:
                     self.notify_ami_event(event_name, message)
 
     def _refresh_snapshot(self, loader: Callable[[], dict[str, object]], event_name: str) -> None:
+        next_event_name = ""
         try:
             snapshot = loader()
         except Exception:
             with self._condition:
                 self._snapshot_refreshing = False
+                next_event_name = self._snapshot_pending_event or ""
+                self._snapshot_pending_event = None
+                if next_event_name:
+                    self._snapshot_refreshing = True
+            if next_event_name:
+                self._start_snapshot_thread(loader, next_event_name)
             return
 
         with self._condition:
@@ -156,6 +167,21 @@ class LiveEventHub:
             self._version += 1
             self._last_event = event_name
             self._condition.notify_all()
+            next_event_name = self._snapshot_pending_event or ""
+            self._snapshot_pending_event = None
+            if next_event_name:
+                self._snapshot_refreshing = True
+        if next_event_name:
+            self._start_snapshot_thread(loader, next_event_name)
+
+    def _start_snapshot_thread(self, loader: Callable[[], dict[str, object]], event_name: str) -> None:
+        thread = threading.Thread(
+            target=self._refresh_snapshot,
+            args=(loader, event_name),
+            name="omnipbx-live-snapshot",
+            daemon=True,
+        )
+        thread.start()
 
     def _apply_presence_event(self, event_name: str, message: dict[str, str]) -> bool:
         extension = _extension_from_event(message)

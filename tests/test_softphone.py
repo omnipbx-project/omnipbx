@@ -34,7 +34,7 @@ class SoftphoneIceServerTests(TestCase):
 
         self.assertEqual(servers, [{"urls": "stun:ok.example.com:3478"}])
 
-    def test_ice_servers_from_settings_uses_turn_defaults_when_credentials_exist(self):
+    def test_ice_servers_from_settings_uses_turn_default_when_credentials_exist(self):
         with patch("app.services.softphone.get_settings") as get_settings:
             get_settings.return_value.turn_port = 3478
             get_settings.return_value.turn_username = "omnipbx"
@@ -45,7 +45,6 @@ class SoftphoneIceServerTests(TestCase):
         self.assertEqual(
             servers,
             [
-                {"urls": "stun:pbx.example.com:3478"},
                 {
                     "urls": "turn:pbx.example.com:3478",
                     "username": "omnipbx",
@@ -53,3 +52,8 @@ class SoftphoneIceServerTests(TestCase):
                 },
             ],
         )
+
+    def test_ice_servers_from_settings_does_not_invent_stun_default(self):
+        servers = ice_servers_from_settings({}, fallback_host="pbx.example.com")
+
+        self.assertEqual(servers, [])

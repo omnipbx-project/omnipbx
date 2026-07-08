@@ -21,6 +21,10 @@
         <button id="registerBtn" type="button">Register</button>
         <button id="unregisterBtn" type="button">Unregister</button>
       </div>
+      <section class="log-panel" id="logPanel">
+        <div class="log-title">Call log</div>
+        <ol id="callLog"></ol>
+      </section>
     </section>
 
     <section class="phone-view" id="phoneView">
@@ -48,6 +52,7 @@
         <button id="clearBtn" type="button">C</button>
       </div>
 
+      <div id="callTimer" class="call-timer" aria-live="polite">00:00</div>
       <div class="call-row">
         <button id="videoCallBtn" class="icon-btn" type="button" title="Video call" aria-label="Video call">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -68,10 +73,6 @@
         <audio id="remoteAudio" autoplay></audio>
       </section>
 
-      <section class="log-panel" id="logPanel" hidden>
-        <div class="log-title">Call log</div>
-        <ol id="callLog"></ol>
-      </section>
     </section>
 
     <footer class="statusbar">

@@ -30,6 +30,15 @@ class AsteriskRenderingTests(TestCase):
 
         self.assertIn("external_signaling_address = pbx.example.com", config)
         self.assertIn("external_media_address = pbx.example.com", config)
+        self.assertIn(
+            "[transport-wss]\n"
+            "type = transport\n"
+            "protocol = wss\n"
+            "bind = 0.0.0.0\n"
+            "external_signaling_address = pbx.example.com\n"
+            "external_media_address = pbx.example.com",
+            config,
+        )
         self.assertNotIn("bad host", config)
 
     def test_pjsip_extension_rendering_separates_webphone_and_desk_phone_options(self):
@@ -51,7 +60,7 @@ class AsteriskRenderingTests(TestCase):
                     "secret": "web-secret",
                     "context": "omnipbx-internal",
                     "transport": "transport-wss",
-                    "codecs": "opus,ulaw,alaw",
+                    "codecs": "ulaw,alaw,opus",
                     "video_codecs": "h264",
                     "simultaneous_device_limit": 20,
                 },
@@ -61,7 +70,7 @@ class AsteriskRenderingTests(TestCase):
         self.assertIn("[1001]\ntype = endpoint\ntransport = transport-udp", config)
         self.assertIn("allow = ulaw,alaw", config)
         self.assertIn("[1002]\ntype = endpoint\ntransport = transport-wss", config)
-        self.assertIn("allow = opus,ulaw,alaw", config)
+        self.assertIn("allow = ulaw,alaw,opus", config)
         self.assertIn("webrtc = yes", config)
         self.assertIn("tos_audio = ef", config)
         self.assertIn("cos_audio = 5", config)

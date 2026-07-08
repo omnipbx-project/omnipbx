@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "OmniPBX Webphone",
-  "version": "2.1.1",
+  "version": "2.1.14",
   "description": "OmniPBX browser webphone with a persistent floating dialer, click-to-call, and SIP over WSS/WebRTC.",
   "permissions": [
     "storage",
     "notifications",
     "contextMenus",
+    "clipboardRead",
     "clipboardWrite",
     "activeTab",
     "scripting",

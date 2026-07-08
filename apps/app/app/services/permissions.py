@@ -226,6 +226,12 @@ def required_feature(method: str, path: str) -> str | None:
         return "softphone:configure"
     if path.startswith("/softphone/extension/download"):
         return "softphone:provision"
+    if path.startswith("/softphone/desktop/"):
+        return "softphone:provision"
+    if path == "/setup/internal-ca.crt":
+        return "softphone:provision"
+    if path == "/api/softphone/desktop/current":
+        return "softphone:provision"
     if path.startswith("/api/softphone") or path.startswith("/softphone") or path.startswith("/webphone"):
         return "softphone:view"
     if path.startswith("/api/system/update"):

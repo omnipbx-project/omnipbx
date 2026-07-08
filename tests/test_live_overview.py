@@ -4,6 +4,7 @@ from unittest.mock import patch
 import support  # noqa: F401
 
 from app.features.live_overview.service import (
+    _attach_call_quality,
     _build_active_users,
     _build_trunk_rows,
     _extensions_on_call,
@@ -203,6 +204,29 @@ class LiveOverviewTests(TestCase):
         self.assertEqual(calls[0]["to"], "+8801911419050")
         self.assertEqual(calls[0]["direction"], "Outgoing")
         self.assertEqual(calls[0]["trunk"], "icc")
+
+    def test_attach_call_quality_uses_channelstats_uptime_when_duration_is_zero(self):
+        calls = [
+            {
+                "id": "PJSIP/1002-00000000",
+                "from": "09639145345",
+                "to": "01911419050",
+                "direction": "Outgoing",
+                "duration": "00:00:00",
+                "status": "Ringing",
+                "status_class": "warn",
+                "trunk": "icc",
+            }
+        ]
+        stats = _parse_channel_quality_stats(
+            "PJSIP/1002-00000000 00:00:17 ulaw 0 0 0 0 0 0 0 0 0"
+        )
+
+        updated = _attach_call_quality(calls, stats)
+
+        self.assertEqual(updated[0]["duration"], "00:00:17")
+        self.assertEqual(updated[0]["codec"], "ulaw")
+        self.assertNotIn("uptime", updated[0])
 
     def test_parse_active_calls_collapses_inbound_route_to_answering_extension(self):
         output = "\n".join(

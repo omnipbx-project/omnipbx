@@ -23,20 +23,7 @@
           <h3>Active Calls</h3>
         </div>
         <div class="live-call-tools">
-          <label class="supervisor-extension-field" for="supervisor-extension">
-            <span>Monitor from</span>
-            {% if supervisor_extensions %}
-            <select id="supervisor-extension">
-              {% for extension in supervisor_extensions %}
-              <option value="{{ extension.extension }}" {% if extension.extension == supervisor_extension %}selected{% endif %}>
-                {{ extension.extension }} - {{ extension.display_name }}
-              </option>
-              {% endfor %}
-            </select>
-            {% else %}
-            <strong id="supervisor-extension" data-extension="">Not available</strong>
-            {% endif %}
-          </label>
+          <strong id="supervisor-extension" data-extension="{{ supervisor_extension or '' }}" hidden>{{ supervisor_extension or '' }}</strong>
           <span class="status-pill available" id="live-refresh-label">Live</span>
         </div>
       </div>

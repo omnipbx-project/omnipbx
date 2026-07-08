@@ -6,6 +6,7 @@ from app.models.softphone import SoftphoneDndPayload, SoftphoneSettingsPayload
 from app.services.softphone import (
     build_softphone_bootstrap,
     get_softphone_settings,
+    resolve_current_desktop_softphone,
     resolve_current_webphone,
     save_softphone_settings,
     set_softphone_dnd,
@@ -59,6 +60,28 @@ def get_current_softphone_bootstrap_api(
     return {
         "status": "ok",
         **resolve_current_webphone(
+            connection,
+            username=str(current_user.get("extension") or current_user.get("username") or ""),
+            extension=extension,
+            request_host=request.headers.get("host", ""),
+            request_scheme=_request_scheme(request),
+            can_switch=can_switch,
+        ),
+    }
+
+
+@router.get("/desktop/current")
+def get_current_desktop_softphone_api(
+    request: Request,
+    extension: str = "",
+    connection: psycopg.Connection = Depends(get_connection),
+) -> dict[str, object]:
+    current_user = getattr(request.state, "current_user", None) or {}
+    role = str(current_user.get("role") or "")
+    can_switch = role in {"owner", "admin"}
+    return {
+        "status": "ok",
+        **resolve_current_desktop_softphone(
             connection,
             username=str(current_user.get("extension") or current_user.get("username") or ""),
             extension=extension,
