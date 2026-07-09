@@ -59,6 +59,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsrtp2-1 \
     libxml2 \
     odbc-postgresql \
+    openssh-client \
     python3 \
     python3-pip \
     tar \

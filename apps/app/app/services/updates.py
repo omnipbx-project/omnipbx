@@ -17,12 +17,16 @@ def get_update_overview(settings: Settings, *, force_refresh: bool = False) -> d
     commits_behind = int(check.get("commits_behind") or 0)
     commits_ahead = int(check.get("commits_ahead") or 0)
     repo_dirty = bool(check.get("repo_dirty"))
+    version_only_dirty = _version_only_dirty(check)
     tracked_upstream = bool(check.get("tracked_upstream"))
+    version_apply_needed = _version_apply_needed(settings, check)
 
     return {
         "current_version": str(check.get("current_version") or settings.app_version),
         "latest_version": str(check.get("latest_version") or settings.app_version),
-        "update_available": bool(check.get("update_available")),
+        "running_version": settings.app_version,
+        "update_available": bool(check.get("update_available")) or version_apply_needed,
+        "version_apply_needed": version_apply_needed,
         "git_ready": bool(check.get("git_ready")),
         "tracked_upstream": tracked_upstream,
         "local_branch": check.get("local_branch") or "",
@@ -34,16 +38,17 @@ def get_update_overview(settings: Settings, *, force_refresh: bool = False) -> d
         "commits_behind": commits_behind,
         "commits_ahead": commits_ahead,
         "repo_dirty": repo_dirty,
+        "repo_dirty_paths": check.get("repo_dirty_paths") or [],
         "check_error": check.get("check_error") or "",
-        "check_message": check.get("message") or "",
+        "check_message": _overview_message(settings, check),
         "last_checked_at": check.get("last_checked_at") or "",
         "update_status": status,
         "can_start_update": bool(
             bool(check.get("git_ready"))
             and tracked_upstream
-            and commits_behind > 0
-            and commits_ahead == 0
-            and not repo_dirty
+            and (commits_behind > 0 or version_apply_needed)
+            and (commits_ahead == 0 or (version_apply_needed and commits_behind == 0))
+            and (not repo_dirty or (version_apply_needed and commits_behind == 0 and version_only_dirty))
             and status_state not in {"queued", "updating"}
         ),
     }
@@ -68,6 +73,14 @@ def get_update_banner(settings: Settings) -> dict[str, str] | None:
         }
 
     check = _refresh_update_check(settings) if _check_cache_stale(settings) else load_update_check(settings)
+    if _version_apply_needed(settings, check):
+        current_version = str(check.get("current_version") or "")
+        return {
+            "tone": "warn",
+            "title": "Update ready to apply",
+            "detail": f"OmniPBX {current_version} is on disk but the running stack is still {settings.app_version}.",
+            "href": "/settings#updates",
+        }
     if bool(check.get("update_available")):
         commits_behind = int(check.get("commits_behind") or 0)
         latest_version = str(check.get("latest_version") or "")
@@ -118,6 +131,7 @@ def load_update_check(settings: Settings) -> dict[str, object]:
         "commits_behind": 0,
         "commits_ahead": 0,
         "repo_dirty": False,
+        "repo_dirty_paths": [],
         "update_available": False,
         "check_error": "",
         "message": "Update checks have not run yet.",
@@ -140,7 +154,11 @@ def start_detached_update(settings: Settings) -> dict[str, object]:
         raise ValueError("This OmniPBX install is not a git checkout, so git-based updates are unavailable.")
     if not overview["tracked_upstream"]:
         raise ValueError("This OmniPBX install does not have an upstream tracking branch configured.")
-    if overview["repo_dirty"]:
+    if overview["repo_dirty"] and not (
+        bool(overview.get("version_apply_needed"))
+        and int(overview["commits_behind"]) == 0
+        and _version_only_dirty(overview)
+    ):
         raise ValueError("This OmniPBX install has local tracked changes. Commit or revert them before updating.")
     if int(overview["commits_ahead"]) > 0 and int(overview["commits_behind"]) > 0:
         raise ValueError("This OmniPBX branch has diverged from upstream. Resolve the git history before updating.")
@@ -153,6 +171,7 @@ def start_detached_update(settings: Settings) -> dict[str, object]:
         raise ValueError("Another update is already running.")
 
     target_version = _target_label(overview)
+    force_apply = bool(overview.get("version_apply_needed"))
     write_update_status(
         settings,
         {
@@ -186,6 +205,8 @@ def start_detached_update(settings: Settings) -> dict[str, object]:
         "--project-root",
         helper_project_path,
     ]
+    if force_apply:
+        command.append("--force")
     completed = subprocess.run(command, text=True, capture_output=True)
     if completed.returncode != 0:
         message = completed.stderr.strip() or completed.stdout.strip() or "Failed to start detached update helper."
@@ -252,6 +273,7 @@ def _refresh_update_check(settings: Settings) -> dict[str, object]:
         "commits_behind": 0,
         "commits_ahead": 0,
         "repo_dirty": False,
+        "repo_dirty_paths": [],
         "update_available": False,
         "check_error": "",
         "message": "",
@@ -279,9 +301,9 @@ def _refresh_update_check(settings: Settings) -> dict[str, object]:
         payload["local_branch"] = local_branch
         payload["git_ready"] = True
         payload["local_commit"] = _git(repo, "rev-parse", "--short=12", "HEAD", timeout=settings.update_check_timeout_seconds)
-        payload["repo_dirty"] = bool(
-            _git(repo, "status", "--porcelain", "--untracked-files=no", timeout=settings.update_check_timeout_seconds)
-        )
+        dirty_status = _git(repo, "status", "--porcelain", "--untracked-files=no", timeout=settings.update_check_timeout_seconds)
+        payload["repo_dirty_paths"] = _parse_dirty_paths(dirty_status)
+        payload["repo_dirty"] = bool(payload["repo_dirty_paths"])
 
         if local_branch == "HEAD":
             payload["message"] = "This OmniPBX install is on a detached git HEAD. Check out a branch to enable updates."
@@ -359,7 +381,7 @@ def _check_cache_stale(settings: Settings) -> bool:
 def _git(repo: Path, *args: str, timeout: int) -> str:
     try:
         completed = subprocess.run(
-            ["git", *args],
+            ["git", "-c", f"safe.directory={repo}", *args],
             cwd=repo,
             text=True,
             capture_output=True,
@@ -376,7 +398,7 @@ def _git(repo: Path, *args: str, timeout: int) -> str:
 
 def _read_version_at_ref(repo: Path, ref: str, fallback: str) -> str:
     completed = subprocess.run(
-        ["git", "show", f"{ref}:VERSION"],
+        ["git", "-c", f"safe.directory={repo}", "show", f"{ref}:VERSION"],
         cwd=repo,
         text=True,
         capture_output=True,
@@ -397,6 +419,10 @@ def _read_version_file(path: Path, fallback: str) -> str:
 
 
 def _target_label(overview: dict[str, object]) -> str:
+    if bool(overview.get("version_apply_needed")):
+        current_version = str(overview.get("current_version") or "").strip()
+        if current_version:
+            return current_version
     latest_version = str(overview.get("latest_version") or "").strip()
     current_version = str(overview.get("current_version") or "").strip()
     if latest_version and latest_version != current_version:
@@ -405,6 +431,47 @@ def _target_label(overview: dict[str, object]) -> str:
     if remote_commit:
         return remote_commit
     return "upstream"
+
+
+def _version_apply_needed(settings: Settings, check: dict[str, object]) -> bool:
+    current_version = str(check.get("current_version") or "").strip()
+    running_version = str(settings.app_version or "").strip()
+    return bool(current_version and running_version and current_version != running_version)
+
+
+def _version_only_dirty(check: dict[str, object]) -> bool:
+    paths = check.get("repo_dirty_paths") or []
+    if not isinstance(paths, list):
+        return False
+    normalized = {str(path).strip() for path in paths if str(path).strip()}
+    return bool(normalized) and normalized <= {"VERSION", "deploy/.env"}
+
+
+def _parse_dirty_paths(status_output: str) -> list[str]:
+    paths: list[str] = []
+    for line in status_output.splitlines():
+        if len(line) < 3:
+            continue
+        if len(line) > 3 and line[2] == " ":
+            path = line[3:].strip()
+        else:
+            parts = line.split(maxsplit=1)
+            path = parts[1].strip() if len(parts) == 2 else ""
+        if " -> " in path:
+            path = path.rsplit(" -> ", 1)[-1].strip()
+        if path:
+            paths.append(path.strip('"'))
+    return paths
+
+
+def _overview_message(settings: Settings, check: dict[str, object]) -> str:
+    if _version_apply_needed(settings, check):
+        current_version = str(check.get("current_version") or "").strip()
+        return (
+            f"OmniPBX {current_version} is on disk, but the running stack is still "
+            f"{settings.app_version}. Use Manual Update to apply and restart it."
+        )
+    return str(check.get("message") or "")
 
 
 def _read_json_file(path: Path) -> dict[str, object]:

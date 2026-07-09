@@ -5,7 +5,7 @@
       <p>Check git for new changes and start a manual update when this install is behind.</p>
     </div>
     <span class="status-pill {{ 'success' if not update_overview.update_available else 'warning' }}" data-update-state>
-      {{ "Update available" if update_overview.update_available else "Up to date" }}
+      {{ "Ready to apply" if update_overview.version_apply_needed else ("Update available" if update_overview.update_available else "Up to date") }}
     </span>
   </div>
 
@@ -34,7 +34,29 @@
 
   <div class="notice notice-info" data-update-message>
     <strong>Status</strong>
-    <span>{{ update_overview.update_status.message or update_overview.check_message }}</span>
+    <span>{{ update_overview.update_status.message if update_overview.update_status.state != "idle" else update_overview.check_message }}</span>
+  </div>
+
+  <div class="update-progress" data-update-progress data-state="{{ update_overview.update_status.state or 'idle' }}">
+    <div class="update-progress-meta">
+      <span data-update-progress-label>
+        {% if update_overview.update_status.state in ["queued", "updating"] %}
+          Update in progress
+        {% elif update_overview.update_status.state == "success" %}
+          Update complete
+        {% elif update_overview.update_status.state == "error" %}
+          Update failed
+        {% else %}
+          Ready
+        {% endif %}
+      </span>
+      <span data-update-progress-percent>
+        {% if update_overview.update_status.state == "success" %}100%{% elif update_overview.update_status.state == "updating" %}60%{% elif update_overview.update_status.state == "queued" %}20%{% elif update_overview.update_status.state == "error" %}Stopped{% else %}0%{% endif %}
+      </span>
+    </div>
+    <div class="update-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{% if update_overview.update_status.state == 'success' %}100{% elif update_overview.update_status.state == 'updating' %}60{% elif update_overview.update_status.state == 'queued' %}20{% else %}0{% endif %}">
+      <div class="update-progress-fill" data-update-progress-fill style="width: {% if update_overview.update_status.state == 'success' %}100{% elif update_overview.update_status.state == 'updating' %}60{% elif update_overview.update_status.state == 'queued' %}20{% else %}0{% endif %}%;"></div>
+    </div>
   </div>
 
   <div class="button-row">

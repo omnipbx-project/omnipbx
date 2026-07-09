@@ -38,7 +38,8 @@ def run_update(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
 
     try:
-        result = start_detached_update(get_settings())
+        settings = get_settings()
+        result = start_detached_update(settings)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -54,4 +55,7 @@ def run_update(
         message=f"Requested OmniPBX update to {result['target_version']}",
         details={"job_container_id": result.get("job_container_id", ""), "target_version": result["target_version"]},
     )
-    return result
+    return {
+        **get_update_overview(settings),
+        "start_result": result,
+    }

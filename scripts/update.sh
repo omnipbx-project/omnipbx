@@ -25,6 +25,7 @@ COMMITS_BEHIND="0"
 START_COMMIT=""
 APP_REBUILD_NEEDED="false"
 REPO_DIRTY="false"
+DIRTY_TRACKED_FILES=""
 GIT_READY="false"
 TRACKED_UPSTREAM="false"
 CHECK_MESSAGE=""
@@ -149,7 +150,7 @@ PY
 }
 
 git_output() {
-  GIT_TERMINAL_PROMPT=0 git -C "${PROJECT_ROOT}" "$@"
+  GIT_TERMINAL_PROMPT=0 git -c "safe.directory=${PROJECT_ROOT}" -C "${PROJECT_ROOT}" "$@"
 }
 
 set_check_failure() {
@@ -184,6 +185,7 @@ collect_git_status() {
   COMMITS_AHEAD="0"
   COMMITS_BEHIND="0"
   REPO_DIRTY="false"
+  DIRTY_TRACKED_FILES=""
   GIT_READY="false"
   TRACKED_UPSTREAM="false"
   CHECK_MESSAGE=""
@@ -197,8 +199,9 @@ collect_git_status() {
   GIT_READY="true"
   LOCAL_BRANCH="$(git_output rev-parse --abbrev-ref HEAD)"
   LOCAL_COMMIT="$(git_output rev-parse --short=12 HEAD)"
+  DIRTY_TRACKED_FILES="$(git_output status --porcelain --untracked-files=no)"
   REPO_DIRTY="$(
-    if [[ -n "$(git_output status --porcelain --untracked-files=no)" ]]; then
+    if [[ -n "${DIRTY_TRACKED_FILES}" ]]; then
       echo "true"
     else
       echo "false"
@@ -248,8 +251,42 @@ collect_git_status() {
   fi
 }
 
+dirty_paths_json() {
+  DIRTY_TRACKED_FILES="${DIRTY_TRACKED_FILES}" python3 - <<'PY'
+import json
+import os
+
+paths = []
+for line in os.environ.get("DIRTY_TRACKED_FILES", "").splitlines():
+    if len(line) < 4:
+        continue
+    path = line[3:].strip()
+    if " -> " in path:
+        path = path.rsplit(" -> ", 1)[-1].strip()
+    if path:
+        paths.append(path.strip('"'))
+print(json.dumps(paths))
+PY
+}
+
+version_only_dirty() {
+  local paths_json
+  paths_json="$(dirty_paths_json)"
+  python3 - "${paths_json}" <<'PY'
+import json
+import sys
+
+try:
+    paths = set(json.loads(sys.argv[1]))
+except json.JSONDecodeError:
+    raise SystemExit(1)
+allowed = {"VERSION", "deploy/.env"}
+raise SystemExit(0 if paths and paths <= allowed else 1)
+PY
+}
+
 write_check_cache() {
-  python3 - "${CHECK_FILE}" "${CURRENT_VERSION}" "${TARGET_VERSION}" "${GIT_READY}" "${TRACKED_UPSTREAM}" "${LOCAL_BRANCH}" "${UPSTREAM_REF}" "${REMOTE_NAME}" "${REMOTE_URL}" "${LOCAL_COMMIT}" "${REMOTE_COMMIT}" "${COMMITS_BEHIND}" "${COMMITS_AHEAD}" "${REPO_DIRTY}" "${CHECK_ERROR}" "${CHECK_MESSAGE}" "$(_utc_now)" <<'PY'
+  python3 - "${CHECK_FILE}" "${CURRENT_VERSION}" "${TARGET_VERSION}" "${GIT_READY}" "${TRACKED_UPSTREAM}" "${LOCAL_BRANCH}" "${UPSTREAM_REF}" "${REMOTE_NAME}" "${REMOTE_URL}" "${LOCAL_COMMIT}" "${REMOTE_COMMIT}" "${COMMITS_BEHIND}" "${COMMITS_AHEAD}" "${REPO_DIRTY}" "$(dirty_paths_json)" "${CHECK_ERROR}" "${CHECK_MESSAGE}" "$(_utc_now)" <<'PY'
 from __future__ import annotations
 
 from pathlib import Path
@@ -271,10 +308,11 @@ payload = {
     "commits_behind": int(sys.argv[12]),
     "commits_ahead": int(sys.argv[13]),
     "repo_dirty": sys.argv[14] == "true",
+    "repo_dirty_paths": json.loads(sys.argv[15]),
     "update_available": sys.argv[4] == "true" and sys.argv[5] == "true" and int(sys.argv[12]) > 0,
-    "check_error": sys.argv[15],
-    "message": sys.argv[16],
-    "last_checked_at": sys.argv[17],
+    "check_error": sys.argv[16],
+    "message": sys.argv[17],
+    "last_checked_at": sys.argv[18],
 }
 path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -415,6 +453,10 @@ PY
 
 detect_app_rebuild_needed() {
   APP_REBUILD_NEEDED="false"
+  if [[ "${FORCE}" == "true" && "${COMMITS_BEHIND}" -eq 0 ]]; then
+    APP_REBUILD_NEEDED="true"
+    return 0
+  fi
   [[ -n "${START_COMMIT}" ]] || return 0
   [[ -f "${PROJECT_ROOT}/deploy/compose.dev.yaml" ]] || return 0
 
@@ -466,7 +508,7 @@ main() {
   [[ "${GIT_READY}" == "true" ]] || fail "${CHECK_MESSAGE}"
   [[ "${TRACKED_UPSTREAM}" == "true" ]] || fail "${CHECK_MESSAGE}"
 
-  if [[ "${REPO_DIRTY}" == "true" ]]; then
+  if [[ "${REPO_DIRTY}" == "true" ]] && ! { [[ "${FORCE}" == "true" && "${COMMITS_BEHIND}" -eq 0 ]] && version_only_dirty; }; then
     fail "Local tracked changes are present in ${PROJECT_ROOT}. Commit or revert them before updating."
   fi
 
@@ -492,7 +534,8 @@ main() {
   log INFO "Pulling the latest OmniPBX changes from ${UPSTREAM_REF}"
   START_COMMIT="${LOCAL_COMMIT}"
   if [[ "${FORCE}" == "true" && "${COMMITS_BEHIND}" -eq 0 ]]; then
-    git_output fetch --prune "${REMOTE_NAME}" >/dev/null 2>&1 || fail "Failed to refresh ${REMOTE_NAME} before rebuild."
+    git_output fetch --prune "${REMOTE_NAME}" >/dev/null 2>&1 || \
+      log WARN "Could not refresh ${REMOTE_NAME}; continuing because the local branch is already current."
   else
     git_output pull --ff-only "${REMOTE_NAME}" "${UPSTREAM_REF#*/}" || fail "git pull --ff-only failed for ${UPSTREAM_REF}."
   fi
