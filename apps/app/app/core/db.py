@@ -426,7 +426,7 @@ def initialize_schema() -> None:
         admin_email VARCHAR(255),
         sip_port INTEGER NOT NULL DEFAULT 5060,
         rtp_start INTEGER NOT NULL DEFAULT 10000,
-        rtp_end INTEGER NOT NULL DEFAULT 20000,
+        rtp_end INTEGER NOT NULL DEFAULT 10100,
         local_networks VARCHAR(500),
         public_base_url VARCHAR(500),
         caddy_enabled BOOLEAN NOT NULL DEFAULT FALSE,
@@ -689,7 +689,7 @@ def initialize_schema() -> None:
                 VALUES (
                     1, FALSE, 'OmniPBX', 'Bangladesh', 'UTC', 'en', '+880',
                     'office', 'local_network', TRUE, NULL, 'http', NULL, NULL,
-                    5060, 10000, 20000, NULL, NULL, FALSE
+                    5060, 10000, 10100, NULL, NULL, FALSE
                 )
                 ON CONFLICT (id) DO NOTHING
                 """
@@ -716,7 +716,7 @@ def initialize_schema() -> None:
             cursor.execute(
                 """
                 INSERT INTO advanced_network_settings (id, trusted_ips, blocked_ips, open_ports, note)
-                VALUES (1, '', '', '5060/udp,10000-20000/udp,3478/tcp,3478/udp,49160-49200/udp,18000/tcp', '')
+                VALUES (1, '', '', '5060/udp,10000-10100/udp,3478/tcp,3478/udp,49160-49200/udp,18000/tcp', '')
                 ON CONFLICT (id) DO NOTHING
                 """
             )

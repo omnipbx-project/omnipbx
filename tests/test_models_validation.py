@@ -7,11 +7,20 @@ import support  # noqa: F401
 from app.models.inbound_route import InboundRouteCreate
 from app.models.queue import QueueCreate
 from app.models.ring_group import RingGroupCreate
+from app.models.setup import SetupWizardPayload
 from app.models.trunk import TrunkCreate
 from app.models.working_hours import WorkingHoursCreate
 
 
 class ModelValidationTests(TestCase):
+    def test_setup_normalizes_local_network_cidrs(self):
+        self.assertEqual(
+            SetupWizardPayload.normalize_local_networks("192.168.21.1/24, 10.20.0.0/16, 192.168.21.0/24"),
+            "192.168.21.0/24, 10.20.0.0/16",
+        )
+        with self.assertRaises(ValueError):
+            SetupWizardPayload.normalize_local_networks("not-a-network")
+
     def test_trunk_normalizes_names_and_requires_credentials_for_registration(self):
         trunk = TrunkCreate(
             name="SIP_Main",

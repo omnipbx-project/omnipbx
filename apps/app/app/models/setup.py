@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ipaddress
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -84,5 +86,16 @@ class SetupWizardPayload(BaseModel):
     def normalize_local_networks(cls, value: str | None) -> str | None:
         if not value:
             return None
-        networks = [item.strip() for item in value.split(",") if item.strip()]
+        networks: list[str] = []
+        for item in value.split(","):
+            candidate = item.strip()
+            if not candidate:
+                continue
+            try:
+                network = ipaddress.ip_network(candidate, strict=False)
+            except ValueError as exc:
+                raise ValueError(f"Enter a valid local network CIDR: {candidate}") from exc
+            normalized = network.with_prefixlen
+            if normalized not in networks:
+                networks.append(normalized)
         return ", ".join(networks) if networks else None

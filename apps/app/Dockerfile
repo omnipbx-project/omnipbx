@@ -109,6 +109,6 @@ COPY entrypoint.sh /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 8000 5060/udp 10000-20000/udp
+EXPOSE 8000 5060/udp 10000-10100/udp
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]

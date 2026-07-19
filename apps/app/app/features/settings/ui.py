@@ -77,7 +77,7 @@ def save_company_network_from_settings(
     external_host: str = Form(default=""),
     sip_port: int = Form(default=5060),
     rtp_start: int = Form(default=10000),
-    rtp_end: int = Form(default=20000),
+    rtp_end: int = Form(default=10100),
     local_networks: str = Form(default=""),
     connection: psycopg.Connection = Depends(get_connection),
 ) -> RedirectResponse:

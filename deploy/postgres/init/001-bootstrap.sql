@@ -243,5 +243,5 @@ VALUES ('pjsip', '', FALSE), ('dialplan', '', FALSE)
 ON CONFLICT (config_key) DO NOTHING;
 
 INSERT INTO advanced_network_settings (id, trusted_ips, blocked_ips, open_ports, note)
-VALUES (1, '', '', '5060/udp,10000-20000/udp,3478/tcp,3478/udp,49160-49200/udp,18000/tcp', '')
+VALUES (1, '', '', '5060/udp,10000-10100/udp,3478/tcp,3478/udp,49160-49200/udp,18000/tcp', '')
 ON CONFLICT (id) DO NOTHING;

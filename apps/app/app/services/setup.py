@@ -90,7 +90,7 @@ def save_company_network_settings(
     deployment_mode = (deployment_mode or "").strip()
     access_mode = (access_mode or "").strip()
     external_host = (external_host or "").strip()
-    local_networks = (local_networks or "").strip()
+    local_networks = _normalize_local_networks(local_networks)
 
     if len(company_name) < 2:
         raise ValueError("Enter a company name.")
@@ -475,7 +475,7 @@ def get_environment_summary(request_host: str | None = None) -> dict[str, object
             {"label": "Public HTTP", "requested": settings.public_http_port, "selected": settings.public_http_port, "status": "unknown"},
             {"label": "Public HTTPS", "requested": settings.public_https_port, "selected": settings.public_https_port, "status": "unknown"},
             {"label": "SIP", "requested": 5060, "selected": 5060, "status": "unknown"},
-            {"label": "RTP", "requested": "10000-20000", "selected": "10000-20000", "status": "unknown"},
+            {"label": "RTP", "requested": "10000-10100", "selected": "10000-10100", "status": "unknown"},
         ],
         "recommended_mode": preflight.get(
             "recommended_mode",
@@ -604,6 +604,21 @@ def _is_ip_address(value: str) -> bool:
     return not ip.is_unspecified
 
 
+def _normalize_local_networks(value: str | None) -> str:
+    networks: list[str] = []
+    for item in (value or "").split(","):
+        candidate = item.strip()
+        if not candidate:
+            continue
+        try:
+            normalized = ipaddress.ip_network(candidate, strict=False).with_prefixlen
+        except ValueError as exc:
+            raise ValueError(f"Enter a valid local network CIDR: {candidate}") from exc
+        if normalized not in networks:
+            networks.append(normalized)
+    return ", ".join(networks)
+
+
 def _default_system_settings() -> dict:
     return {
         "setup_completed": False,
@@ -621,7 +636,7 @@ def _default_system_settings() -> dict:
         "admin_email": None,
         "sip_port": 5060,
         "rtp_start": 10000,
-        "rtp_end": 20000,
+        "rtp_end": 10100,
         "local_networks": None,
         "public_base_url": None,
         "caddy_enabled": False,

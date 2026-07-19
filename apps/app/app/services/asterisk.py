@@ -1,3 +1,4 @@
+import ipaddress
 from pathlib import Path
 import re
 import subprocess
@@ -126,7 +127,8 @@ SELECT
     softphone.public_host,
     system.public_base_url,
     system.rtp_start,
-    system.rtp_end
+    system.rtp_end,
+    system.local_networks
 FROM softphone_settings softphone
 CROSS JOIN system_settings system
 WHERE softphone.id = 1 AND system.id = 1;
@@ -299,14 +301,17 @@ def _attach_ivr_options(ivrs: list[dict], options: list[dict]) -> list[dict]:
 
 
 def render_pjsip_base_config(network: dict | None = None) -> str:
-    advertised_host = _pjsip_advertised_host(network or {})
+    network = network or {}
+    advertised_host = _pjsip_advertised_host(network)
     external_lines = ""
     if advertised_host:
+        local_network_lines = "".join(
+            f"local_net = {local_network}\n" for local_network in _pjsip_local_networks(network)
+        )
         external_lines = (
             f"external_signaling_address = {advertised_host}\n"
             f"external_media_address = {advertised_host}\n"
-            "local_net = 127.0.0.0/8\n"
-            "local_net = 172.16.0.0/12\n"
+            f"{local_network_lines}"
         )
     return (
         "[global]\n"
@@ -375,6 +380,21 @@ def _pjsip_advertised_host(network: dict) -> str:
         if host:
             return host
     return ""
+
+
+def _pjsip_local_networks(network: dict) -> list[str]:
+    networks = ["127.0.0.0/8", "172.16.0.0/12"]
+    raw_networks = str(network.get("local_networks") or "")
+    for candidate in re.split(r"[,\s]+", raw_networks):
+        if not candidate:
+            continue
+        try:
+            normalized = ipaddress.ip_network(candidate, strict=False).with_prefixlen
+        except ValueError:
+            continue
+        if normalized not in networks:
+            networks.append(normalized)
+    return networks
 
 
 def _host_from_setting(value: str) -> str:

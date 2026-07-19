@@ -25,6 +25,7 @@ class AsteriskRenderingTests(TestCase):
                 "sip_domain": "bad host!",
                 "public_host": "",
                 "public_base_url": "https://pbx.example.com:8443/app",
+                "local_networks": "192.168.21.1/24, 10.20.0.0/16",
             }
         )
 
@@ -39,6 +40,8 @@ class AsteriskRenderingTests(TestCase):
             "external_media_address = pbx.example.com",
             config,
         )
+        self.assertIn("local_net = 192.168.21.0/24", config)
+        self.assertIn("local_net = 10.20.0.0/16", config)
         self.assertNotIn("bad host", config)
 
     def test_pjsip_extension_rendering_separates_webphone_and_desk_phone_options(self):

@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     public_https_port: int = 443
     sip_port: int = 5060
     rtp_start: int = 10000
-    rtp_end: int = 20000
+    rtp_end: int = 10100
     turn_port: int = 3478
     turn_min_port: int = 49160
     turn_max_port: int = 49200

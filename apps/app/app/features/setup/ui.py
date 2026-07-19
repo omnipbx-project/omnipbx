@@ -117,7 +117,7 @@ def save_setup_page(
     admin_email: str = Form(default=""),
     sip_port: int = Form(default=5060),
     rtp_start: int = Form(default=10000),
-    rtp_end: int = Form(default=20000),
+    rtp_end: int = Form(default=10100),
     local_networks: str = Form(default=""),
     first_extension: str = Form(default="10000"),
     first_extension_name: str = Form(default="Admin"),
