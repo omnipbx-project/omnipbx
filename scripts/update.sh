@@ -391,15 +391,23 @@ repair_env_from_running_stack() {
     return 0
   fi
 
-  local inspect_json repaired_values
-  inspect_json="$(docker inspect omnipbx-app omnipbx-caddy)"
-  repaired_values="$(DOCKER_INSPECT_JSON="${inspect_json}" python3 - <<'PY'
+  local repaired_values
+  repaired_values="$(python3 - <<'PY'
 import json
-import os
+import subprocess
 import sys
 
+completed = subprocess.run(
+    ["docker", "inspect", "omnipbx-app", "omnipbx-caddy"],
+    capture_output=True,
+    text=True,
+    check=False,
+)
+if completed.returncode != 0:
+    raise SystemExit(0)
+
 try:
-    containers = json.loads(os.environ.get("DOCKER_INSPECT_JSON", ""))
+    containers = json.loads(completed.stdout)
 except json.JSONDecodeError:
     raise SystemExit(0)
 
