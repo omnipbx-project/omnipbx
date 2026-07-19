@@ -55,9 +55,51 @@ INSTALL_STARTED_AT="${SECONDS}"
 SETUP_REACHABLE="false"
 SERVICE_STATUS="unknown"
 RUNNING_CONTAINERS="unknown"
+PROGRESS_WIDTH=30
 
 log() {
   printf '\n[%s] %s\n' "$1" "$2"
+}
+
+render_progress() {
+  local current="$1"
+  local total="$2"
+  local label="$3"
+  local finish_line="${4:-false}"
+  local percent filled empty filled_bar empty_bar
+
+  if (( total <= 0 )); then
+    total=1
+  fi
+  if (( current < 0 )); then
+    current=0
+  elif (( current > total )); then
+    current="${total}"
+  fi
+
+  percent=$((current * 100 / total))
+  filled=$((current * PROGRESS_WIDTH / total))
+  empty=$((PROGRESS_WIDTH - filled))
+  printf -v filled_bar '%*s' "${filled}" ''
+  printf -v empty_bar '%*s' "${empty}" ''
+  filled_bar="${filled_bar// /#}"
+  empty_bar="${empty_bar// /-}"
+
+  if [[ -t 1 ]]; then
+    printf '\r\033[2K[%s%s] %3d%% %s' "${filled_bar}" "${empty_bar}" "${percent}" "${label}"
+    if [[ "${finish_line}" == "true" ]]; then
+      printf '\n'
+    fi
+  elif [[ "${finish_line}" == "true" || "${current}" -eq 0 || $((current % 10)) -eq 0 ]]; then
+    printf '[%s%s] %3d%% %s\n' "${filled_bar}" "${empty_bar}" "${percent}" "${label}"
+  fi
+}
+
+install_progress() {
+  local current="$1"
+  local total="$2"
+  local label="$3"
+  render_progress "${current}" "${total}" "${label}" true
 }
 
 fail() {
@@ -521,7 +563,7 @@ ports = [
     {"label": "Public HTTP", "proto": "tcp", "requested": 80, "selected": int("${PUBLIC_HTTP_PORT}"), "status": "free" if 80 == int("${PUBLIC_HTTP_PORT}") else "conflicted"},
     {"label": "Public HTTPS", "proto": "tcp", "requested": 443, "selected": int("${PUBLIC_HTTPS_PORT}"), "status": "free" if 443 == int("${PUBLIC_HTTPS_PORT}") else "conflicted"},
     {"label": "SIP", "proto": "udp", "requested": 5060, "selected": int("${SIP_PORT}"), "status": "free" if 5060 == int("${SIP_PORT}") else "conflicted"},
-    {"label": "RTP", "proto": "udp", "requested": "10000-20000", "selected": "${RTP_START}-${RTP_END}", "status": "free" if "${RTP_START}-${RTP_END}" == "10000-20000" else "conflicted"},
+    {"label": "RTP", "proto": "udp", "requested": "10000-10100", "selected": "${RTP_START}-${RTP_END}", "status": "free" if "${RTP_START}-${RTP_END}" == "10000-10100" else "conflicted"},
     {"label": "TURN", "proto": "tcp/udp", "requested": 3478, "selected": int("${TURN_PORT}"), "status": "free" if 3478 == int("${TURN_PORT}") else "conflicted"},
     {"label": "TURN relay", "proto": "udp", "requested": "49160-49200", "selected": "${TURN_MIN_PORT}-${TURN_MAX_PORT}", "status": "free" if "${TURN_MIN_PORT}-${TURN_MAX_PORT}" == "49160-49200" else "conflicted"},
 ]
@@ -601,18 +643,49 @@ EOF
 
   systemctl daemon-reload
   systemctl enable "${SERVICE_NAME}.service" >/dev/null
-  systemctl restart "${SERVICE_NAME}.service"
+  log INFO "Starting OmniPBX containers"
+  systemctl restart --no-block "${SERVICE_NAME}.service"
+
+  local attempt state progress
+  for attempt in $(seq 1 600); do
+    state="$(systemctl is-active "${SERVICE_NAME}.service" 2>/dev/null || true)"
+    case "${state}" in
+      active)
+        render_progress 100 100 "Starting services" true
+        return 0
+        ;;
+      failed)
+        render_progress 100 100 "Service startup failed" true
+        systemctl status "${SERVICE_NAME}.service" --no-pager -l || true
+        return 1
+        ;;
+    esac
+    progress="${attempt}"
+    if (( progress > 95 )); then
+      progress=95
+    fi
+    render_progress "${progress}" 100 "Starting services (${attempt}s)"
+    sleep 1
+  done
+
+  render_progress 100 100 "Service startup timed out" true
+  systemctl status "${SERVICE_NAME}.service" --no-pager -l || true
+  return 1
 }
 
 wait_for_setup() {
   local url="http://127.0.0.1:${WEB_PORT}/setup"
   local attempt
+  render_progress 0 60 "Waiting for setup page"
   for attempt in $(seq 1 60); do
     if curl -fsS --max-time 3 "${url}" >/dev/null 2>&1; then
+      render_progress 60 60 "Setup page is ready" true
       return 0
     fi
+    render_progress "${attempt}" 60 "Waiting for setup page"
     sleep 2
   done
+  render_progress 60 60 "Setup page did not become ready" true
   return 1
 }
 
@@ -674,7 +747,7 @@ choose_ports() {
   PUBLIC_HTTPS_PORT="$(find_free_port tcp 443)" || fail "Could not find a free public HTTPS port."
   SIP_PORT="$(find_free_port udp 5060)" || fail "Could not find a free SIP port."
   local rtp_range
-  rtp_range="$(find_free_udp_range 10000 10001)" || fail "Could not find a free RTP range."
+  rtp_range="$(find_free_udp_range 10000 101)" || fail "Could not find a free RTP range."
   RTP_START="${rtp_range%%:*}"
   RTP_END="${rtp_range##*:}"
 }
@@ -743,6 +816,7 @@ print_verification_summary() {
 }
 
 main() {
+  local progress_total=9
   parse_args "$@"
   ensure_privileges "$@"
   need_cmd python3
@@ -754,36 +828,57 @@ main() {
   if internet_reachable; then
     INTERNET_STATUS="Online"
   fi
+  install_progress 1 "${progress_total}" "Host checks complete"
 
   if ! docker_installed || ! docker_compose_ready; then
     install_docker
   fi
 
   ensure_docker_ready
+  install_progress 2 "${progress_total}" "Docker is ready"
 
   detect_firewall
   detect_security_frameworks
   choose_ports
   configure_firewall
+  install_progress 3 "${progress_total}" "Ports and firewall are ready"
   copy_project
   install_cli_helper
+  install_progress 4 "${progress_total}" "Project files are ready"
   write_env_file
   write_preflight_json
+  install_progress 5 "${progress_total}" "Configuration is ready"
   if [[ "${DRY_RUN}" == "true" ]]; then
     log INFO "Dry run: skipping image pull and container startup"
   else
     log INFO "Pulling required container images"
     compose_cmd -f "${DEPLOY_DIR}/compose.yaml" pull postgres app caddy turn
   fi
+  if [[ "${DRY_RUN}" == "true" ]]; then
+    install_progress 6 "${progress_total}" "Image download is planned"
+  else
+    install_progress 6 "${progress_total}" "Container images are ready"
+  fi
   write_systemd_unit
+  if [[ "${DRY_RUN}" == "true" ]]; then
+    install_progress 7 "${progress_total}" "Service startup is planned"
+  else
+    install_progress 7 "${progress_total}" "Services are started"
+  fi
 
   if [[ "${DRY_RUN}" != "true" ]]; then
     if ! wait_for_setup; then
       fail "OmniPBX containers started, but the setup UI did not become reachable in time."
     fi
   fi
+  if [[ "${DRY_RUN}" == "true" ]]; then
+    install_progress 8 "${progress_total}" "Setup check is planned"
+  else
+    install_progress 8 "${progress_total}" "Setup page is ready"
+  fi
 
   if [[ "${DRY_RUN}" == "true" ]]; then
+    install_progress 9 "${progress_total}" "Dry-run plan verified"
     log OK "OmniPBX installer dry run completed"
     echo "Dry run sandbox: ${DRY_RUN_ROOT}"
     echo "Generated env file: ${ENV_FILE}"
@@ -795,6 +890,7 @@ main() {
     echo "Docker ready: ${DOCKER_READY}"
   else
     collect_verification_summary
+    install_progress 9 "${progress_total}" "Installation verified"
     print_success_banner
     print_verification_summary
     open_browser
