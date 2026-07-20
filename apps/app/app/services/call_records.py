@@ -21,7 +21,7 @@ def list_call_records(
 ) -> dict[str, object]:
     sync_cdr_from_asterisk(connection)
     where = [visible_cdr_condition(), "COALESCE(NULLIF(recordingfile, ''), '') <> ''"]
-    params: dict[str, object] = {"limit": limit}
+    params: dict[str, object] = {"limit": limit, "timezone": timezone_name}
     search = search.strip()
     if search:
         params["search"] = f"%{search}%"
@@ -78,7 +78,7 @@ def list_call_records(
             f"""
             SELECT
                 id,
-                TO_CHAR(calldate, 'YYYY-MM-DD HH24:MI:SS') AS call_time,
+                TO_CHAR(calldate AT TIME ZONE %(timezone)s, 'YYYY-MM-DD HH24:MI:SS') AS call_time,
                 COALESCE(NULLIF(src, ''), NULLIF(clid, ''), 'unknown') AS caller,
                 COALESCE(NULLIF(dst, ''), NULLIF(callee_extension, ''), 'unknown') AS callee,
                 COALESCE(direction, 'unknown') AS direction,

@@ -148,7 +148,11 @@ def list_call_logs(
 ) -> dict[str, object]:
     sync_cdr_from_asterisk(connection)
     where = [visible_cdr_condition()]
-    params: dict[str, object] = {"limit": limit, "missed": list(MISSED_DISPOSITIONS)}
+    params: dict[str, object] = {
+        "limit": limit,
+        "missed": list(MISSED_DISPOSITIONS),
+        "timezone": timezone_name,
+    }
     if agent_extension is not None:
         params["agent_extension"] = agent_extension.strip()
         where.append(_agent_call_log_condition() if params["agent_extension"] else "FALSE")
@@ -203,7 +207,7 @@ def list_call_logs(
             f"""
             SELECT
                 id,
-                TO_CHAR(calldate, 'YYYY-MM-DD HH24:MI:SS') AS call_time,
+                TO_CHAR(calldate AT TIME ZONE %(timezone)s, 'YYYY-MM-DD HH24:MI:SS') AS call_time,
                 uniqueid,
                 COALESCE(NULLIF(linkedid, ''), uniqueid) AS linkedid,
                 COALESCE(NULLIF(caller_extension, ''), NULLIF(src, ''), NULLIF(clid, ''), 'unknown') AS caller,
@@ -311,7 +315,11 @@ def list_callback_worklist(
         callback_candidate_condition("c"),
         "COALESCE(NULLIF(c.src, ''), NULLIF(c.clid, ''), '') <> ''",
     ]
-    params: dict[str, object] = {"missed": list(MISSED_DISPOSITIONS), "limit": limit}
+    params: dict[str, object] = {
+        "missed": list(MISSED_DISPOSITIONS),
+        "limit": limit,
+        "timezone": timezone_name,
+    }
     search = search.strip()
     if search:
         params["search"] = f"%{search}%"
@@ -333,7 +341,7 @@ def list_callback_worklist(
             f"""
             SELECT DISTINCT ON (COALESCE(NULLIF(c.linkedid, ''), c.uniqueid))
                 COALESCE(NULLIF(c.linkedid, ''), c.uniqueid) AS linkedid,
-                TO_CHAR(c.calldate, 'YYYY-MM-DD HH24:MI:SS') AS call_time,
+                TO_CHAR(c.calldate AT TIME ZONE %(timezone)s, 'YYYY-MM-DD HH24:MI:SS') AS call_time,
                 COALESCE(NULLIF(c.src, ''), NULLIF(c.clid, ''), 'unknown') AS caller_number,
                 COALESCE(NULLIF(c.callee_extension, ''), NULLIF(c.queue_name, ''), NULLIF(c.ivr_name, ''), NULLIF(c.dst, ''), '') AS target,
                 c.route_name,
@@ -353,9 +361,9 @@ def list_callback_worklist(
                     ELSE 'needs_callback'
                 END AS followup_status,
                 COALESCE(cf.completed, FALSE) AS completed,
-                TO_CHAR(cf.completed_at, 'YYYY-MM-DD HH24:MI:SS') AS completed_at,
+                TO_CHAR(cf.completed_at AT TIME ZONE %(timezone)s, 'YYYY-MM-DD HH24:MI:SS') AS completed_at,
                 cf.assigned_to,
-                TO_CHAR(cf.assigned_at, 'YYYY-MM-DD HH24:MI:SS') AS assigned_at,
+                TO_CHAR(cf.assigned_at AT TIME ZONE %(timezone)s, 'YYYY-MM-DD HH24:MI:SS') AS assigned_at,
                 cf.completed_by,
                 cf.callback_number,
                 cf.note
