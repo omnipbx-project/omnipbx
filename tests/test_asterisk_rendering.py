@@ -67,7 +67,8 @@ class AsteriskRenderingTests(TestCase):
                     "video_codecs": "h264",
                     "simultaneous_device_limit": 20,
                 },
-            ]
+            ],
+            {"public_host": "192.168.21.100"},
         )
 
         self.assertIn("[1001]\ntype = endpoint\ntransport = transport-udp", config)
@@ -77,6 +78,7 @@ class AsteriskRenderingTests(TestCase):
         self.assertIn("webrtc = yes", config)
         self.assertIn("tos_audio = ef", config)
         self.assertIn("cos_audio = 5", config)
+        self.assertIn("media_address = 192.168.21.100", config)
         self.assertIn("max_contacts = 10", config)
         self.assertIn("qualify_frequency = 0", config)
 
