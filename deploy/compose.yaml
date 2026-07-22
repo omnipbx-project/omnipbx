@@ -36,6 +36,7 @@ services:
       - ..:/opt/omnipbx-host
       - /var/run/docker.sock:/var/run/docker.sock
       - omnipbx_caddy_data:/var/lib/caddy-data:ro
+      - omnipbx_asterisk_state:/var/lib/asterisk
       - omnipbx_logs:/var/log/asterisk
       - omnipbx_recordings:/var/spool/asterisk/monitor
       - omnipbx_sounds:/var/lib/asterisk/sounds/custom
@@ -107,6 +108,7 @@ volumes:
   omnipbx_postgres:
   omnipbx_caddy_data:
   omnipbx_caddy_config:
+  omnipbx_asterisk_state:
   omnipbx_logs:
   omnipbx_recordings:
   omnipbx_sounds:
