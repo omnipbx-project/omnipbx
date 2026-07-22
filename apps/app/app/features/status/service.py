@@ -8,8 +8,18 @@ from app.services.ami import AmiError, ami_command
 from app.services.extensions import list_extensions
 
 
-ONLINE_STATES = {"avail", "available", "ok", "reachable", "registered", "online", "lagged"}
-OFFLINE_STATES = {"unavail", "unavailable", "nonqual", "unknown", "unregistered", "rejected", "offline"}
+ONLINE_STATES = {
+    "avail",
+    "available",
+    "ok",
+    "reachable",
+    "registered",
+    "online",
+    "lagged",
+    "nonqual",
+    "nonqualified",
+}
+OFFLINE_STATES = {"unavail", "unavailable", "unknown", "unregistered", "rejected", "offline"}
 
 
 def run_asterisk_command(command: str) -> str:
