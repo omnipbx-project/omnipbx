@@ -40,8 +40,10 @@ class AsteriskRenderingTests(TestCase):
             "external_media_address = pbx.example.com",
             config,
         )
-        self.assertIn("local_net = 192.168.21.0/24", config)
-        self.assertIn("local_net = 10.20.0.0/16", config)
+        self.assertIn("local_net = 127.0.0.0/8", config)
+        self.assertIn("local_net = 172.16.0.0/12", config)
+        self.assertNotIn("local_net = 192.168.21.0/24", config)
+        self.assertNotIn("local_net = 10.20.0.0/16", config)
         self.assertNotIn("bad host", config)
 
     def test_pjsip_extension_rendering_separates_webphone_and_desk_phone_options(self):

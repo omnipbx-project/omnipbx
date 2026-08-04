@@ -1,4 +1,3 @@
-import ipaddress
 from pathlib import Path
 import re
 import subprocess
@@ -383,18 +382,12 @@ def _pjsip_advertised_host(network: dict) -> str:
 
 
 def _pjsip_local_networks(network: dict) -> list[str]:
-    networks = ["127.0.0.0/8", "172.16.0.0/12"]
-    raw_networks = str(network.get("local_networks") or "")
-    for candidate in re.split(r"[,\s]+", raw_networks):
-        if not candidate:
-            continue
-        try:
-            normalized = ipaddress.ip_network(candidate, strict=False).with_prefixlen
-        except ValueError:
-            continue
-        if normalized not in networks:
-            networks.append(normalized)
-    return networks
+    # Asterisk runs inside Docker. Client LANs must receive the configured host
+    # address in SIP Via/Contact headers. Marking a client LAN as local makes
+    # PJSIP advertise its unreachable 172.x container address, so the phone's
+    # ACK cannot reach Asterisk and answered calls are torn down after 32s.
+    _ = network
+    return ["127.0.0.0/8", "172.16.0.0/12"]
 
 
 def _host_from_setting(value: str) -> str:
