@@ -233,6 +233,67 @@ install_docker() {
   esac
 }
 
+configure_docker_networking() {
+  local daemon_config="/etc/docker/daemon.json"
+  local result
+
+  if [[ "${DRY_RUN}" == "true" ]]; then
+    log INFO "Dry run: would disable Docker's userland proxy for reliable SIP and RTP port handling"
+    return 0
+  fi
+
+  # docker-proxy rewrites the UDP source port seen by Asterisk. SIP phones then
+  # send in-dialog ACKs to a different port and answered calls end after 32s.
+  # Merge this setting instead of replacing an administrator's Docker options.
+  result="$(python3 - "${daemon_config}" <<'PY'
+import json
+import os
+import sys
+import tempfile
+
+path = sys.argv[1]
+config = {}
+if os.path.exists(path):
+    try:
+        with open(path, encoding="utf-8") as handle:
+            config = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Cannot update {path}: {exc}")
+    if not isinstance(config, dict):
+        raise SystemExit(f"Cannot update {path}: top-level JSON value must be an object")
+
+if config.get("userland-proxy") is False:
+    print("unchanged")
+    raise SystemExit(0)
+
+config["userland-proxy"] = False
+os.makedirs(os.path.dirname(path), mode=0o755, exist_ok=True)
+fd, temp_path = tempfile.mkstemp(prefix="daemon.json.", dir=os.path.dirname(path), text=True)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(config, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    os.chmod(temp_path, 0o644)
+    os.replace(temp_path, path)
+except BaseException:
+    try:
+        os.unlink(temp_path)
+    except FileNotFoundError:
+        pass
+    raise
+print("changed")
+PY
+)"
+
+  if [[ "${result}" == "changed" ]]; then
+    if command_exists dockerd; then
+      dockerd --validate --config-file="${daemon_config}" >/dev/null
+    fi
+    log INFO "Restarting Docker with SIP-safe UDP forwarding"
+    systemctl restart docker
+  fi
+}
+
 detect_ip_addresses() {
   local collected=""
   if command_exists hostname; then
@@ -834,6 +895,7 @@ main() {
     install_docker
   fi
 
+  configure_docker_networking
   ensure_docker_ready
   install_progress 2 "${progress_total}" "Docker is ready"
 
